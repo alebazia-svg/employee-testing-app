@@ -4,10 +4,11 @@ import { expenseRecord as record } from './expense-request-list-view';
 import { prisma } from './prisma';
 import { handoverCashExpenses } from './handover-cash-expenses';
 /** Existing synchronized 1C snapshots only; no writes and no new source calls. */
-export async function loadHandoverCashExpenses(userId:number,input:{actual:number;expected:number|null;capturedAt:string},now=new Date()) {
+export async function loadHandoverCashExpenses(userId:number,input:{actual:number;expected:number|null;capturedAt:string;cashboxRef?:string},now=new Date()) {
  const mapping=await prisma.userOneCCashboxMapping.findUnique({where:{userId}});
  const cashboxRef=mapping?.isActive?mapping.oneCCashboxRef:'';
- if(!cashboxRef||input.expected===null||input.actual>=input.expected)return null;
+ if(input.expected===null||input.actual>=input.expected)return null;
+ if(!cashboxRef || input.cashboxRef !== undefined && (!input.cashboxRef || input.cashboxRef.toLowerCase()!==cashboxRef.toLowerCase()))return undefined;
  const [owners,run]=await Promise.all([
   prisma.userOneCCashboxMapping.count({where:{isActive:true,oneCCashboxRef:cashboxRef,user:{isActive:true}}}),
   prisma.expenseRequestSyncRun.findFirst({where:{status:{not:'running'}},orderBy:{startedAt:'desc'}}),

@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+const url='postgresql://postgres@127.0.0.1:55479/kkm_close_test';
+test('persisted unavailable count recovers on complete documents; mapping changes, outages and reversals stay safe', {skip:process.env.CASH_RECHECK_INTEGRATION!=='1'}, async()=>{
+ assert.equal(process.env.DATABASE_URL,url,'isolated database only');
+ const {prisma:db}=await import('../lib/prisma');
+ const {loadHandoverCashExpenses:load}=await import('../lib/handover-cash-expense-snapshot');
+ const now=new Date(), capturedAt='2026-10-26T11:34:55.632Z';
+ const user=await db.user.create({data:{login:`recheck-${Date.now()}`,name:'Учебный сотрудник',passwordHash:'disabled',role:'EMPLOYEE'}});
+ const cashboxRef=`cash-${user.id}`;
+ const run=await db.expenseRequestSyncRun.create({data:{runKey:`recheck-${Date.now()}`,periodFrom:new Date('2026-10-26'),periodTo:new Date('2026-10-27'),status:'completed',sourceComplete:false,startedAt:now,completedAt:now}});
+ const item=await db.expenseRequestAdminCase.create({data:{oneCRequestRef:`request-${user.id}`,deletionMark:false,currentStatusKey:'payable',latestSourceHash:'hash',lastSeenAt:now}});
+ const source={ref:item.oneCRequestRef,number:'1144',date:'26.10.2026 14:26:40',amount:350,posted:true,deletionMark:false,status:{key:'payable'},cashbox:{ref:cashboxRef},currency:{name:'руб'},paymentForm:{cash:true,cashless:false,card:false},completeness:{complete:true},execution:{complete:true,amounts_consistent:true,executed_amount:350,remaining_amount:0},linkedCashExpenseOrders:{complete:true,rows:[{ref:'order-1962',date:'26.10.2026 15:09:35',posted:true,deletion_mark:false,amount:350,request_amount:350,executed_amount:350,cashbox:{ref:cashboxRef},source_paths:['payment_line.request']}]}};
+ const evaluation=await db.expenseRequestAdminEvaluation.create({data:{caseId:item.id,syncRunId:run.id,notApprovedCycle:0,sourceHash:'hash',ruleVersion:'test',category:'test',categoryCandidates:[],completenessState:'complete',evidenceState:'test',reasonCodes:[],missingInformation:[],decisionSources:[],confidence:'test',ambiguous:false,sourceComplete:true,normalizedSource:source}});
+ const day=await db.workDayEntry.create({data:{userId:user.id,date:'2026-10-26',department:'retail',shiftCode:'09_18',shiftLabel:'09:00–18:00'}});
+ const shift=await db.shiftControlRun.create({data:{userId:user.id,workDayEntryId:day.id,date:day.date,department:'retail'}});
+ const original={oneCAudit:{capturedAt,personalCash:{status:'captured',balance:8600,cashboxRef}},cashComparison:{expenseSourceUnavailable:true,actual:8250,expected:8600,capturedAt},cashRecountInputHistory:[{kind:'initial',value:8250,enteredAt:capturedAt}]};
+ const task=await db.shiftControlTask.create({data:{runId:shift.id,title:'Пересчитать наличные',category:'cash',sortOrder:1,status:'done',numericValue:8250,handoverData:original}});
+ const input={actual:8250,expected:8600,capturedAt,cashboxRef};
+ const {getAdminWorkdayRevision:revision}=await import('../lib/admin-workday-revision');
+ try {
+  await db.userOneCCashboxMapping.create({data:{userId:user.id,oneCCashboxRef:cashboxRef,oneCCashboxName:'Учебная касса'}});
+  assert.equal(await load(user.id,input,now),undefined);
+  const unavailableRevision=await revision('2020-01-01');
+  await db.expenseRequestSyncRun.update({where:{id:run.id},data:{sourceComplete:true}});
+  assert.equal((await load(user.id,input,now))?.state,'documented');
+  const recoveredRevision=await revision('2020-01-01');
+  assert.notEqual(recoveredRevision,unavailableRevision,'historical ADMIN view refreshes on source recovery too');
+  assert.deepEqual((await load(user.id,input,now))?.documentRefs,['order-1962']);
+  await db.expenseRequestSyncRun.update({where:{id:run.id},data:{status:'failed'}});
+  assert.equal(await load(user.id,input,now),undefined,'another source outage does not mean repaired or missing');
+  await db.expenseRequestSyncRun.update({where:{id:run.id},data:{status:'completed'}});
+  assert.equal(await load(user.id,input,new Date(+now+400000)),undefined,'stale envelope remains unknown');
+  await db.expenseRequestSyncRun.update({where:{id:run.id},data:{completedAt:new Date(+now-400000)}});
+  assert.notEqual(await revision('2020-01-01'),recoveredRevision,'expiry changes the view revision without a new task write');
+  await db.expenseRequestSyncRun.update({where:{id:run.id},data:{completedAt:now}});
+  await db.userOneCCashboxMapping.update({where:{userId:user.id},data:{oneCCashboxRef:'changed-cash'}});
+  assert.equal(await load(user.id,input,now),undefined,'do not compare the old fact with a new cashbox');
+  await db.userOneCCashboxMapping.update({where:{userId:user.id},data:{oneCCashboxRef:cashboxRef}});
+  const reversed={...source,execution:{...source.execution,executed_amount:0,remaining_amount:350},linkedCashExpenseOrders:{complete:true,rows:[]}};
+  await db.expenseRequestAdminEvaluation.update({where:{id:evaluation.id},data:{normalizedSource:reversed}});
+  assert.equal((await load(user.id,input,now))?.state,'awaiting_documents','explicit fresh reversal restores the real action');
+  await db.expenseRequestAdminEvaluation.update({where:{id:evaluation.id},data:{normalizedSource:source}});
+  assert.equal((await load(user.id,input,now))?.state,'documented','recovery remains idempotent');
+  assert.deepEqual((await db.shiftControlTask.findUniqueOrThrow({where:{id:task.id}})).handoverData,original);
+  assert.equal(await db.workdayControlIssue.count({where:{userId:user.id}}),0,'a read never manufactures employee errors');
+ } finally {
+  await db.user.delete({where:{id:user.id}});
+  await db.expenseRequestAdminCase.delete({where:{id:item.id}});
+  await db.expenseRequestSyncRun.delete({where:{id:run.id}});
+  await db.$disconnect();
+ }
+});

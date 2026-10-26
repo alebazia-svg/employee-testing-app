@@ -4166,7 +4166,7 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
-                  <h2 id='kkm-resolution-title' className='text-xl font-black leading-tight text-slate-950'>Закрытие кассы{handoverTask && <HandoverAuditShown taskId={handoverTask.id} attemptId={handoverAuditAttempt.current} stage='kkm_question' />}</h2>
+                  <h2 id='kkm-resolution-title' className='text-xl font-black leading-tight text-slate-950'>{closeResolutionPath === 'photo' ? 'Чек закрытия смены' : 'Закрытие кассы'}{handoverTask && <HandoverAuditShown taskId={handoverTask.id} attemptId={handoverAuditAttempt.current} stage='kkm_question' />}</h2>
                 </div>
                 <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
@@ -4174,7 +4174,7 @@ export function EmployeeTodayClient({
             <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
               {closeResolutionPath === null ? (
                 <div className='grid gap-3'>
-                  <p className='text-sm font-bold text-slate-700'>Чек закрытия распечатался?</p>
+                  <p className='text-sm font-bold text-slate-700'>Чек закрытия смены распечатался?</p>
                   <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('photo')}>Чек распечатался</button>
                   <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('technical')}>Чек не распечатался</button>
                 </div>
@@ -4183,6 +4183,7 @@ export function EmployeeTodayClient({
                   <button type='button' className='flex min-h-11 items-center gap-1 text-left text-sm font-bold text-slate-600' onClick={() => setCloseResolutionPath(null)} disabled={isSaving}><ChevronLeft className='h-4 w-4' />Назад</button>
                   {closeResolutionPath === 'photo' ? (
                     <div className='grid gap-3'>
+                      <p className='text-sm font-semibold text-slate-700'>Бумажный чек, который печатает касса при закрытии смены.</p>
                       {hasHandoverPhoto(handoverDraft.zReportPhoto) && <p className='text-sm font-semibold text-slate-600'>Предыдущее фото уже прикреплено.</p>}
                       {handoverTask && <label className='employee-material-secondary-action flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold'>
                         <Camera className='h-5 w-5' />{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}

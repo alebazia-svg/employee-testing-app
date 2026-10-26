@@ -1,7 +1,7 @@
 import type { HandoverCashExpenses } from '@/lib/handover-cash-expenses';
 'use client';
 import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayCardList, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
-import { completedWithoutEncashment } from '@/lib/workday-close-view';
+import { completedWithoutEncashment, handoverClosedByAdmin } from '@/lib/workday-close-view';
 import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } from '@/lib/workday-handover-view';
 import { taskTimingLabel } from '@/lib/team-control';
 import type { TeamAttendance } from '@/lib/team-attendance';
@@ -130,7 +130,7 @@ type EmployeeNavigation = {
 };
 
 export type ShiftAutoCheck = {
-  expenseState?: 'awaiting_documents' | 'documented';
+  expenseState?: 'awaiting_approval' | 'awaiting_documents' | 'documented';
   handoverExpenses?: HandoverCashExpenses;
   id: string;
   taskId: number;
@@ -463,8 +463,10 @@ function CashComparison({check,actual,encashment,encashmentCheck,draft=false}:{c
  return <div className="team-handover-table-wrap"><table className="team-handover-table"><thead><tr><th scope="col">Проверка</th><th scope="col">Введено</th><th scope="col">1С</th><th scope="col">Результат</th></tr></thead><tbody><tr><th scope="row">Остаток кассы</th><td>{fact===null?'Не указано':formatMoney(fact)}</td><td>{expected===null?'Нет данных':formatMoney(expected)}</td><td>{check?.handoverExpenses && check.handoverExpenses.approvalAmount>0 && check.handoverExpenses.payableAmount>0 ? <div className='grid gap-1'><span className='team-status amber'>К согласованию {formatMoney(check.handoverExpenses.approvalAmount)}</span><span className='team-status amber'>Оформите расходник {formatMoney(check.handoverExpenses.payableAmount)}</span></div> : <span className={`team-status ${tone}`}>{result}</span>}</td></tr>{encashment&&<tr><th scope="row">Инкассация при сдаче</th><td>{encashment.requiresEncashment===true&&typeof encashment.encashmentAmount==='number'?formatMoney(encashment.encashmentAmount):'—'}</td><td>—</td><td><span className={`team-status ${encashmentVerdict?.tone}`}>{encashmentVerdict?.label}</span></td></tr>}</tbody></table></div>;
 }
 
-function HandoverDetails({ data, department, onPreview, checks=[], submitted=true }: { submitted?:boolean; data: unknown; department: string; onPreview: (photo: PhotoPreview) => void; checks?:ShiftAutoCheck[] }) {
+function HandoverDetails({ data, department, onPreview, checks=[], submitted=true, finalizedByAdmin=false }: { finalizedByAdmin?:boolean; submitted?:boolean; data: unknown; department: string; onPreview: (photo: PhotoPreview) => void; checks?:ShiftAutoCheck[] }) {
   const personalCash=readRecord(data,'personalCash'),reserveCash=readRecord(data,'reserveCash'),storeClosing=readRecord(data,'storeClosing'),terminalCheck=readRecord(data,'terminalCheck'),photos=readPhotos(data);
+  const hasTerminalOperations = typeof terminalCheck?.hadOperations === 'boolean';
+  const hasTerminalReconciliation = ['matched', 'discrepancy'].includes(String(terminalCheck?.reconciliation ?? ''));
   const history=cashRecountInputHistory(data),comment=isRecord(data)?textValue(data.comment):'';
   const needsEncashmentPhoto=personalCash?.requiresEncashment===true && typeof personalCash.encashmentAmount==='number';
   const needsClosingPhoto=storeClosing?.zReportRequired===true;
@@ -474,9 +476,9 @@ function HandoverDetails({ data, department, onPreview, checks=[], submitted=tru
   if(!personalCash&&!reserveCash&&!storeClosing)return null;
   const money=(value:unknown)=>value===null||value===undefined?'Не указано':formatMoney(Number(value));
   return <div className="team-handover-content">
-    <section><h4>Касса</h4>{submitted&&missingHandoverPhotos(data).length>0&&<p className="team-required-proof-warning">Нет подтверждений: {missingHandoverPhotos(data).join(', ')}</p>}{personalCash?<CashComparison draft={!submitted} check={checks.find(check=>check.id.startsWith('handover-cash-'))} actual={typeof personalCash.cashBalance==='number'?personalCash.cashBalance:null} encashment={personalCash} encashmentCheck={checks.find(check=>check.id.startsWith('handover-encashment-')) ?? (readRecord(data,'adminClosure')?.requestId === personalCash.encashmentExceptionRequestId && personalCash.encashmentExceptionRequestId ? {id:'approved-encashment',taskId:0,label:'Инкассация',status:'matched',summary:'Без инкассации · разрешено'} : undefined)}/>:<p>Данные сдачи кассы не заполнены.</p>}</section>
-    {reserveCash&&<section><h4>Резерв</h4><CashComparison draft={!submitted} check={checks.find(check=>check.id.startsWith('handover-reserve-'))} actual={typeof reserveCash.cashBalance==='number'?reserveCash.cashBalance:null}/></section>}
-    {department==='retail'&&terminalCheck&&<section><h4>Терминал</h4><dl><dt>Были операции</dt><dd>{yesNo(terminalCheck.hadOperations)}</dd><dt>Сверка сотрудника</dt><dd>{terminalCheck.reconciliation==='matched'?'Совпадает':terminalCheck.reconciliation==='discrepancy'?'Есть расхождение':'Не заполнена'}</dd></dl></section>}
+    <section><h4>Касса</h4>{submitted&&missingHandoverPhotos(data).length>0&&<p className="team-required-proof-warning">Нет подтверждений: {missingHandoverPhotos(data).join(', ')}</p>}{personalCash?<CashComparison draft={!submitted&&!finalizedByAdmin} check={checks.find(check=>check.id.startsWith('handover-cash-'))} actual={typeof personalCash.cashBalance==='number'?personalCash.cashBalance:null} encashment={personalCash} encashmentCheck={checks.find(check=>check.id.startsWith('handover-encashment-')) ?? (readRecord(data,'adminClosure')?.requestId === personalCash.encashmentExceptionRequestId && personalCash.encashmentExceptionRequestId ? {id:'approved-encashment',taskId:0,label:'Инкассация',status:'matched',summary:'Без инкассации · разрешено'} : undefined)}/>:<p>Данные сдачи кассы не заполнены.</p>}</section>
+    {reserveCash&&<section><h4>Резерв</h4><CashComparison draft={!submitted&&!finalizedByAdmin} check={checks.find(check=>check.id.startsWith('handover-reserve-'))} actual={typeof reserveCash.cashBalance==='number'?reserveCash.cashBalance:null}/></section>}
+    {department==='retail'&&terminalCheck&&(hasTerminalOperations||hasTerminalReconciliation)&&<section><h4>Терминал · архивные ответы</h4><dl>{hasTerminalOperations&&<><dt>Были операции</dt><dd>{yesNo(terminalCheck.hadOperations)}</dd></>}{hasTerminalReconciliation&&<><dt>Сверка сотрудника</dt><dd>{terminalCheck.reconciliation==='matched'?'Совпадает':'Есть расхождение'}</dd></>}</dl></section>}
     {storeClosing&&<section><h4>Закрытие магазина</h4><span className={`team-status ${closingTone}`}>{closingLabel}</span></section>}
     {(Object.values(photos ?? {}).some(photo => isRecord(photo) && Boolean(photo.storagePath)) || needsEncashmentPhoto || needsClosingPhoto || (department==='retail'&&terminalCheck?.hadOperations===true)) && <section><h4>Подтверждения</h4><div className="team-handover-photos">{readPhoto(photos,'personalStatement')&&<PhotoRow label="Ведомость 1С" photo={readPhoto(photos,'personalStatement')} onPreview={onPreview}/>}{needsEncashmentPhoto&&<PhotoRow label="Документ инкассации" photo={readPhoto(photos,'encashmentDocument')} onPreview={onPreview}/>} {department==='retail'&&terminalCheck?.hadOperations===true&&<PhotoRow label="Чеки терминала" photo={readPhoto(photos,'terminalReceipts')??readPhoto(photos,'personalAcquiringReceipts')} onPreview={onPreview}/>} {(needsClosingPhoto||readPhoto(photos,'zReport'))&&<PhotoRow label="Чек закрытия" photo={readPhoto(photos,'zReport')} onPreview={onPreview}/>}</div></section>}
     {history.length>0&&<section><h4>Ввод наличных</h4>{history.map((entry,index)=><p key={`${entry.enteredAt}-${index}`}>{entry.kind==='initial'?'Первоначальный':'Исправленный'} · {formatMoney(entry.value)} · {formatTime(entry.enteredAt)}</p>)}</section>}
@@ -515,7 +517,7 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
               : formatMoney(Number(reserveCash.cashBalance))}
           />
         ) : null}
-        {department === 'retail' ? (
+        {department === 'retail' && typeof terminalCheck?.hadOperations === 'boolean' ? (
           <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />
         ) : null}
         <DetailRow label='Инкассация' value={yesNo(personalCash?.requiresEncashment)} />
@@ -594,7 +596,7 @@ function TaskDetailCard({
       {item.autoChecks.length > 0 ? (
         <div className='mt-3 grid gap-2'>
           {item.autoChecks.map((check) => {
-            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : check.expenseState === 'awaiting_documents' ? { label: 'Ожидает оформления заявок', className: 'bg-amber-50 text-amber-800' } : autoCheckBadge(check.status);
+            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : check.status === 'unavailable' && item.task.category === 'cash' ? {label:'Сверка 1С недоступна',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_approval' ? {label:'Ожидает согласования заявки',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_documents' ? { label: 'Ожидает оформления заявок', className: 'bg-amber-50 text-amber-800' } : autoCheckBadge(check.status);
             const cashPhotoHref = photoHref({ storagePath: check.cashOperation?.photoPath });
             const cashPhotoLabel = `Фото инкассации · ${formatMoney(check.cashOperation?.amount)}`;
             return (
@@ -649,7 +651,7 @@ function TaskDetailCard({
                     className='team-manual-action mt-2 inline-flex min-h-8 items-center rounded-lg bg-slate-950 px-3 text-xs font-extrabold text-white transition hover:bg-slate-800'
                     onClick={() => onManualReview(check)}
                   >
-                    {check.cashOperation ? 'Выбрать действие' : 'Подтвердить вручную'}
+                    {check.cashOperation ? 'Выбрать действие' : item.task.category === 'cash' ? 'Проверить вручную' : 'Подтвердить вручную'}
                   </button>
                 ) : null}
               </div>
@@ -659,7 +661,7 @@ function TaskDetailCard({
       ) : null}
       {tone === 'attention' && !reviewOnly ? (
         <p className='mt-2 text-xs font-extrabold text-amber-800'>
-          {hasMismatch ? 'Сравните сумму сотрудника, данные 1С и подтверждения.' : item.autoChecks.some(check => check.status === 'unavailable' && !manualReviewResolves(check)) ? 'Нет данных для сверки. Уточните причину.' : item.autoChecks.some(check => check.expenseState === 'awaiting_documents') ? 'После проведения расходников связь с заявками проверится автоматически.' : needsTimingReview ? 'Уточните причину задержки.' : 'Проверьте ответ и подтверждения сотрудника.'}
+          {hasMismatch ? 'Сравните сумму сотрудника, данные 1С и подтверждения.' : item.autoChecks.some(check => check.status === 'unavailable' && !manualReviewResolves(check)) ? item.task.category === 'cash' ? 'Сверка повторится автоматически после восстановления данных 1С.' : 'Нет данных для сверки. Уточните причину.' : item.autoChecks.some(check => check.expenseState === 'awaiting_documents') ? 'После проведения расходников связь с заявками проверится автоматически.' : needsTimingReview ? 'Уточните причину задержки.' : 'Проверьте ответ и подтверждения сотрудника.'}
         </p>
       ) : null}
     </div>
@@ -723,6 +725,12 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
     return unconfirmed ? { tone: 'attention', label: 'Результат не подтверждён', result: unconfirmed.summary } : { tone: 'normal', label: 'Завершено администратором', result: 'Без инкассации · разрешено' };
   }
 
+  if (handoverClosedByAdmin(item.task)) {
+    const incomplete = unresolvedChecks.find(check => check.status === 'unavailable' || check.status === 'waiting');
+    return incomplete ? {tone:'attention',label:'Данные сдачи требуют проверки',result:incomplete.summary}
+      : {tone:'normal',label:'Завершено с разрешения администратора',result:'Данные сдачи сохранены'};
+  }
+
   if (item.status === 'overdue') return { tone: 'attention', label: 'Требует внимания', result: 'Обязательная проверка просрочена' };
   if (item.status === 'missed') return { tone: 'attention', label: 'Требует внимания', result: 'Не выполнено до сдачи смены' };
 
@@ -730,13 +738,14 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
 
   const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
   if (unavailable) return {
-    tone: 'attention', label: 'Результат не подтверждён',
+    tone: 'attention', label: item.task.category === 'cash' ? 'Ожидается сверка 1С' : 'Результат не подтверждён',
     result: unavailable.summary.includes('Остаток 1С на момент проверки не был сохранён')
       ? 'Нет сохранённой суммы 1С для сверки'
-      : `Не подтверждено: ${unavailable.label}`,
+      : item.task.category === 'cash' ? 'Сверка 1С временно недоступна' : `Не подтверждено: ${unavailable.label}`,
   };
 
   const waiting = unresolvedChecks.find((check) => check.status === 'waiting');
+  if (waiting?.expenseState === 'awaiting_approval') return {tone:'attention',label:'Ожидает согласования заявки',result:waiting.summary};
   if (waiting?.expenseState === 'awaiting_documents') return { tone: 'attention', label: 'Ожидает оформления заявок', result: 'Факт сохранён · ожидает оформления заявок' };
   if (waiting) return { tone: 'attention', label: 'Ожидается сверка', result: `Ожидается результат: ${waiting.label}` };
 
@@ -1123,9 +1132,10 @@ export function AdminShiftControlDetails({
   const hasError = requiredIssues.length > 0 || keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
   const scheduleNeedsAttention = false;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
+  const adminHandoverClosed = Boolean(workDay?.endedAt && handoverClosedByAdmin(handoverTask));
   const missingProofs = handoverTask?.status === 'done' ? missingHandoverPhotos(handoverTask.handoverData) : [];
   const keyProblemCount = requiredIssues.length + keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
-    + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0) + missingProofs.length + (workDay?.endedAt && handoverTask?.status !== 'done' && !completedWithoutEncashment(handoverTask) ? 1 : 0);
+    + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0) + missingProofs.length + (workDay?.endedAt && handoverTask?.status !== 'done' && !completedWithoutEncashment(handoverTask) && !adminHandoverClosed ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
 
   const workdayStateLabel = technicalClose ? 'закрыта позже' : workDay?.status === 'completed' || workDay?.endedAt
@@ -1403,13 +1413,13 @@ export function AdminShiftControlDetails({
                   {attendance ? <><span>{attendance.startSource === 'app' ? 'Приложение' : attendance.startSource === 'google' ? 'Google · резерв' : attendance.marksAvailable ? 'Нет отметки' : 'Google недоступен'}</span>{attendance.late > 0 && <span>Позже на {attendance.late} мин</span>}</> : <span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span>}
                 </div>
                 <div><small>Состояние</small><span className={`team-status ${attendance ? attendance.state === 'Не завершил смену' || attendance.state === 'Не отметился' ? 'amber' : attendance.start !== '—' ? 'green' : '' : workDay && !workDay.endedAt && dateKey < getMoscowDateKey() ? 'amber' : workDay ? 'green' : ''}`}>{attendance?.state ?? (workDay?.endedAt?'Рабочий день завершён':workdayStateLabel)}</span>
-                  {attendance ? attendance.end !== '—' && <span>Завершение: {attendance.endSource === 'google' ? 'Google · резерв' : 'приложение'}</span> : workDay?.endedAt && <span>В {formatTime(workDay.endedAt)}</span>}
+                  {attendance ? attendance.end !== '—' && <span>Завершение: {adminHandoverClosed ? 'администратор' : attendance.endSource === 'google' ? 'Google · резерв' : 'приложение'}</span> : workDay?.endedAt && <span>В {formatTime(workDay.endedAt)}</span>}
                 </div>
               </div>
               {cardView === 'day' && <>
                 {attendanceNote && <p className='team-card-note'>{attendanceNote}</p>}
                 {!workDay&&!run&&!cashOperations.length&&!requiredIssues.length&&!closeRequests.length&&<p className='team-card-note'>Действий в приложении за этот день нет.</p>}
-                {(summary.total > 0 || cashOperations.length > 0 || closeRequests.length > 0) && <><section className={`team-review-total ${keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length === 0 ? 'is-verified' : ''}`}><b>{keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length > 0 ? 'Есть неподтверждённые пункты' : 'Неподтверждённых результатов не выявлено'}</b><span>Проверки: {summary.completed} из {summary.total} выполнено · инкассации: {cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из {cashOperations.length} проведено{closeRequests.some(request => request.status === 'pending') ? ' · требуется ваше решение' : ''}</span></section></>}
+                {(summary.total > 0 || cashOperations.length > 0 || closeRequests.length > 0) && <><section className={`team-review-total ${keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length === 0 ? 'is-verified' : ''}`}><b>{keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length > 0 ? 'Есть неподтверждённые пункты' : 'Неподтверждённых результатов не выявлено'}</b><span>Проверки: {summary.completed} из {summary.total - (adminHandoverClosed && handoverTask?.status !== 'done' ? 1 : 0)} выполнено{adminHandoverClosed?' · день завершён по разрешению':''} · инкассации: {cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из {cashOperations.length} проведено{closeRequests.some(request => request.status === 'pending') ? ' · требуется ваше решение' : ''}</span></section></>}
                 <div className='team-review-list'>
                   {(closeRequests.some(request => request.status === 'pending') || cashOperations.some(operation => operation.status !== 'posted_1c_pair') || requiredIssues.some(issue => ['Не удалось проверить','Нужна помощь'].includes(issue.state??''))) && <h4 className='team-card-heading'>Ваши действия</h4>}
                   {closeRequests.some(request => request.status === 'pending') && <details open className='team-review-row needs-attention'><summary><b>Разрешение завершить рабочий день</b><span>Ждёт разрешения</span></summary><div>{closeRequests.filter(request => request.status === 'pending').map(request => <div id={`shift-request-${request.id}`} key={request.id}><p>{formatTime(request.requestedAt)} · {isCashEncashmentException(request.reasonCode) ? cashEncashmentReasonLabel(request.reasonCode) : 'Не удалось завершить обязательные проверки'}</p><p>{request.comment}</p></div>)}{closeRequests.filter(request => request.status === 'pending').map(request => <div key={`decision-${request.id}`}><CloseExceptionDecisionClient embedded requestId={request.id} approveLabel={isCashEncashmentException(request.reasonCode) ? 'Завершить без инкассации' : undefined} /><small>Разрешение завершит день. Неподтверждённые операции останутся на контроле.</small></div>)}</div></details>}
@@ -1423,9 +1433,9 @@ export function AdminShiftControlDetails({
                   {overviewTasks.some(item => item.task.category !== 'handover') && <div className='team-task-head px-4 py-2'><span>Проверки</span><span>Срок</span><span>Выполнено</span><span>По времени</span><span /></div>}
                   {overviewTasks.filter(item => item.task.category !== 'handover').sort((left, right) => Number(['error', 'attention'].includes(taskBusinessState(right).tone)) - Number(['error', 'attention'].includes(taskBusinessState(left).tone))).map(item => <TaskOverviewRow key={item.task.id} dateKey={dateKey} overdueMinutes={timingViolationByTaskId.get(item.task.id)?.minutesLate} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />)}
                   {(workDay || scheduleNeedsAttention) && <details id="shift-start" className={`team-review-row ${scheduleNeedsAttention || workDay?.lateMinutes || activeWorkdayProblems.length ? 'needs-attention' : ''}`}><summary><b>Начало и изменения дня</b><span>{scheduleNeedsAttention?'Уточнить график':workDay?.lateMinutes?`Начало позже на ${workDay.lateMinutes} мин`:activeWorkdayProblems.length?`Замечаний: ${activeWorkdayProblems.length}`:workDay?.deviations.length?`Сообщений: ${workDay.deviations.length}`:'Нет отклонений'}</span></summary><div>{scheduleNeedsAttention&&<p>График не заполнен.</p>}{activeWorkdayProblems.map(violation=><p key={violation.id}>{violation.label}: {violation.detail}</p>)}{workDay?.deviations.map(deviation=><p key={deviation.reportedAt}>{deviationReasonLabel(deviation.kind==='late_arrival'?'late_arrival':'early_finish',deviation.reasonCode)} · {deviation.comment}</p>)}{!scheduleNeedsAttention&&!activeWorkdayProblems.length&&!workDay?.deviations.length&&<p>Зарегистрированных отклонений нет.</p>}</div></details>}
-                  {(workDay || handoverTask) && <section id={handoverTask ? `shift-task-${handoverTask.id}` : undefined} className={`team-review-row team-handover ${workDay?.endedAt?'is-finished':'is-pending'}`}><header><b>Завершение рабочего дня</b><span className={`team-status ${workDay?.endedAt?'green':'amber'}`}>{workDay?.endedAt?`Завершён в ${formatTime(workDay.endedAt)}`:closeRequests.some(request=>request.status==='pending')?'Ждёт вашего решения':handoverTask?.status==='done'?'Сдача заполнена · день не завершён':handoverTask?.status==='missed'?'Сдача пропущена':timingViolationByTaskId.get(handoverTask?.id??0)?.kind==='task_overdue'?'Сдача просрочена':handoverTask?.plannedTimeMinutes!=null?`Ожидается к ${minutesToTime(handoverTask.plannedTimeMinutes)}`:'Нет данных сдачи'}</span></header><div><div className={`team-handover-result ${handoverTask?.status!=='done'&&workDay?.endedAt&&!completedWithoutEncashment(handoverTask)?'needs-attention':''}`}>{handoverTask?.status!=='done'&&isRecord(handoverTask?.handoverData)&&handoverTask.handoverData.personalCash?<span>{completedWithoutEncashment(handoverTask)?'Данные сдачи сохранены':'Черновик сдачи'}</span>:null}<b>{completedWithoutEncashment(handoverTask)?'Без инкассации · разрешено':handoverTask?.status==='done'?`Сдача заполнена в ${formatTime(handoverTask.completedAt)}`:workDay?.endedAt?'День завершён без сдачи':handoverTask?.status==='missed'||timingViolationByTaskId.get(handoverTask?.id??0)?.kind==='task_overdue'?`Сдача просрочена${handoverTask?.plannedTimeMinutes!==null&&handoverTask?.plannedTimeMinutes!==undefined?` · срок ${minutesToTime(handoverTask.plannedTimeMinutes)}`:''}`:handoverTask?.plannedTimeMinutes!==null&&handoverTask?.plannedTimeMinutes!==undefined?`Срок сдачи ${minutesToTime(handoverTask.plannedTimeMinutes)} ещё не наступил`:'Срок сдачи не задан'}</b>{handoverTask?.status==='done'&&(()=>{const timing=taskTimingLabel(handoverTask.plannedTimeMinutes,handoverTask.completedAt,dateKey);return timing.tone==='amber'?<span className="team-status amber">{timing.text}</span>:null})()}{handoverTask?.status==='done'&&(!overviewTasks.some(item=>item.task.id===handoverTask.id)||taskBusinessState(overviewTasks.find(item=>item.task.id===handoverTask.id)!).tone!=='normal')&&<span>{overviewTasks.some(item=>item.task.id===handoverTask.id)?taskBusinessState(overviewTasks.find(item=>item.task.id===handoverTask.id)!).label:'Результат сдачи не подтверждён'}</span>}</div>{handoverTask&&<HandoverDetails submitted={handoverTask.status==='done'} data={handoverTask.handoverData} department={department} checks={autoChecks.filter(check=>check.taskId===handoverTask.id)} onPreview={setSelectedPhoto}/>} {handoverTask && overviewTasks.some(item=>item.task.id===handoverTask.id) && (()=>{
+                  {(workDay || handoverTask) && <section id={handoverTask ? `shift-task-${handoverTask.id}` : undefined} className={`team-review-row team-handover ${workDay?.endedAt?'is-finished':'is-pending'}`}><header><b>Завершение рабочего дня</b><span className={`team-status ${workDay?.endedAt?'green':'amber'}`}>{workDay?.endedAt?`Завершён в ${formatTime(workDay.endedAt)}`:closeRequests.some(request=>request.status==='pending')?'Ждёт вашего решения':handoverTask?.status==='done'?'Сдача заполнена · день не завершён':handoverTask?.status==='missed'?'Сдача пропущена':timingViolationByTaskId.get(handoverTask?.id??0)?.kind==='task_overdue'?'Сдача просрочена':handoverTask?.plannedTimeMinutes!=null?`Ожидается к ${minutesToTime(handoverTask.plannedTimeMinutes)}`:'Нет данных сдачи'}</span></header><div><div className={`team-handover-result ${handoverTask?.status!=='done'&&workDay?.endedAt&&!completedWithoutEncashment(handoverTask)&&!adminHandoverClosed?'needs-attention':''}`}>{handoverTask?.status!=='done'&&isRecord(handoverTask?.handoverData)&&handoverTask.handoverData.personalCash?<span>{completedWithoutEncashment(handoverTask)||adminHandoverClosed?'Данные сдачи сохранены':'Черновик сдачи'}</span>:null}<b>{completedWithoutEncashment(handoverTask)?'Без инкассации · разрешено':adminHandoverClosed?'Завершено с разрешения администратора':handoverTask?.status==='done'?`Сдача заполнена в ${formatTime(handoverTask.completedAt)}`:workDay?.endedAt?'День завершён без сдачи':handoverTask?.status==='missed'||timingViolationByTaskId.get(handoverTask?.id??0)?.kind==='task_overdue'?`Сдача просрочена${handoverTask?.plannedTimeMinutes!==null&&handoverTask?.plannedTimeMinutes!==undefined?` · срок ${minutesToTime(handoverTask.plannedTimeMinutes)}`:''}`:handoverTask?.plannedTimeMinutes!==null&&handoverTask?.plannedTimeMinutes!==undefined?`Срок сдачи ${minutesToTime(handoverTask.plannedTimeMinutes)} ещё не наступил`:'Срок сдачи не задан'}</b>{handoverTask?.status==='done'&&(()=>{const timing=taskTimingLabel(handoverTask.plannedTimeMinutes,handoverTask.completedAt,dateKey);return timing.tone==='amber'?<span className="team-status amber">{timing.text}</span>:null})()}{handoverTask?.status==='done'&&(!overviewTasks.some(item=>item.task.id===handoverTask.id)||taskBusinessState(overviewTasks.find(item=>item.task.id===handoverTask.id)!).tone!=='normal')&&<span>{overviewTasks.some(item=>item.task.id===handoverTask.id)?taskBusinessState(overviewTasks.find(item=>item.task.id===handoverTask.id)!).label:'Результат сдачи не подтверждён'}</span>}</div>{handoverTask&&<HandoverDetails submitted={handoverTask.status==='done'} finalizedByAdmin={adminHandoverClosed} data={handoverTask.handoverData} department={department} checks={autoChecks.filter(check=>check.taskId===handoverTask.id)} onPreview={setSelectedPhoto}/>} {handoverTask && overviewTasks.some(item=>item.task.id===handoverTask.id) && (()=>{
  const original=overviewTasks.find(item=>item.task.id===handoverTask.id)!;
- const reviewChecks=original.task.status==='done'?original.autoChecks.filter(check=>check.status!=='matched'||check.manualReview):[];
+ const reviewChecks=original.task.status==='done'||adminHandoverClosed?original.autoChecks.filter(check=>check.status!=='matched'||check.manualReview):[];
  const revisions=employeeRevisions(handoverTask);
  if(!reviewChecks.length&&!revisions.length)return null;
  return <details className="team-handover-review"><summary>Причины и действия{reviewChecks.length?` (${reviewChecks.length})`:''}</summary><TaskDetailCard compact reviewOnly item={{...original,autoChecks:reviewChecks}} tone="attention" onPreview={setSelectedPhoto} onManualReview={openManualReview}/></details>;

@@ -58,3 +58,30 @@ test('mixed pending and payable requests preserve both owners and amounts',()=>{
  const evidence=handoverCashExpenses(data)!;
  assert.equal(evidence.approvalAmount,6000);assert.equal(evidence.payableAmount,10000);
 });
+
+
+test('recovered source rechecks the original count; source gaps and reversals never fabricate a match',()=>{
+ const paid=source('payable',true), original=input(paid);
+ const saved=JSON.stringify(original);
+ assert.equal(handoverCashExpenses({...original,complete:false}),undefined);
+ assert.equal(handoverCashExpenses(original)?.state,'documented');
+ assert.equal(JSON.stringify(original),saved,'facts and original timestamps are immutable');
+ const reversed=source('payable',false);
+ assert.equal(handoverCashExpenses(input(reversed))?.state,'awaiting_documents');
+ assert.equal(handoverCashExpenses({...original,rows:original.rows.map(r=>({...r,seenAt:new Date(now-400000).toISOString()}))}),undefined,'stale paid rows do not prove a reversal');
+ const unknown=source('payable',true); unknown.linkedCashExpenseOrders.complete=false;
+ assert.equal(handoverCashExpenses(input(unknown)),undefined,'an incomplete linked-order source cannot exonerate or accuse');
+ const foreign=source('payable',true);foreign.cashbox.ref='foreign';foreign.linkedCashExpenseOrders.rows[0].cashbox.ref='foreign';
+ assert.equal(handoverCashExpenses(input(foreign)),null,'same amount in another cashbox is not evidence');
+});
+
+
+test('paid multi-cashbox rows with provider errors or truncated branches remain unknown',()=>{
+ for(const branch of ['execution','linkedCashExpenseOrders'] as const){
+  for(const invalid of [{errors:['permission_denied']},{missing_fields:['date']},{truncated:true}]) {
+   const s=source('payable',true);s.cashbox.ref='';
+   Object.assign(s[branch],invalid);
+   assert.equal(handoverCashExpenses(input(s)),undefined);
+  }
+ }
+});

@@ -18,7 +18,7 @@ test('only the explicit administrator endpoint owns the retry writer', () => {
 
 test('cash operation review presents a dedicated two-action decision instead of the generic manual-review form', () => {
   const source = fs.readFileSync(path.join(__dirname, '../app/(dashboard)/admin/workday/AdminShiftControlDetails.tsx'), 'utf8');
-  assert.match(source, /check\.cashOperation \? 'Выбрать действие' : 'Подтвердить вручную'/);
+  assert.match(source, /check\.cashOperation \? 'Выбрать действие' : [^\n]*'Подтвердить вручную'/);
   assert.match(source, /Инкассация не проведена/);
   assert.match(source, /Провести автоматически/);
   assert.match(source, /Проведу вручную/);

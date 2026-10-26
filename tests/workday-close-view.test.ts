@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { completedWithoutEncashment, belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
+import { completedWithoutEncashment, handoverClosedByAdmin, belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
 
 test('completed non-encashment label uses persisted handover evidence, including after reload', () => {
   const handoverData = { personalCash: { encashmentExceptionRequestId: 'approved-request' } };
@@ -38,4 +38,17 @@ test('technical close summary describes missed steps instead of unfinished progr
   assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 5, total: 5, technicalClose: true }), 'Пропущено шагов: 5');
   assert.equal(workdayTaskProgressLabel({ completed: 3, missed: 0, total: 5, technicalClose: false }), 'Выполнено 3 из 5');
   assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 0, total: 0, technicalClose: false }), 'Проверок пока нет');
+});
+
+
+test('administrator closure requires persisted permission and never fabricates ordinary completion', () => {
+  const task = {category:'handover',status:'missed',handoverData:{personalCash:{cashBalance:11450},adminClosure:{requestId:'approved',adminId:1,closedAt:'2026-10-26T15:31:38Z'}}};
+  assert.equal(handoverClosedByAdmin(task),true);
+  assert.equal(handoverClosedByAdmin(JSON.parse(JSON.stringify(task))),true);
+  assert.equal(task.status,'missed');
+  assert.equal(handoverClosedByAdmin({...task,category:'cash'}),false);
+  assert.equal(handoverClosedByAdmin({...task,status:'pending'}),false);
+  for(const invalid of [null,{}, {requestId:'',adminId:1,closedAt:'2026-10-26T15:31:38Z'}, {requestId:'approved',adminId:0,closedAt:'2026-10-26T15:31:38Z'}, {requestId:'approved',adminId:1,closedAt:'bad'}]) {
+    assert.equal(handoverClosedByAdmin({...task,handoverData:{adminClosure:invalid}}),false);
+  }
 });

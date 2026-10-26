@@ -9,7 +9,7 @@ import { getTeamGoogleSnapshot } from '@/lib/team-control-source';
 import { googleDay, usesAppSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel, teamShiftState } from '@/lib/team-control';
 import { resolveTeamAttendance, usesAppAttendance } from '@/lib/team-attendance';
 import Link from 'next/link';
-import { completedWithoutEncashment, hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
+import { completedWithoutEncashment, handoverClosedByAdmin, hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
@@ -199,6 +199,7 @@ function readTaskCashAudit(task: AutoCheckTask, key: 'personalCash' | 'reserveCa
     status: readText(snapshot.status),
     balance: readNumber(snapshot.balance),
     cashboxName: readText(snapshot.cashboxName),
+    cashboxRef: readText(snapshot.cashboxRef),
     error: readText(snapshot.error),
   };
 }
@@ -1427,13 +1428,22 @@ export default async function AdminWorkdayPage(
       ...check,
       manualReview: latestManualReviewByCheckId.get(check.id) ?? null,
     }));
-    for (const check of checks.filter(c=>c.id.startsWith('handover-cash-'))) {
+    for (const check of checks.filter(c=>c.id.startsWith('handover-cash-') || c.id.startsWith('cash-'))) {
       const task = run?.tasks.find(t=>t.id===check.taskId);
       const audit = task ? readTaskCashAudit(task as AutoCheckTask, 'personalCash') : null;
-      if (check.actual == null || !audit?.capturedAt || audit.balance == null) continue;
-      const expenses = await loadHandoverCashExpenses(employee.id, { actual:check.actual, expected:audit.balance, capturedAt:audit.capturedAt });
-      if (expenses===undefined) Object.assign(check,{status:'unavailable',summary:'Заявки ещё не проверены. Недостача не подтверждена.'});
-      if (expenses) Object.assign(check, { handoverExpenses:expenses, status:expenses.state==='documented'?'matched':'waiting', summary:handoverExpenseLabel(expenses) });
+      if (check.actual == null || !audit?.capturedAt || audit.status !== 'captured' || audit.balance == null) continue;
+      const expenses = await loadHandoverCashExpenses(employee.id, { actual:check.actual, expected:audit.balance, capturedAt:audit.capturedAt, cashboxRef:audit.cashboxRef }).catch(() => undefined);
+      // Re-evaluate against the captured count, never today's cash balance.
+      // A recovered source replaces a stale unavailable/expense result in this view only.
+      if (check.id.startsWith('cash-')) {
+        const refreshed = moneyAutoCheck({id:check.id,taskId:check.taskId,label:check.label,actual:check.actual,expected:audit.balance,
+          evidence:`Остаток 1С на момент пересчёта: ${formatMoney(audit.balance)}. Первоначальный ответ сотрудника сохранён.`});
+        Object.assign(check, refreshed, {expenseState:undefined,handoverExpenses:undefined});
+      }
+      if (expenses===undefined) Object.assign(check,{status:'unavailable',summary:'Ответ сотрудника сохранён. Заявки 1С временно не удалось проверить. Сверка повторится автоматически.'});
+      if (expenses) Object.assign(check, { handoverExpenses:expenses, expenseState:expenses.state,
+        status:expenses.state==='documented'?'matched':'waiting',
+        summary:expenses.state==='documented' ? `Разница ${formatMoney(audit.balance-check.actual)} подтверждена проведёнными расходниками по заявкам. Факт ${formatMoney(check.actual)} · остаток 1С при пересчёте ${formatMoney(audit.balance)}.` : handoverExpenseLabel(expenses) });
     }
     return [
       employee.id,
@@ -1514,7 +1524,7 @@ export default async function AdminWorkdayPage(
         && !check.handoverExpenses
         && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
-      const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
+      const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
       const businessAttentionReasons = [
         usesAppSchedule(employee.name) && !schedule && !vacation ? 'Нет записи графика приложения' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
