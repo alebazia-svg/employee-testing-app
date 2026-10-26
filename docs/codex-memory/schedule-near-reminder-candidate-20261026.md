@@ -4,7 +4,8 @@ Owner explicitly replaced the weekly obligation after production 1.18.5:
 if today and tomorrow are filled, an empty later date must not cause a reminder.
 The previous default weekly calendar was rejected as misleading. This decision
 supersedes the weekly policy in schedule-week-reminder-candidate-20261026.md.
-Current phase: implementation and local verification; not released.
+Current phase: production 1.18.11 released, independently verified and registered
+with two verified rollback images. Exact evidence is recorded below.
 
 ## Approved behavior
 
@@ -67,13 +68,19 @@ local preview on 127.0.0.1:3212. Zero real device subscriptions.
 - lib/schedule-near-reminder.ts
 - lib/work-schedule-notifications.ts
 - lib/workday-notifications.ts
-- package.json (test command only; no release version reserved)
+- package.json (test command and shared release version)
+- package-lock.json (synchronized release version)
 - tests/employee-schedule-attention.test.ts
 - tests/schedule-dispatch.integration.test.ts
 - tests/schedule-reminders.integration.test.ts
 - tests/schedule-week-reminder.test.ts (legacy API range compatibility only)
 - tests/schedule-week-bulk.integration.test.ts (calendar date/parity contract)
 - tests/schedule-near-reminder.test.ts
+- tests/employee-operation-client.test.cjs (preserve activity capture with the unrestricted calendar)
+- tests/schedule-policy-lifecycle.integration.test.ts (allow a separate isolated release-test DB)
+- docs/codex-memory/project-index.md
+- docs/codex-memory/schedule-week-reminder-candidate-20261026.md
+- docs/codex-memory/schedule-near-reminder-candidate-20261026.md
 
 ## Verification
 
@@ -126,3 +133,68 @@ example, restored solely in the isolated demo DB, for owner interaction. Screens
 material sheet/button styles are retained; the calendar escape is visually quiet.
 Physical-device push delivery, a forced network failure and actual overnight
 resume were not tested in this refinement. No release/deploy/version bump.
+
+## Approved production release preparation — 1.18.11
+
+Owner explicitly approved release. Fresh live/branch checks found concurrent
+1.18.9 staffing and 1.18.10 cash releases; both are preserved by merges. The
+former keeps wholesale one-worker coverage normal and retail one-worker
+coverage a soft replacement question. Existing activity capture remains in
+the unrestricted calendar load/save flow. No other runtime domains differ
+from the concurrent deployment source 72418f4. No schema, Dockerfile or compose
+change; the previous image is schema-compatible for rollback.
+
+Source: 93688f7044ecf618a4a4a49c5b5dda3fe0bd6496. Runtime work b57142c;
+merged staffing/activity f70f607; merged cash release 72418f4 retained. Package
+and both lockfile versions are 1.18.11. An unpublished local 1.18.10 preparation
+was advanced after the deployment branch independently used that number.
+
+Final combined verification passed: 188 workday tests, 66 adjacent reminder/
+activity/cash-timing tests, five release metadata tests, TypeScript, production
+build and four isolated DB/HTTP lifecycle tests. Three use the established demo
+DB serially; the staffing lifecycle uses the fresh schedule_policy_test_near_release
+DB. The other chat's original policy DB already contained separate preview
+employees; those fixtures were preserved rather than changed to make a test pass.
+The first pre-merge test expecting a two-person wholesale target was corrected
+to the accepted one-person target; zero coverage is tested in the isolated policy
+lifecycle. The final real local PWA still opens the one-day native editor.
+
+Server scripts: /tmp/mobo-schedule-near-1.18.11-server.sh and the matching
+observe script/Native Terminal .command. They wait for the previous release's
+successful verification, serialize the build with the shared storage lock,
+verify all three reserve images and 15 GiB free space, preserve env/upload
+mounts, build only portal-app, and wait for independent verification before
+registering the new image. Previously approved retention is used only if the
+disk gate requires it. No manual production business-data edits or migrations.
+
+## Production verification — 1.18.11
+
+Release exited 0. Independent SSH read confirms server commit
+93688f7044ecf618a4a4a49c5b5dda3fe0bd6496; public metadata and authenticated ADMIN
+footer agree on 1.18.11, built 2026-10-26T17:38:21.124Z (20:38 Moscow). Metadata
+revision remains null under the existing Docker pipeline; exact source was
+verified separately over SSH. Public health returned ok; employee, workday and
+schedule route checks returned 200 without persistent 500s. Separate observer
+confirmed the new running image healthy. Env hash and upload mounts were unchanged.
+
+Authenticated read-only ADMIN inspection of the actual Zukhra PWA confirms the
+ordinary month with no week tab. Both 26 and 27 October are working; 28–31 remain
+empty. No completion action is shown, correctly ignoring the later empty dates.
+No real plan was changed to manufacture a missing-day example; one-day direct
+editing/save/cancel was verified in the isolated database. Screenshots:
+/tmp/mobo-near-production-1.18.11-admin.png and
+/tmp/mobo-near-production-1.18.11-calendar.png. Actual inspected content width
+was 375px, with no horizontal overflow. Preview remains read-only.
+
+Registered verified image set:
+- Current 1.18.11: sha256:8e8c6354c61a76fe095bb57643602aadc2191a27fda176b67ef66d539cf6c4e1
+- Previous 1.18.10: sha256:1acbd3acca78528bc961a9a40a11a7ee89d483194f7906ec8d204ba37b35b127
+- Previous 1.18.9: sha256:b2fb99d2481fc3c31dff05df2a59aca3ff43816dbe971c090de961d3cc76a9a0
+
+The approved retention pass removed eligible older portal rollback images and
+unused build cache; it did not prune containers, volumes, uploads or backups.
+Final free disk: 19,314,655,232 bytes (17.99 GiB). The shared deployment lock was
+released before verified-image registration. No schema migration, environment
+edit, manual production business-data write or 1C publication occurred. Main
+checkout's unrelated work and the activity stash remain untouched. Physical
+device display/delivery of a real push and actual overnight resume remain unverified.
