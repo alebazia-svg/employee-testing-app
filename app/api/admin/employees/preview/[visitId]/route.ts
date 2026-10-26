@@ -58,8 +58,8 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
     case 'notifications': return Response.json(await loadEmployeeNotifications(user, true), { headers });
     case 'attention': return Response.json(await loadEmployeeAttention(user), { headers });
     case 'schedule': {
-      const range = requestedDates(url.searchParams.get('month'));
-      if (!range) return Response.json({ error: 'Некорректный месяц' }, { status: 400, headers });
+      const range = requestedDates(url.searchParams.get('month'), url.searchParams.get('week'));
+      if (!range) return Response.json({ error: 'Некорректный период графика' }, { status: 400, headers });
       return Response.json(await scheduleSnapshot(user, range.dates, range.monthKey), { headers });
     }
     case 'cash-issue': {

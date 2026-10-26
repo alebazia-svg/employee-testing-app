@@ -54,6 +54,22 @@ test('isolated live weekly bulk API: authentication, bounded atomic writes, stal
     assert.equal(weeklyData.ownSchedule.length, 2);
     assert.equal((await fetch(`http://127.0.0.1:3212/api/employee/workday/schedule?week=${shiftScheduleDate(weekStart, 14)}`, { headers: { Cookie: cookie } })).status, 400);
 
+    const admin = await db.user.create({ data: { login: `${prefix}-admin`, name: 'Учебный ADMIN', passwordHash: 'disabled', role: 'ADMIN', department: 'retail' } });
+    ids.push(admin.id);
+    const previewHeaders = { Cookie: `${sessionCookieName}=${createSessionToken(admin.id)}`, Origin: 'http://127.0.0.1:3212', 'Content-Type': 'application/json' };
+    const opened = await fetch(`http://127.0.0.1:3212/api/admin/employees/${own.id}/preview`, { method: 'POST', headers: previewHeaders, body: '{}' });
+    assert.equal(opened.status, 200);
+    const { href } = await opened.json();
+    const previewUrl = `http://127.0.0.1:3212/api${href}?resource=schedule&week=${weekStart}`;
+    const inspected = await fetch(previewUrl, { headers: previewHeaders });
+    assert.equal(inspected.status, 200);
+    const inspectedData = await inspected.json();
+    assert.deepEqual(inspectedData.range, weeklyData.range, 'ADMIN inspection reads the same visible week as the employee');
+    assert.deepEqual(inspectedData.ownSchedule, weeklyData.ownSchedule);
+    assert.equal((await fetch(previewUrl, { headers: { Cookie: cookie } })).status, 403);
+    assert.equal((await fetch(previewUrl, { method: 'POST', headers: previewHeaders, body: '{}' })).status, 405);
+    assert.equal((await fetch(previewUrl.replace(weekStart, shiftScheduleDate(weekStart, 14)), { headers: previewHeaders })).status, 400);
+
     assert.ok(dates.length >= 3, 'fixture has a middle date for atomic conflict checks');
     const middle = dates[1];
     const auditCount = await db.workScheduleChange.count({ where: { userId: own.id } });
@@ -72,6 +88,7 @@ test('isolated live weekly bulk API: authentication, bounded atomic writes, stal
     assert.equal(ordinary.status, 200, 'ordinary month planning beyond the required week stays available');
     assert.equal((await post({ monthKey: outside.slice(0, 7), mode: 'plan', confirmed: true, changes: [change(shiftScheduleDate(outside, 32))] })).status, 400, 'ordinary saves still respect their month');
   } finally {
+    await db.employeePreviewVisit.deleteMany({ where: { adminId: { in: ids } } });
     await db.employeeVacation.deleteMany({ where: { userId: { in: ids } } });
     await db.user.deleteMany({ where: { id: { in: ids } } });
     await db.$disconnect();
