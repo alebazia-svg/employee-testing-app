@@ -1111,4 +1111,7 @@ close a missing-receipt discrepancy from seating alone. The owner accepted the
 isolated live preview on 2026-10-26, including the simplified missing-receipt
 card with a next action, collapsed source details and secondary closure actions.
 Implementation, TypeScript, production build and focused tests passed locally.
-Production deployment and employee messages remain outside this approval.
+The owner separately authorized production deployment later on 2026-10-26.
+Released as 1.18.4, source `a718908`, with authenticated UI and server checks
+complete; see `receipt-review-release-20261026.md`. No manual forwarding to
+employees or 1C document changes were performed.
