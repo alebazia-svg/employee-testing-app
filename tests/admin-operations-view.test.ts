@@ -108,3 +108,9 @@ test('technical receipt cases do not require business attention while genuine em
  assert.equal(adminInboxSourceState({...input,reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH'}).active,true);
  assert.equal(adminInboxSourceState({...input,businessStatus:'resolved',eventType:'terminal_fiscal_review.employee_action'}).active,false);
 });
+
+test('unconfirmed KKM closure stays in owner attention after the employee finishes, until OFD confirms',()=>{
+ assert.equal(adminInboxSourceState({sourceType:'workday_control_issue',businessStatus:'open',employeeActionRequired:false,adminVerificationRequired:true}).active,true);
+ assert.equal(adminInboxSourceState({sourceType:'workday_control_issue',businessStatus:'resolved',employeeActionRequired:false,adminVerificationRequired:true}).active,false);
+ assert.equal(adminInboxSourceState({sourceType:'workday_control_issue',businessStatus:'open',employeeActionRequired:false}).active,false,'other technical warnings remain separate');
+});

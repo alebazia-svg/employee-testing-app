@@ -1,4 +1,5 @@
 import 'server-only';
+import { kkmCloseConfirmation } from './kkm-close-confirmation';
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { getCashShifts } from '@/lib/one-c';
@@ -135,7 +136,7 @@ export function kkmShiftCloseRequiresEmployeeAction(evidence: KkmShiftCloseEvide
   return evidence.status === 'one_c_open' || evidence.status === 'ofd_missing';
 }
 
-export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; taskId: number; workDayEntryId: number; date: string; evidence: KkmShiftCloseEvidence; now: Date }) {
+export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; taskId: number; workDayEntryId: number; date: string; evidence: KkmShiftCloseEvidence; now: Date; confirmationMethod?: 'photo' | 'not_printed'; workdayCompleted?: boolean }) {
   const fingerprint = kkmShiftCloseFingerprint(input.workDayEntryId);
   const existing = await db.workdayControlIssue.findUnique({ where: { fingerprint } });
   if (input.evidence.status === 'confirmed') {
@@ -148,24 +149,34 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
     }
     return null;
   }
-  const employeeActionRequired = kkmShiftCloseRequiresEmployeeAction(input.evidence);
-  const severity = employeeActionRequired ? 'error' : 'warning';
-  const title = input.evidence.status === 'one_c_open' ? 'Касса не закрыта' : input.evidence.status === 'ofd_missing' ? 'Закрытие кассы не подтверждено' : 'Не удалось проверить кассу';
-  const detail = input.evidence.status === 'one_c_open'
-    ? 'Закройте кассовую смену и нажмите «Проверить снова».'
-    : input.evidence.status === 'ofd_missing'
-      ? 'Если чек закрытия распечатался — приложите фото. Если нет — сообщите администратору.'
-      : 'Автопроверке не хватило данных. Сотруднику ничего исправлять не нужно; портал продолжит проверку, а предупреждение останется у администратора.';
+  const employeeActionRequired = !input.confirmationMethod && !input.workdayCompleted;
+  const nextReminderAt = employeeActionRequired ? existing?.nextReminderAt ?? new Date(input.now.getTime()+15*60_000) : null;
+  const existingSource = existing?.sourceData && typeof existing.sourceData==='object' && !Array.isArray(existing.sourceData) ? existing.sourceData as Record<string,unknown> : {};
+  const ownerVerificationRequired = Boolean(input.confirmationMethod || employeeActionRequired || existingSource.ownerVerificationRequired===true);
+  const severity = 'warning';
+  const title = input.confirmationMethod ? input.confirmationMethod==='photo' ? 'Чек закрытия приложен' : 'Чек закрытия не распечатался' : employeeActionRequired ? 'Подтвердите закрытие кассы' : 'Закрытие кассы не подтверждено ОФД';
+  const detail = input.confirmationMethod==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. День можно завершить; сверка ОФД продолжается автоматически.'
+    : input.confirmationMethod==='not_printed' ? 'Сотрудник сообщил, что чек не распечатался. День завершён, закрытие кассы проверяется по ОФД.'
+    : employeeActionRequired ? 'Сфотографируйте чек закрытия смены или нажмите «Чек не распечатался».'
+    : 'День завершён, но закрытие кассы ещё не подтверждено ОФД. Портал повторяет проверку автоматически.';
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
-    create: { userId: input.userId, taskId: input.taskId, fingerprint, ruleKey: 'kkm_shift_not_closed', severity, status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired, originDate: input.date, detectedAt: input.now, lastDetectedAt: input.now },
-    update: { userId: input.userId, taskId: input.taskId, severity, status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired, originDate: input.date, resolvedAt: null, lastDetectedAt: input.now },
+    create: { userId: input.userId, taskId: input.taskId, fingerprint, ruleKey: 'kkm_shift_not_closed', severity, status: 'open', title, detail, sourceData: { ...input.evidence, ownerVerificationRequired, confirmationMethod: input.confirmationMethod || null } as unknown as Prisma.InputJsonValue, employeeActionRequired, nextReminderAt, originDate: input.date, detectedAt: input.now, lastDetectedAt: input.now },
+    update: { userId: input.userId, taskId: input.taskId, severity, status: 'open', title, detail, sourceData: { ...input.evidence, ownerVerificationRequired, confirmationMethod: input.confirmationMethod || null } as unknown as Prisma.InputJsonValue, employeeActionRequired, nextReminderAt, originDate: input.date, resolvedAt: null, lastDetectedAt: input.now },
   });
   if (!employeeActionRequired) {
     await db.workdayNotification.updateMany({
       where: { issueId: issue.id, status: 'pending' },
       data: { status: 'cancelled' },
     });
+  }
+  if (employeeActionRequired && existing?.nextReminderAt && existing.nextReminderAt <= input.now) {
+    const day = await db.workDayEntry.findUnique({where:{id:input.workDayEntryId},select:{status:true,endedAt:true}});
+    if (day?.status==='active' && !day.endedAt && input.date===input.now.toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'})) {
+      const bucket=Math.floor(input.now.getTime()/(15*60_000));
+      await db.workdayNotification.upsert({where:{fingerprint:`issue:${issue.id}:kkm-reminder:${bucket}`},update:{},create:{userId:input.userId,issueId:issue.id,fingerprint:`issue:${issue.id}:kkm-reminder:${bucket}`,kind:'issue_reminder',title:'Подтвердите закрытие кассы',body:'Сфотографируйте чек закрытия смены или нажмите «Чек не распечатался».',scheduledAt:input.now}});
+      await db.workdayControlIssue.update({where:{id:issue.id},data:{nextReminderAt:new Date(input.now.getTime()+15*60_000)}});
+    }
   }
   const [employee, admins] = await Promise.all([
     db.user.findUnique({ where: { id: input.userId }, select: { name: true } }),
@@ -176,7 +187,7 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
     create: {
       eventKey: `kkm_shift_close:${input.workDayEntryId}:attention`,
       type: 'workday.kkm_shift_close_attention',
-      title,
+      title:'Закрытие кассы не подтверждено',
       body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`,
       href: `/admin/workday/issues/${issue.id}`,
       sourceType: 'workday_control_issue',
@@ -184,7 +195,7 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
       occurredAt: input.now,
     },
     update: {
-      title,
+      title:'Закрытие кассы не подтверждено',
       body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`,
       occurredAt: existing?.detectedAt ?? input.now,
     },
@@ -193,20 +204,28 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
   return issue;
 }
 
-export async function recheckOpenKkmShiftCloseIssues(now = new Date()) {
+export async function recheckOpenKkmShiftCloseIssues(now = new Date(), sources?: Parameters<typeof verifyEmployeeKkmShiftClose>[1]) {
   const { prisma } = await import('@/lib/prisma');
   const issues = await prisma.workdayControlIssue.findMany({
     where: { ruleKey: 'kkm_shift_not_closed', status: 'open' },
-    include: { task: { select: { id: true, handoverData: true, run: { select: { date: true, workDayEntryId: true } } } } },
+    include: { task: { select: { id: true, updatedAt: true, handoverData: true, run: { select: { date: true, workDayEntryId: true, workDayEntry:{select:{status:true,endedAt:true}} } } } } },
+    orderBy: [{lastDetectedAt:'asc'},{id:'asc'}],
     take: 5,
   });
   let resolved = 0;
   for (const issue of issues) {
     if (!issue.task) continue;
     const handover = issue.task.handoverData && typeof issue.task.handoverData === 'object' && !Array.isArray(issue.task.handoverData) ? issue.task.handoverData as Record<string, unknown> : null;
-    const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: issue.userId, date: issue.task.run.date, simulation: readKkmShiftCloseSimulation(handover?.kkmCloseSimulation) });
-    await syncKkmShiftCloseIssue(prisma, { userId: issue.userId, taskId: issue.task.id, workDayEntryId: issue.task.run.workDayEntryId, date: issue.task.run.date, evidence, now });
-    if (evidence.status === 'confirmed') resolved += 1;
+    const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: issue.userId, date: issue.task.run.date, simulation: readKkmShiftCloseSimulation(handover?.kkmCloseSimulation) }, sources);
+    if (evidence.status === 'confirmed') {
+      if (handover && kkmCloseConfirmation(handover)) {
+        const prior = handover.kkmCloseCheck && typeof handover.kkmCloseCheck === 'object' && !Array.isArray(handover.kkmCloseCheck) ? handover.kkmCloseCheck as Record<string,unknown> : {};
+        const saved = await prisma.shiftControlTask.updateMany({where:{id:issue.task.id,updatedAt:issue.task.updatedAt},data:{handoverData:{...handover,kkmCloseCheck:{...prior,status:'confirmed',checkedAt:evidence.checkedAt,evidence}} as unknown as Prisma.InputJsonValue}});
+        if (!saved.count) continue;
+      }
+      resolved += 1;
+    }
+    await syncKkmShiftCloseIssue(prisma, { userId: issue.userId, taskId: issue.task.id, workDayEntryId: issue.task.run.workDayEntryId, date: issue.task.run.date, evidence, now, confirmationMethod: kkmCloseConfirmation(handover)?.method, workdayCompleted:Boolean(issue.task.run.workDayEntry.endedAt || issue.task.run.workDayEntry.status==='completed') });
   }
   return { checked: issues.length, resolved };
 }

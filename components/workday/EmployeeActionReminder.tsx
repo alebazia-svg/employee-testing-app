@@ -107,6 +107,7 @@ export function EmployeeActionReminderProvider({ children }: { children: ReactNo
   const cashItem: EmployeeAttentionItem[] = request ? [{ id: `cash-issue:${request.ref}`, title: cashIssueCompactCopy(request).title, kind: 'cash_issue', state: 'action', status: '', priority: 0, date: request.checkedAt, detail: '' }] : [];
   const action = employeeActionReminder(workday, [...(attention ?? []).filter(item => item.kind !== 'cash_issue'), ...cashItem]);
   useEffect(() => { setDeferred(false); }, [action?.id]);
+  useEffect(()=>{if(!deferred || !action?.remindAfterMs)return;const timer=window.setTimeout(()=>setDeferred(false),action.remindAfterMs);return()=>window.clearTimeout(timer);},[deferred,action?.id,action?.remindAfterMs]);
   return <Context.Provider value={{ action, deferred, error: error || attentionError, defer: () => setDeferred(true), refresh: () => refresh(true), setView, publishWorkday, publishAttention }}>{children}</Context.Provider>;
 }
 

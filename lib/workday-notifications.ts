@@ -324,6 +324,7 @@ export function workdayNotificationHref(notification: { issueId: number | null; 
   if (notification.kind === COLLECTION_READY_KIND) return '/procurement';
   if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
+  if (notification.issueId && notification.fingerprint?.includes(':kkm-reminder:')) return '/employee#pwa-current-action';
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
   if (notification.kind === 'schedule_replacement_request' || notification.kind === 'schedule_fill_request') {
     const date = notification.fingerprint?.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1];

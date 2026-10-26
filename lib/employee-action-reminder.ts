@@ -10,7 +10,7 @@ export type ReminderWorkday = {
     tasks: Array<{ id: number; title: string; category: string; status: string; sortOrder: number; plannedTimeMinutes: number | null }>;
   };
 };
-export type EmployeeActionReminder = { id: string; title: string; href: string; target: 'checklist' | 'attention' | 'cash_issue' | 'schedule' };
+export type EmployeeActionReminder = { id: string; title: string; href: string; target: 'checklist' | 'attention' | 'cash_issue' | 'schedule'; remindAfterMs?: number };
 
 /** Uses unresolved source actions, never notification read state. */
 export function employeeActionReminder(workday: ReminderWorkday | null, attention: EmployeeAttentionItem[] | null, now = new Date()): EmployeeActionReminder | null {
@@ -18,6 +18,7 @@ export function employeeActionReminder(workday: ReminderWorkday | null, attentio
   const schedule = actions.find(item => item.kind === 'schedule');
   const scheduleReminder: EmployeeActionReminder | null = schedule ? { id: schedule.id, title: schedule.title, href: schedule.scheduleAction==='week'?scheduleCalendarHref(schedule.scheduleDate!,schedule.scheduleOpenEditor):`/employee?attention=schedule&item=${encodeURIComponent(schedule.id)}`, target: schedule.scheduleAction==='week'?'schedule':'attention' } : null;
   const issue = actions.find(item => item.kind !== 'schedule');
+  if (issue?.kind==='closing' && issue.id.startsWith('issue:')) return {id:issue.id,title:'Подтвердите закрытие кассы',href:'/employee#pwa-current-action',target:'checklist',remindAfterMs:15*60_000};
   if (issue) return {
     id: issue.id, title: issue.kind === 'receipt' ? 'Проверьте чеки' : issue.kind === 'cash' ? 'Оформите расходники в 1С' : issue.title,
     href: issue.kind === 'cash_issue' ? `/employee?cashIssue=${encodeURIComponent(issue.id.slice('cash-issue:'.length))}` : `/employee?attention=${issue.kind}&item=${encodeURIComponent(issue.id)}`,

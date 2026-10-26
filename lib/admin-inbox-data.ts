@@ -114,7 +114,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     issueIds.length ? prisma.workdayControlIssue.findMany({
       where: { id: { in: issueIds } },
-      select: { id: true, status: true, employeeActionRequired: true },
+      select: { id: true, status: true, employeeActionRequired: true, sourceData:true },
     }) : [],
     reviewIds.length ? prisma.terminalFiscalEmployeeReview.findMany({
       where: { id: { in: reviewIds } },
@@ -254,6 +254,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       sourceDate: exception?.workDayEntry.date,
       today,
       employeeActionRequired: issue?.employeeActionRequired,
+      adminVerificationRequired: row.event.type==='workday.kkm_shift_close_attention' && Boolean(issue?.sourceData && typeof issue.sourceData==='object' && !Array.isArray(issue.sourceData) && (issue.sourceData as Record<string,unknown>).ownerVerificationRequired===true),
       sourceCompleted: Boolean(exception?.consumedAt),
     });
     if (isAdminInboxTechnicalEvent(row.event.type) && latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(row.event)) !== row.event.id) {

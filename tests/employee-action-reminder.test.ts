@@ -65,3 +65,9 @@ test('the shared action priority and waiting state apply across all supported ki
     assert.equal(employeeActionReminder(null, [{ ...item, state: 'waiting' }], now), null);
   }
 });
+
+test('KKM reminder returns directly to the confirmation action and repeats after deferral',()=>{
+ const item={...issue('action'),kind:'closing' as const};const reminder=employeeActionReminder(fixture(),[item],now)!;
+ assert.equal(reminder.target,'checklist');assert.equal(reminder.href,'/employee#pwa-current-action');assert.equal(reminder.remindAfterMs,15*60_000);
+ assert.notEqual(employeeActionReminder(fixture(),[{...item,state:'waiting'}],now)?.id,item.id);
+});

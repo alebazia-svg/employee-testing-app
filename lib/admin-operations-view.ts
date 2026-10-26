@@ -117,6 +117,7 @@ export function adminInboxSourceState(input: {
   reasonCode?: string | null;
   current?: boolean;
   employeeActionRequired?: boolean;
+  adminVerificationRequired?: boolean;
   sourceCompleted?: boolean;
   sourceDate?: string;
   today?: string;
@@ -162,9 +163,9 @@ export function adminInboxSourceState(input: {
       : { active: false, label: 'Уровень риска изменился', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_control_issue') {
-    const active = input.businessStatus === 'open' && input.employeeActionRequired === true;
+    const active = input.businessStatus === 'open' && (input.employeeActionRequired === true || input.adminVerificationRequired === true);
     return active
-      ? { active: true, label: 'Проблема активна', tone: 'attention' }
+      ? { active: true, label: input.adminVerificationRequired ? 'Закрытие не подтверждено ОФД' : 'Проблема активна', tone: 'attention' }
       : { active: false, label: 'Исправлено', tone: 'resolved' };
   }
   if (input.sourceType === 'terminal_fiscal_review') {

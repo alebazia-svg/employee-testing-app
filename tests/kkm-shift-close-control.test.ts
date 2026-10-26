@@ -84,7 +84,7 @@ test('technical KKT uncertainty becomes admin-only and keeps the original incide
     workDayEntryId: 96,
     date: '2026-09-18',
     evidence,
-    now,
+    now, workdayCompleted:true,
   });
 
   assert.equal(issueUpdate.employeeActionRequired, false);
@@ -179,3 +179,41 @@ test('reopened shift closes by fiscal check time even when the 1C document clock
  shifts={ok:true,shifts:[{cashRegister:{ref:'kkm',name:'Касса'},posted:true,deletionMark:false,number:'1081',fiscalShiftNumber:'77',status:'Открыта',datetime:'2026-10-26T21:10:00+03:00',openedAt:'2026-10-26T21:10:00+03:00',closedAt:''}]};assert.equal((await verify()).status,'confirmed','a later 1C document timestamp cannot override exact OFD proof; actual later fiscal checks remain the guard');
  shifts={ok:false,shifts:[]};check.fiscalDateTime='';assert.equal((await verify()).status,'unavailable');
  });
+
+import { createKkmCloseConfirmation, kkmCloseConfirmation } from '../lib/kkm-close-confirmation';
+test('photo confirmation requires the actual uploaded image of this task and cannot reuse another task photo',()=>{
+ const data={photos:{zReport:{storagePath:'uploads/shift-control/117/508/z-report-demo.jpg',mimeType:'image/jpeg',sizeBytes:100}}};
+ const confirmed=createKkmCloseConfirmation(data,4,117,508,new Date('2026-10-26T18:00:00Z'))!;
+ assert.ok(confirmed);assert.equal(createKkmCloseConfirmation(data,4,117,509),null);
+ assert.equal(kkmCloseConfirmation({...data,kkmCloseConfirmation:confirmed})?.userId,4);
+ assert.equal(kkmCloseConfirmation({...data,kkmCloseConfirmation:{...confirmed,storagePath:'uploads/shift-control/117/508/z-report-other.jpg'}}),null);
+ assert.equal(createKkmCloseConfirmation({photos:{zReport:{...data.photos.zReport,sizeBytes:0}}},4,117,508),null);
+ assert.equal(kkmCloseConfirmation({photos:{zReport:data.photos.zReport}}),null,'upload alone is not an employee confirmation');
+});
+test('a photo removes only the KKM employee blocker and keeps automatic source verification pending for ADMIN',async()=>{
+ let update:any,notification:any;const db:any={workdayControlIssue:{findUnique:async()=>({id:42,status:'open',detectedAt:new Date()}),upsert:async(args:any)=>{update=args.update;return{id:42,detectedAt:new Date()}}},workdayNotification:{updateMany:async(args:any)=>{notification=args;return{count:1}}},user:{findUnique:async()=>({name:'Учебный сотрудник'}),findMany:async()=>[]},adminInboxEvent:{upsert:async()=>({id:'event'})}};
+ const evidence=simulateKkmShiftClose({scenario:'ofd_missing',activatedAt},new Date());
+ await syncKkmShiftCloseIssue(db,{userId:4,taskId:508,workDayEntryId:117,date:'2026-10-26',evidence,now:new Date(),confirmationMethod:'photo'});
+ assert.equal(update.status,'open');assert.equal(update.employeeActionRequired,false);assert.equal(update.severity,'warning');assert.equal(update.sourceData.status,'ofd_missing');assert.equal(update.sourceData.confirmationMethod,'photo');assert.equal(notification.where.issueId,42);assert.equal(notification.data.status,'cancelled');
+ // Subsequent failed source reads must keep the employee free of the same blocker.
+ await syncKkmShiftCloseIssue(db,{userId:4,taskId:508,workDayEntryId:117,date:'2026-10-26',evidence:{...evidence,status:'one_c_open'},now:new Date(),confirmationMethod:'photo'});
+ assert.equal(update.employeeActionRequired,false);
+});
+
+test('no printed receipt is an explicit employee response, distinct from a photo and from OFD proof',()=>{
+ const confirmation=createKkmCloseConfirmation({},4,117,508,new Date('2026-10-26T18:00:00Z'),'not_printed')!;
+ assert.ok(confirmation);assert.equal(kkmCloseConfirmation({kkmCloseConfirmation:confirmation})?.method,'not_printed');
+ assert.equal(createKkmCloseConfirmation({},4,117,508),null,'photo still requires an uploaded image');
+ assert.equal(kkmCloseConfirmation({kkmCloseConfirmation:{...confirmation,userId:0}}),null);
+});
+test('one KKM reminder is due after fifteen minutes, and neither a response nor a finished day repeats it',async()=>{
+ const started=new Date('2026-10-26T18:00:00Z'),now=new Date('2026-10-26T18:15:00Z');
+ let existing:any={id:42,status:'open',detectedAt:started,nextReminderAt:now};let active=true;const reminders=new Map<string,unknown>();
+ const db:any={workdayControlIssue:{findUnique:async()=>existing,upsert:async(args:any)=>{existing={...existing,...args.update};return existing;},update:async({data}:any)=>{existing={...existing,...data};return existing;}},workdayNotification:{upsert:async({where,create}:any)=>{reminders.set(where.fingerprint,create);return create;},updateMany:async()=>({count:1})},workDayEntry:{findUnique:async()=>({status:active?'active':'completed',endedAt:active?null:now})},user:{findUnique:async()=>({name:'Учебный сотрудник'}),findMany:async()=>[]},adminInboxEvent:{upsert:async()=>({id:'event'})}};
+ const evidence=simulateKkmShiftClose({scenario:'ofd_missing',activatedAt},now);
+ const input={userId:4,taskId:508,workDayEntryId:117,date:'2026-10-26',evidence,now};
+ existing.nextReminderAt=new Date(+now+1);await syncKkmShiftCloseIssue(db,input);assert.equal(reminders.size,0);
+ existing.nextReminderAt=now;await syncKkmShiftCloseIssue(db,input);assert.equal(reminders.size,1);await syncKkmShiftCloseIssue(db,input);assert.equal(reminders.size,1);
+ await syncKkmShiftCloseIssue(db,{...input,confirmationMethod:'not_printed'});assert.equal(existing.employeeActionRequired,false);assert.equal(existing.nextReminderAt,null);
+ active=false;await syncKkmShiftCloseIssue(db,{...input,workdayCompleted:true});assert.equal(existing.employeeActionRequired,false);assert.equal(reminders.size,1);
+});

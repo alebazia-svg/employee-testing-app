@@ -1,3 +1,4 @@
+import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { handoverExpenseLabel } from '@/lib/handover-cash-expenses';
 import { fiscalControlAction, pastOwnerActions, openCashControl } from '@/lib/team-control-summary';
@@ -1065,14 +1066,18 @@ function buildEmployeeAutoChecks({
           && shift.deletionMark !== true
         )), task)
         : null;
+      const savedClose = handoverData && isRecord(handoverData.kkmCloseCheck) ? handoverData.kkmCloseCheck : null;
+      const ofdConfirmed = savedClose?.status === 'confirmed';
+      const closeConfirmation = kkmCloseConfirmation(handoverData);
+      const photoConfirmed = Boolean(closeConfirmation);
       const closed = Boolean(assignedShift?.closedAt) && normalizeSearchText(assignedShift?.status ?? '').includes('закрыт');
       const checksCount = kkmUsage.reduce((sum, row) => sum + (row.checks ?? 0), 0);
       checks.push({
         id: `handover-z-report-${task.id}`,
         taskId: task.id,
         label: 'Закрытие смены ККМ',
-        status: assignedShift ? (closed ? 'matched' : 'mismatch') : 'unavailable',
-        summary: assignedShift
+        status: ofdConfirmed ? 'matched' : photoConfirmed ? 'waiting' : savedClose ? 'unavailable' : assignedShift ? (closed ? 'matched' : 'mismatch') : 'unavailable',
+        summary: ofdConfirmed ? 'Закрытие кассы подтверждено отчётом ОФД.' : photoConfirmed ? closeConfirmation?.method==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. Автосверка ОФД продолжается.' : 'Сотрудник сообщил: чек закрытия не распечатался. Автосверка ОФД продолжается.' : assignedShift
           ? closed
             ? `Назначенная ККМ закрыта ${formatTime(assignedShift.closedAt || assignedShift.datetime)} · статус «${assignedShift.status}».`
             : `Смена назначенной ККМ не закрыта · статус «${assignedShift.status || 'не указан'}».`

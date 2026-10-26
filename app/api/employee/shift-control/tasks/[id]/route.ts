@@ -1,3 +1,5 @@
+import { after } from 'next/server';
+import { createKkmCloseConfirmation, kkmCloseConfirmation as readKkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { scheduleHandoverCheckAudit } from '@/lib/employee-handover-audit-server';
@@ -436,7 +438,11 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       }
     }
 
-    await refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
+    const closeConfirmationMethod = readFormString(formData,'kkmCloseConfirmation');
+    const closeConfirmationRequested = closeConfirmationMethod==='photo' || closeConfirmationMethod==='not_printed';
+    if (closeConfirmationRequested && user.department!=='retail') return Response.json({error:'Подтверждение ККМ доступно только для розничной смены'},{status:400});
+    const refreshReceipts = () => refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
+    if (closeConfirmationRequested || readKkmCloseConfirmation(task.handoverData)?.userId===user.id) after(refreshReceipts); else await refreshReceipts();
 
     const earlyFinishDeviation = await prisma.workdayDeviation.findUnique({
       where: { workDayEntryId_kind: { workDayEntryId: task.run.workDayEntryId, kind: 'early_finish' } },
@@ -478,6 +484,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment = false;
+    const kkmCloseConfirmation = closeConfirmationRequested ? createKkmCloseConfirmation(handoverData, user.id, task.runId, task.id,new Date(),closeConfirmationMethod==='not_printed'?'not_printed':'photo') : readKkmCloseConfirmation(handoverData)?.userId===user.id ? readKkmCloseConfirmation(handoverData) : null;
+    if (closeConfirmationRequested && !kkmCloseConfirmation) return Response.json({error:'Сфотографируйте чек закрытия смены',code:'KKM_CLOSE_PHOTO_REQUIRED'},{status:400});
     let kkmCloseCheckAudit = readRecord(isRecord(handoverData) ? handoverData : {}, 'kkmCloseCheck');
 
     const approvedCashEncashmentException = requiresEncashment
@@ -520,7 +528,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       const previousCheck = readRecord(handoverRecord, 'kkmCloseCheck');
       const previousStartedAt = previousCheck && typeof previousCheck.startedAt === 'string' ? Date.parse(previousCheck.startedAt) : Number.NaN;
       const startedAt = Number.isFinite(previousStartedAt) ? new Date(previousStartedAt) : now;
-      const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: user.id, date: task.run.date, simulation: readKkmShiftCloseSimulation(handoverRecord.kkmCloseSimulation) });
+      const previousEvidence = readRecord(previousCheck, 'evidence');
+      const evidence = kkmCloseConfirmation ? { cashierRef:'', cashRegisterRef:'', cashRegisterName:'', kktRegistrationNumber:'', oneCShiftNumber:'', fiscalShiftNumber:'', oneCOpenedAt:'', oneCClosedAt:'', ofdOpenedAt:'', ofdClosedAt:'', ofdDocumentLink:'', ...previousEvidence, status:'unavailable' as const, checkedAt:now.toISOString(), sourceError:kkmCloseConfirmation?.method==='not_printed'?'Сотрудник сообщил: чек закрытия не распечатался. Автосверка ОФД продолжается.':'Сотрудник подтвердил закрытие бумажным чеком. Автосверка ОФД продолжается.' } : await verifyEmployeeKkmShiftClose({ db: prisma, userId: user.id, date: task.run.date, simulation: readKkmShiftCloseSimulation(handoverRecord.kkmCloseSimulation) });
       kkmCloseCheckAudit = {
         startedAt: startedAt.toISOString(),
         checkedAt: evidence.checkedAt,
@@ -534,22 +543,15 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           handoverData: {
             ...handoverRecord,
             kkmCloseCheck: kkmCloseCheckAudit,
+            ...(kkmCloseConfirmation ? {kkmCloseConfirmation} : {}),
           } as Prisma.InputJsonValue,
         },
       });
       if (!savedCheck) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
       scheduleHandoverCheckAudit(req, user.id, task.id, readFormString(formData, 'activityAttempt'), evidence.status);
-      if (evidence.status === 'confirmed' || !kkmShiftCloseRequiresEmployeeAction(evidence)) {
-        await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
-      } else if (now.getTime() - startedAt.getTime() < 90_000) {
-        return Response.json({
-          error: 'Касса может передать чек с небольшой задержкой. Проверяем автоматически…',
-          code: 'KKM_SHIFT_CHECK_PENDING',
-          retryAfterMs: 15_000,
-          startedAt: startedAt.toISOString(),
-        }, { status: 409 });
-      } else {
-        await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
+      await syncKkmShiftCloseIssue(prisma, { userId:user.id, taskId:task.id, workDayEntryId:task.run.workDayEntryId, date:task.run.date, evidence, now, confirmationMethod:kkmCloseConfirmation?.method });
+      if (evidence.status !== 'confirmed' && !kkmCloseConfirmation) {
+        return Response.json({error:'Сфотографируйте чек закрытия смены',code:'KKM_CLOSE_PHOTO_REQUIRED'},{status:409});
       }
     }
 
@@ -564,6 +566,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         data: { handoverData: {
           ...(isRecord(handoverData) ? handoverData : {}),
           ...(kkmCloseCheckAudit ? { kkmCloseCheck: kkmCloseCheckAudit } : {}),
+          ...(kkmCloseConfirmation ? {kkmCloseConfirmation} : {}),
           closeBlockedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue },
       });
@@ -698,6 +701,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         submittedAt: now.toISOString(),
         [shiftControlOneCAuditKey]: savedOneCAudit,
         kkmCloseCheck: kkmCloseCheckAudit ?? null,
+        ...(kkmCloseConfirmation ? {kkmCloseConfirmation} : {}),
         scope: {
           personalCash: true,
           reserveCash: isStoreClosingEmployee,

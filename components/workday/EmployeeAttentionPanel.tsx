@@ -23,11 +23,12 @@ function Marker({ kind, waiting }: { kind: Item['kind']; waiting: boolean }) {
   return <span className={`attention-preview-marker ${waiting ? 'is-waiting' : 'needs-action'}`} aria-hidden="true">{waiting ? <PremiumClockIcon color='#687078' secondaryColor='#d5d9dc' secondaryOpacity={0.9} className='h-5 w-5 shrink-0' /> : <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} />}</span>;
 }
 
-export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClass, activeShift = false, onClosing, onExpenses, onScheduleSaved }: {
+export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClass, activeShift = false, inlineClosingIssueId, onClosing, onExpenses, onScheduleSaved }: {
   onScheduleSaved?: () => void;
   onExpenses?: (snapshot: EmployeeExpenseSnapshot) => void;
   view: string;
   activeShift?: boolean;
+  inlineClosingIssueId?: number;
   onClosing: (scope?: 'encashment' | 'closing') => void;
   onBack: () => void;
   renderHandle: (onDismiss: () => void) => ReactNode;
@@ -79,6 +80,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const allItems = orderEmployeeAttention([...ownItems, ...cashItem]);
   usePublishAttentionReminder(allItems, loadState === 'ready', loadState === 'error');
   const items = allItems.filter(item => !scope || item.kind === scope);
+  const inlineItems = allItems.filter(item => !(view === 'day' && inlineClosingIssueId && item.id === `issue:${inlineClosingIssueId}`));
   const entry = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -183,8 +185,8 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const action = items.filter(item => item.state === 'action');
   const waiting = items.filter(item => item.state === 'waiting');
   return <>
-    {view !== 'schedule' && allItems.length > 0 && <section className="employee-attention-groups" aria-label="Текущие действия">{[...new Set(allItems.map(item => item.kind))].map(kind => {
-      const rows = allItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
+    {view !== 'schedule' && inlineItems.length > 0 && <section className="employee-attention-groups" aria-label="Текущие действия">{[...new Set(inlineItems.map(item => item.kind))].map(kind => {
+      const rows = inlineItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? rows.length === 1 ? rows[0].title : rows.some(row => row.state === 'action' && row.expenseMode === 'execute') ? 'Оформите расходники в 1С' : rows.some(row => row.state === 'action') ? 'Уточните выдачу по заявке' : 'Заявки к оплате' : kind === 'schedule' && rows.length > 1 ? 'Вопросы по графику' : rows[0].title;
       const count = kind === 'cash' ? new Set(rows.map(row => row.expenseRef || row.id)).size : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup={rows.length===1 && rows[0].scheduleAction==='week' && !rows[0].scheduleOpenEditor ? undefined : 'dialog'} className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>

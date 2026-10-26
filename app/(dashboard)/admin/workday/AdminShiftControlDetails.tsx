@@ -1,5 +1,6 @@
-import type { HandoverCashExpenses } from '@/lib/handover-cash-expenses';
 'use client';
+import type { HandoverCashExpenses } from '@/lib/handover-cash-expenses';
+import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayCardList, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
 import { completedWithoutEncashment, handoverClosedByAdmin } from '@/lib/workday-close-view';
 import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } from '@/lib/workday-handover-view';
@@ -472,7 +473,7 @@ function HandoverDetails({ data, department, onPreview, checks=[], submitted=tru
   const needsClosingPhoto=storeClosing?.zReportRequired===true;
   const closingCheck=checks.find(check=>check.id.startsWith('handover-z-report-'));
   const closingTone=closingCheck?.manualReview?.decision==='confirmed_issue'?'error':closingCheck?.manualReview?.decision==='confirmed_ok'?'green':closingCheck?.status==='matched'?'green':closingCheck?.status==='mismatch'?'error':'amber';
-  const closingLabel=closingCheck?.manualReview?.decision==='confirmed_issue'?'Проблема подтверждена':closingCheck?.manualReview?.decision==='confirmed_ok'?'Подтверждено вручную':closingCheck?.status==='matched'?'Закрытие подтверждено':closingCheck?.status==='mismatch'?'Закрытие не подтверждено':'Нет данных 1С';
+  const closingLabel=closingCheck?.manualReview?.decision==='confirmed_issue'?'Проблема подтверждена':closingCheck?.manualReview?.decision==='confirmed_ok'?'Подтверждено вручную':closingCheck?.status==='matched'?'Закрытие подтверждено':closingCheck?.status==='mismatch'?'Закрытие не подтверждено':closingCheck?.status==='waiting'&&kkmCloseConfirmation(data)?kkmCloseConfirmation(data)?.method==='photo'?'Чек приложен · сверяем ОФД':'Чек не распечатался · сверяем ОФД':'Ожидает сверки ОФД';
   if(!personalCash&&!reserveCash&&!storeClosing)return null;
   const money=(value:unknown)=>value===null||value===undefined?'Не указано':formatMoney(Number(value));
   return <div className="team-handover-content">
