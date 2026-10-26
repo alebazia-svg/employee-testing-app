@@ -4167,7 +4167,7 @@ export function EmployeeTodayClient({
             <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
               {closeResolutionPath === null ? (
                 <div className='grid gap-3'>
-                  <p className='text-sm font-bold text-slate-700'>Чек закрытия распечатался?</p>
+                  <p className='text-sm font-bold text-slate-700'>Касса распечатала отчёт о закрытии смены (Z-отчёт)?</p>
                   <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('photo')}>Чек распечатался</button>
                   <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('technical')}>Чек не распечатался</button>
                 </div>
@@ -4176,9 +4176,10 @@ export function EmployeeTodayClient({
                   <button type='button' className='flex min-h-11 items-center gap-1 text-left text-sm font-bold text-slate-600' onClick={() => setCloseResolutionPath(null)} disabled={isSaving}><ChevronLeft className='h-4 w-4' />Назад</button>
                   {closeResolutionPath === 'photo' ? (
                     <div className='grid gap-3'>
+                      <p className='text-sm font-semibold text-slate-700'>Сфотографируйте бумажный Z-отчёт, который распечатала касса. На фото должны быть видны номер смены, дата и время закрытия.</p>
                       {hasHandoverPhoto(handoverDraft.zReportPhoto) && <p className='text-sm font-semibold text-slate-600'>Предыдущее фото уже прикреплено.</p>}
                       {handoverTask && <label className='employee-material-secondary-action flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold'>
-                        <Camera className='h-5 w-5' />{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}
+                        <Camera className='h-5 w-5' />{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать Z-отчёт'}
                         <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
                       </label>}
                     </div>

@@ -465,6 +465,8 @@ function CashComparison({check,actual,encashment,encashmentCheck,draft=false}:{c
 
 function HandoverDetails({ data, department, onPreview, checks=[], submitted=true }: { submitted?:boolean; data: unknown; department: string; onPreview: (photo: PhotoPreview) => void; checks?:ShiftAutoCheck[] }) {
   const personalCash=readRecord(data,'personalCash'),reserveCash=readRecord(data,'reserveCash'),storeClosing=readRecord(data,'storeClosing'),terminalCheck=readRecord(data,'terminalCheck'),photos=readPhotos(data);
+  const hasTerminalOperations = typeof terminalCheck?.hadOperations === 'boolean';
+  const hasTerminalReconciliation = ['matched', 'discrepancy'].includes(String(terminalCheck?.reconciliation ?? ''));
   const history=cashRecountInputHistory(data),comment=isRecord(data)?textValue(data.comment):'';
   const needsEncashmentPhoto=personalCash?.requiresEncashment===true && typeof personalCash.encashmentAmount==='number';
   const needsClosingPhoto=storeClosing?.zReportRequired===true;
@@ -476,7 +478,7 @@ function HandoverDetails({ data, department, onPreview, checks=[], submitted=tru
   return <div className="team-handover-content">
     <section><h4>Касса</h4>{submitted&&missingHandoverPhotos(data).length>0&&<p className="team-required-proof-warning">Нет подтверждений: {missingHandoverPhotos(data).join(', ')}</p>}{personalCash?<CashComparison draft={!submitted} check={checks.find(check=>check.id.startsWith('handover-cash-'))} actual={typeof personalCash.cashBalance==='number'?personalCash.cashBalance:null} encashment={personalCash} encashmentCheck={checks.find(check=>check.id.startsWith('handover-encashment-')) ?? (readRecord(data,'adminClosure')?.requestId === personalCash.encashmentExceptionRequestId && personalCash.encashmentExceptionRequestId ? {id:'approved-encashment',taskId:0,label:'Инкассация',status:'matched',summary:'Без инкассации · разрешено'} : undefined)}/>:<p>Данные сдачи кассы не заполнены.</p>}</section>
     {reserveCash&&<section><h4>Резерв</h4><CashComparison draft={!submitted} check={checks.find(check=>check.id.startsWith('handover-reserve-'))} actual={typeof reserveCash.cashBalance==='number'?reserveCash.cashBalance:null}/></section>}
-    {department==='retail'&&terminalCheck&&<section><h4>Терминал</h4><dl><dt>Были операции</dt><dd>{yesNo(terminalCheck.hadOperations)}</dd><dt>Сверка сотрудника</dt><dd>{terminalCheck.reconciliation==='matched'?'Совпадает':terminalCheck.reconciliation==='discrepancy'?'Есть расхождение':'Не заполнена'}</dd></dl></section>}
+    {department==='retail'&&terminalCheck&&(hasTerminalOperations||hasTerminalReconciliation)&&<section><h4>Терминал · архивные ответы</h4><dl>{hasTerminalOperations&&<><dt>Были операции</dt><dd>{yesNo(terminalCheck.hadOperations)}</dd></>}{hasTerminalReconciliation&&<><dt>Сверка сотрудника</dt><dd>{terminalCheck.reconciliation==='matched'?'Совпадает':'Есть расхождение'}</dd></>}</dl></section>}
     {storeClosing&&<section><h4>Закрытие магазина</h4><span className={`team-status ${closingTone}`}>{closingLabel}</span></section>}
     {(Object.values(photos ?? {}).some(photo => isRecord(photo) && Boolean(photo.storagePath)) || needsEncashmentPhoto || needsClosingPhoto || (department==='retail'&&terminalCheck?.hadOperations===true)) && <section><h4>Подтверждения</h4><div className="team-handover-photos">{readPhoto(photos,'personalStatement')&&<PhotoRow label="Ведомость 1С" photo={readPhoto(photos,'personalStatement')} onPreview={onPreview}/>}{needsEncashmentPhoto&&<PhotoRow label="Документ инкассации" photo={readPhoto(photos,'encashmentDocument')} onPreview={onPreview}/>} {department==='retail'&&terminalCheck?.hadOperations===true&&<PhotoRow label="Чеки терминала" photo={readPhoto(photos,'terminalReceipts')??readPhoto(photos,'personalAcquiringReceipts')} onPreview={onPreview}/>} {(needsClosingPhoto||readPhoto(photos,'zReport'))&&<PhotoRow label="Чек закрытия" photo={readPhoto(photos,'zReport')} onPreview={onPreview}/>}</div></section>}
     {history.length>0&&<section><h4>Ввод наличных</h4>{history.map((entry,index)=><p key={`${entry.enteredAt}-${index}`}>{entry.kind==='initial'?'Первоначальный':'Исправленный'} · {formatMoney(entry.value)} · {formatTime(entry.enteredAt)}</p>)}</section>}
@@ -515,7 +517,7 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
               : formatMoney(Number(reserveCash.cashBalance))}
           />
         ) : null}
-        {department === 'retail' ? (
+        {department === 'retail' && typeof terminalCheck?.hadOperations === 'boolean' ? (
           <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />
         ) : null}
         <DetailRow label='Инкассация' value={yesNo(personalCash?.requiresEncashment)} />
