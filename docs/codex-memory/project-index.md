@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Latest owner-approved schedule rule: `schedule-near-reminder-candidate-20261026.md` —
+  only today/tomorrow may cause the fill reminder; ordinary unrestricted month
+  calendar. Supersedes weekly obligation/default weekly view in 1.18.5.
+  Local candidate; not released. Do not reintroduce a required week/month.
+
 - Weekly schedule reminder local candidate: `schedule-week-reminder-candidate-20261026.md` —
   Friday planning, one bounded weekly calendar and live retirement; locally
   released/verified as 1.18.3; ADMIN inspection week-query parity released/verified

@@ -1,5 +1,9 @@
 # Weekly schedule reminder — local candidate 2026-10-26
 
+Superseded by the owner's later explicit today/tomorrow-only decision. See
+schedule-near-reminder-candidate-20261026.md for the current local candidate.
+This document retains the historical 1.18.3/1.18.5 release evidence.
+
 Owner approved a defined weekly policy after reviewing the unshipped monthly
 prototype, then explicitly authorized production deployment. Main weekly
 reminder was released and verified as 1.18.3; inspection parity follow-up below
