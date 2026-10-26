@@ -210,3 +210,23 @@ unverified; no claim that the desktop responsive test replaces it.
 - No production push, deployment, migration, financial writes, notification
   sending or version allocation occurred during preparation. Recheck live and
   deployment-branch versions immediately before an approved release.
+
+## Production release 1.18.6 — 2026-10-26
+
+- Owner authorized release. Runtime commit: `cf6d172e139060c96914451d390fac215ed1fe82`.
+- Public release metadata and authenticated ADMIN footer independently show
+  1.18.6, build `2026-10-26T16:03:06.555Z` (19:03 MSK).
+- Server checkout matches the runtime commit; portal-app is running/healthy,
+  image `sha256:4a9b0cb449891cae83db3fbdee06ce91f5ffaa32eb77cce56ebd25e6ea7f89d6`.
+- Initial SSH connection dropped during image export before replacement;
+  previous 1.18.5 remained healthy. Exact-release retry ran detached on the
+  server and completed successfully. Only unused build cache was reclaimed;
+  database, uploads, containers and verified rollback images were preserved.
+- Production employee Activity report loads; review-only filter was toggled
+  on and off successfully. Legacy missing telemetry remains explicitly unknown.
+  New client telemetry requires the employee client to load the new release.
+- Five release-metadata tests and production build passed in addition to the
+  candidate checks above. Physical iPhone/PWA and live financial execution
+  remain untested; no test financial operations or notifications were sent.
+- After independent UI/public checks, server image/health was rechecked and
+  `portal-storage-maintenance --register-verified` succeeded (`VERIFY_EXIT=0`).
