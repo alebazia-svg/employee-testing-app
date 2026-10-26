@@ -114,12 +114,12 @@ test('OFD closes the exact fiscal shift even when 1C still reports it open', asy
   assert.equal(kkmShiftCloseRequiresEmployeeAction(confirmed), false);
   for (const invalid of [{ ...report, shiftNumber: '74' }, { ...report, kktRegistrationNumber: 'other' }, { ...report, closedAt: '2026-10-25T13:00:00+03:00' }, { ...report, closedAt: 'bad' }]) {
     reports = [invalid];
-    assert.equal((await verify()).status, 'one_c_open');
+    assert.equal((await verify()).status, 'unavailable');
   }
   reports = [report]; complete = false;
   assert.equal((await verify()).status, 'unavailable');
   complete = true; reports = [];
-  assert.equal((await verify()).status, 'one_c_open');
+  assert.equal((await verify()).status, 'unavailable');
   shift.status = 'Закрыта'; shift.closedAt = report.closedAt;
   assert.equal((await verify()).status, 'ofd_missing');
 });
@@ -159,3 +159,23 @@ test('reopened shift closes by fiscal check time even when the 1C document clock
   check.fiscalDateTime = '';
   assert.equal((await verify()).status, 'ofd_missing');
 });
+
+ test('Milana: fiscal closure at 21:06 is authoritative while the 1C shift number is not yet filled', async()=>{
+ const {verifyEmployeeKkmShiftClose}=await import('../lib/kkm-shift-close-control');
+ const db:any={userOneCCashboxMapping:{findUnique:async()=>({oneCCashierRef:'cashier'})}};
+ const check={cashier:{ref:'cashier'},cashRegisterRef:'kkm',kktRegistrationNumber:'0010475338013250',dateTime:'2026-10-26T21:05:00+03:00',fiscalDateTime:'2026-10-26T21:05:00+03:00',fiscalDriveNumber:'7384441001649597',fiscalDocumentNumber:'123',fiscalSign:'456'};
+ const report={kktRegistrationNumber:check.kktRegistrationNumber,fiscalDriveNumber:check.fiscalDriveNumber,shiftNumber:'76',openedAt:'2026-10-26T10:45:00+03:00',closedAt:'2026-10-26T21:06:00+03:00',documentLink:'report-76'};
+ let shifts:any={ok:true,shifts:[{cashRegister:{ref:'kkm',name:'Касса'},posted:true,deletionMark:false,number:'1080',fiscalShiftNumber:'',status:'Открыта',datetime:'2026-10-26T10:56:20+03:00',openedAt:'2026-10-26T10:56:20+03:00',closedAt:''}]};
+ let reports=[report];
+ let checks:any[]=[check];
+ const sources:any={loadOneCKkmChecks:async()=>({complete:true,data:checks}),getCashShifts:async()=>shifts,loadPlatformaOfdZReports:async()=>({complete:true,data:reports})};
+ const verify=()=>verifyEmployeeKkmShiftClose({db,userId:3,date:'2026-10-26'},sources);
+ assert.equal((await verify()).status,'confirmed');assert.equal((await verify()).fiscalShiftNumber,'76');
+ shifts={ok:false,shifts:[]};assert.equal((await verify()).status,'confirmed','1C shift endpoint is not required for exact fiscal proof');
+ for(const invalid of [{...report,fiscalDriveNumber:'other'},{...report,kktRegistrationNumber:'other'},{...report,openedAt:'2026-10-26T21:05:01+03:00'},{...report,closedAt:'2026-10-26T21:04:00+03:00'}]){reports=[invalid];assert.equal((await verify()).status,'unavailable');}
+ reports=[report,{...report,shiftNumber:'77'}];assert.equal((await verify()).status,'unavailable','ambiguous intervals cannot confirm closure');
+ reports=[report];
+ checks=[check,{...check,cashier:{ref:'other-cashier'},fiscalDateTime:'2026-10-26T21:07:00+03:00'}];assert.equal((await verify()).status,'unavailable','later check by another cashier on the same KKT invalidates the old closure');checks=[check];
+ shifts={ok:true,shifts:[{cashRegister:{ref:'kkm',name:'Касса'},posted:true,deletionMark:false,number:'1081',fiscalShiftNumber:'77',status:'Открыта',datetime:'2026-10-26T21:10:00+03:00',openedAt:'2026-10-26T21:10:00+03:00',closedAt:''}]};assert.equal((await verify()).status,'confirmed','a later 1C document timestamp cannot override exact OFD proof; actual later fiscal checks remain the guard');
+ shifts={ok:false,shifts:[]};check.fiscalDateTime='';assert.equal((await verify()).status,'unavailable');
+ });
