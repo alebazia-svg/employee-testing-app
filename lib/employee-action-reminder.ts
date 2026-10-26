@@ -1,3 +1,4 @@
+import { scheduleCalendarHref } from './schedule-near-reminder';
 import { getMoscowDateKey, getMoscowMinutes } from './workday';
 import { orderEmployeeAttention, type EmployeeAttentionItem } from './employee-attention';
 import { scheduleWeekHref } from './schedule-week-reminder';
@@ -16,7 +17,7 @@ export type EmployeeActionReminder = { id: string; title: string; href: string; 
 export function employeeActionReminder(workday: ReminderWorkday | null, attention: EmployeeAttentionItem[] | null, now = new Date()): EmployeeActionReminder | null {
   const actions = orderEmployeeAttention(attention ?? []).filter(item => item.state === 'action');
   const schedule = actions.find(item => item.kind === 'schedule');
-  const scheduleReminder: EmployeeActionReminder | null = schedule ? { id: schedule.id, title: schedule.title, href: schedule.scheduleAction==='week'?scheduleWeekHref(schedule.scheduleDate!,schedule.scheduleWeekStart):`/employee?attention=schedule&item=${encodeURIComponent(schedule.id)}`, target: schedule.scheduleAction==='week'?'schedule':'attention' } : null;
+  const scheduleReminder: EmployeeActionReminder | null = schedule ? { id: schedule.id, title: schedule.title, href: schedule.scheduleAction==='week'?(schedule.scheduleWeekStart?scheduleWeekHref(schedule.scheduleDate!,schedule.scheduleWeekStart):scheduleCalendarHref(schedule.scheduleDate!)):`/employee?attention=schedule&item=${encodeURIComponent(schedule.id)}`, target: schedule.scheduleAction==='week'?'schedule':'attention' } : null;
   const issue = actions.find(item => item.kind !== 'schedule');
   if (issue) return {
     id: issue.id, title: issue.kind === 'receipt' ? 'Проверьте чеки' : issue.kind === 'cash' ? 'Оформите расходники в 1С' : issue.title,

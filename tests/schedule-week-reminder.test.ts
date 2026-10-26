@@ -45,18 +45,18 @@ test('working/off/vacation complete a date; today and tomorrow qualifiers are fa
  assert.equal(state(all.slice(0,2),[{dateFrom:'2026-10-28',dateTo:'2026-11-03'}]).active,false);
  assert.equal(scheduleWeekReminder({today,weekStart:'2026-10-19',entries:[],vacations:[]}).active,false);
 });
-test('one weekly action survives reading and today-only save, opens bounded calendar and retires without filling the whole month',()=>{
+test('legacy weekly notice projects one near-day action without a bounded calendar',()=>{
  const data={userId:2,department:'retail',today,dated:[{date:today,notice:{id:3,kind:SCHEDULE_WEEK_KIND,title:'',readAt:null as Date|null}}],entries:[] as Array<{date:string;userId:number;status:string;user:{name:string}}>,vacations:[]};
  let item=scheduleAttentionItems(data)[0];assert.equal(item.scheduleAction,'week');data.dated[0].notice.readAt=new Date();
- data.entries.push({date:today,userId:2,status:'working',user:{name:'Учебный'}});item=scheduleAttentionItems(data)[0];assert.equal(item.status,'Завтра не отмечено');assert.deepEqual(item.notificationIds,[]);
- const reminder=employeeActionReminder(null,[item])!;assert.equal(reminder.target,'schedule');assert.match(reminder.href,/week=2026-10-26/);assert.equal(employeeReminderIconKind(reminder),'schedule');
+ data.entries.push({date:today,userId:2,status:'working',user:{name:'Учебный'}});item=scheduleAttentionItems(data)[0];assert.equal(item.status,'Завтра не заполнен');assert.deepEqual(item.notificationIds,[]);
+ const reminder=employeeActionReminder(null,[item])!;assert.equal(reminder.target,'schedule');assert.doesNotMatch(reminder.href,/week=/);assert.equal(employeeReminderIconKind(reminder),'schedule');
  data.entries=requiredScheduleWeekDates(today).map(date=>({date,userId:2,status:'off',user:{name:'Учебный'}}));assert.deepEqual(scheduleAttentionItems(data),[]);
 });
 test('weekly reminder key and route differ from a concrete replacement; malformed week cannot be activated',()=>{
  assert.equal(scheduleWeekNoticeRef('schedule-week:retail:2026-10-27:2'),null);
  assert.equal(scheduleWeekNoticeRef('schedule-week:retail:2026-02-30:2'),null);
  const row={id:1,taskId:null,issueId:null,reviewId:null,kind:SCHEDULE_WEEK_KIND,fingerprint:'schedule-week:retail:2026-10-26:2'};
- assert.equal(notificationTargetKey(row),'schedule-week:retail:2026-10-26');assert.match(workdayNotificationHref(row),/week=2026-10-26/);
+ assert.equal(notificationTargetKey(row),'schedule-week:retail:2026-10-26');assert.doesNotMatch(workdayNotificationHref(row),/week=/);
  assert.notEqual(notificationTargetKey(row),notificationTargetKey({...row,kind:'schedule_replacement_request',fingerprint:'schedule-coverage:retail:2026-10-27:2'}));
 });
 test('weekly planning and dated replacement stay separate; missing plans do not create another replacement',()=>{

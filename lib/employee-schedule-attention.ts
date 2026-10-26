@@ -4,17 +4,16 @@ import { activeScheduleNotices, scheduleNoticeKinds, scheduleQuestionIsActive } 
 import { getMoscowDateKey } from './workday';
 import { scheduleCoverage, schedulePersonName } from './work-schedule-coverage';
 import type { EmployeeAttentionItem } from './employee-attention';
-import { requiredScheduleWeekDates, scheduleWeekReminder, SCHEDULE_WEEK_KIND, schedulePlanningWeek } from './schedule-week-reminder';
+import { scheduleNearDates, scheduleNearReminder, SCHEDULE_NEAR_KIND } from './schedule-near-reminder';
 
 /** Reading a notice does not answer the request. Recheck the current plan. */
 export async function loadEmployeeScheduleAttention(userId: number): Promise<EmployeeAttentionItem[]> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { department: true } });
-  if (!user) return [];
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { department: true, role: true, isActive: true } });
+  if (!user || user.role !== 'EMPLOYEE' || !user.isActive || !['retail','wholesale'].includes(user.department)) return [];
   const notices = await prisma.workdayNotification.findMany({ where: { userId, kind: { in: scheduleNoticeKinds }, status: { in: ['pending', 'sent'] } }, orderBy: { scheduledAt: 'desc' } });
   const today = getMoscowDateKey();
   const dated = [...(await activeScheduleNotices(prisma, notices, today)).values()].flat();
-  if (!dated.length) return [];
-  const dates = [...new Set([...dated.map(row => row.date), ...(notices.some(n=>n.kind===SCHEDULE_WEEK_KIND)?requiredScheduleWeekDates(today):[])])];
+  const dates = [...new Set([...dated.map(row => row.date), ...scheduleNearDates(today)])];
   const [entries, vacations] = await Promise.all([
     prisma.workScheduleEntry.findMany({ where: { department: user.department, date: { in: dates }, user: { role: 'EMPLOYEE', isActive: true, department: user.department } }, include: { user: { select: { name: true } } } }),
     prisma.employeeVacation.findMany({ where: { department: user.department, status: 'active', dateFrom: { lte: dates.slice().sort().at(-1)! }, dateTo: { gte: today } } }),
@@ -29,18 +28,14 @@ export function scheduleAttentionItems({ userId, department, today, dated, entri
   vacations: Array<{ userId: number; dateFrom: string; dateTo: string }>;
 }): EmployeeAttentionItem[] {
   const result = new Map<string, EmployeeAttentionItem>();
+  const near = scheduleNearReminder({today,entries:entries.filter(e=>e.userId===userId),vacations:vacations.filter(v=>v.userId===userId)});
+  if (near.active && ['retail','wholesale'].includes(department)) result.set(`schedule-plan:${today}`, {
+    id:`schedule-plan:${today}`,kind:'schedule',title:near.title,state:'action',status:near.qualifier,
+    priority:3,date:near.missing[0],detail:near.body,scheduleAction:'week',scheduleDate:near.missing[0],
+    notificationIds:dated.filter(d=>d.notice.kind===SCHEDULE_NEAR_KIND&&!d.notice.readAt).map(d=>d.notice.id),
+  });
   for (const { notice, date } of dated) {
-    if (date < today) continue;
-    if (notice.kind === SCHEDULE_WEEK_KIND) {
-      const state = scheduleWeekReminder({today,weekStart:schedulePlanningWeek(today),entries:entries.filter(e=>e.userId===userId),vacations:vacations.filter(v=>v.userId===userId)});
-      if (state.active) result.set(`schedule-week:${state.weekStart}`, {
-        id:`schedule-week:${state.weekStart}`,kind:'schedule',title:state.title,
-        state:'action',status:state.qualifier || 'Остались незаполненные дни',priority:3,date:state.missing[0],
-        detail:state.body,scheduleAction:'week',scheduleDate:state.missing[0],scheduleWeekStart:state.weekStart,
-        notificationIds:notice.readAt?[]:[notice.id],
-      });
-      continue;
-    }
+    if (date < today || !['schedule_replacement_request','schedule_replacement_digest'].includes(notice.kind)) continue;
     const vacationIds = new Set(vacations.filter(row => row.dateFrom <= date && row.dateTo >= date).map(row => row.userId));
     const day = entries.filter(row => row.date === date);
     const own = day.find(row => row.userId === userId);

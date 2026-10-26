@@ -1,3 +1,4 @@
+import { SCHEDULE_NEAR_KIND, scheduleNearNoticeRef, scheduleCalendarHref } from './schedule-near-reminder';
 import { schedulePushAt } from './schedule-coverage-question';
 import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
@@ -292,6 +293,8 @@ function configureWebPush() {
 }
 
 export function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  const near = notification.kind === SCHEDULE_NEAR_KIND ? scheduleNearNoticeRef(notification.fingerprint ?? '') : null;
+  if (near) return `schedule-near:${near.department}:${near.date}`;
   const month = notification.kind === SCHEDULE_WEEK_KIND ? scheduleWeekNoticeRef(notification.fingerprint ?? '') : null;
   if (month) return `schedule-week:${month.department}:${month.weekStart}`;
   if (notification.taskId) return `task:${notification.taskId}`;
@@ -305,10 +308,8 @@ export function notificationTargetKey(notification: { id: number; taskId: number
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
-  if (notification.kind === SCHEDULE_WEEK_KIND) {
-    const ref = scheduleWeekNoticeRef(notification.fingerprint ?? ''), today = getMoscowDateKey();
-    return ref ? scheduleWeekHref(today,ref.weekStart) : '/employee';
-  }
+  if (notification.kind === SCHEDULE_NEAR_KIND) return scheduleCalendarHref(getMoscowDateKey());
+  if (notification.kind === SCHEDULE_WEEK_KIND) return scheduleCalendarHref(getMoscowDateKey());
   if(notification.kind===QR_CHECK_KIND){const id=qrCheckPlan(notification.fingerprint||'');return id?receiptHref(id,false):'/procurement';}
   if (notification.kind === EMPLOYEE_EXPENSE_KIND) return '/employee?attention=cash';
   if (notification.kind === CASH_ISSUE_KIND) return cashIssueHref(notification.fingerprint);

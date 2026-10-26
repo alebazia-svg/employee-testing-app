@@ -1,3 +1,4 @@
+import { SCHEDULE_NEAR_KIND, scheduleNearDates, scheduleNearNoticeRef, scheduleNearReminder } from './schedule-near-reminder';
 import { schedulePushAt } from './schedule-coverage-question';
 import 'server-only';
 import type { Prisma } from '@prisma/client';
@@ -5,7 +6,7 @@ import { getMoscowDateKey } from './workday';
 import { scheduleCoverage, schedulePersonName } from './work-schedule-coverage';
 import { requiredScheduleWeekDates, scheduleWeekNoticeRef, scheduleWeekReminder, SCHEDULE_WEEK_KIND, schedulePlanningWeek } from './schedule-week-reminder';
 
-export const scheduleNoticeKinds = ['schedule_fill_request', 'schedule_replacement_request', 'schedule_replacement_digest', SCHEDULE_WEEK_KIND];
+export const scheduleNoticeKinds = ['schedule_fill_request', 'schedule_replacement_request', 'schedule_replacement_digest', SCHEDULE_WEEK_KIND, SCHEDULE_NEAR_KIND];
 type Db = Prisma.TransactionClient;
 type Notice = { id: number; kind: string; fingerprint: string; title: string; readAt: Date | null; scheduledAt: Date };
 export type DatedScheduleNotice = { date: string; notice: Notice };
@@ -69,10 +70,10 @@ export async function activeScheduleNotices(db: Db, rows: Array<{ id: number; ki
   for (const userId of userIds) {
     const ownNotices = notices.filter(row => row.userId === userId);
     const user = ownNotices[0].user;
-    const weekly = ownNotices.filter(n => n.kind === SCHEDULE_WEEK_KIND && scheduleWeekNoticeRef(n.fingerprint)?.userId === userId && scheduleWeekNoticeRef(n.fingerprint)?.department === user.department && scheduleWeekNoticeRef(n.fingerprint)?.weekStart === schedulePlanningWeek(today));
-    if (weekly.length) {
-      const state = (await loadScheduleWeekReminders(db, [userId], today)).get(userId)!;
-      if (state.active) for (const notice of weekly) result.set(notice.id, [{date: state.missing[0], notice}]);
+    const near = ownNotices.filter(n => n.kind === SCHEDULE_NEAR_KIND && scheduleNearNoticeRef(n.fingerprint)?.userId === userId && scheduleNearNoticeRef(n.fingerprint)?.department === user.department && scheduleNearNoticeRef(n.fingerprint)?.date === today);
+    if (near.length) {
+      const state = (await loadScheduleNearReminders(db, [userId], today)).get(userId)!;
+      if (state.active) for (const notice of near) result.set(notice.id, [{date:state.missing[0],notice}]);
     }
     const dated = await datedScheduleNotices(db, user, ownNotices, today);
     const dates = [...new Set(dated.map(row => row.date))].sort();
@@ -168,5 +169,48 @@ export async function reconcileScheduleWeekQuestions(db: Db, department: string,
       const reopen = !['pending','sent'].includes(old.status);
       if (reopen || old.title !== state.title || old.body !== state.body) await db.workdayNotification.update({where:{id:old.id},data:{title:state.title,body:state.body,...(reopen ? {status:old.sentAt?'sent':'pending',pushStatus:old.sentAt?'cancelled':'pending',nextPushAttemptAt:null} : {})}});
     } else await db.workdayNotification.upsert({where:{fingerprint},create:{userId:user.id,fingerprint,kind:SCHEDULE_WEEK_KIND,title:state.title,body:state.body,scheduledAt:now},update:{}});
+  }
+}
+
+export async function loadScheduleNearReminders(db: Db, userIds: number[], today = getMoscowDateKey()) {
+  const dates = scheduleNearDates(today);
+  const [entries, vacations] = await Promise.all([
+    db.workScheduleEntry.findMany({where:{userId:{in:userIds},date:{in:dates}},select:{userId:true,date:true,status:true}}),
+    db.employeeVacation.findMany({where:{userId:{in:userIds},status:'active',dateFrom:{lte:dates[1]},dateTo:{gte:today}},select:{userId:true,dateFrom:true,dateTo:true}}),
+  ]);
+  return new Map(userIds.map(id => [id, scheduleNearReminder({today,entries:entries.filter(e=>e.userId===id),vacations:vacations.filter(v=>v.userId===id)})]));
+}
+
+/** One daily reminder about today/tomorrow; filling later dates is optional. */
+export async function reconcileScheduleNearQuestions(db: Db, department: string, now = new Date()) {
+  const today = getMoscowDateKey(now);
+  const users = await db.user.findMany({where:{role:'EMPLOYEE',isActive:true,department},select:{id:true}});
+  if (!users.length) return;
+  const userIds = users.map(u=>u.id), states = await loadScheduleNearReminders(db,userIds,today);
+  const legacyKinds = ['schedule_fill_request', SCHEDULE_WEEK_KIND];
+  // Preserve history, but retire both the weekly obligation and past daily cycles.
+  await db.workdayNotification.updateMany({where:{userId:{in:userIds},status:{in:['pending','sent']},OR:[
+    {kind:{in:legacyKinds}},
+    {kind:SCHEDULE_NEAR_KIND,NOT:{fingerprint:{startsWith:`schedule-near:${department}:${today}:`}}},
+  ]},data:{status:'resolved',pushStatus:'cancelled',nextPushAttemptAt:null}});
+  for (const user of users) {
+    const fingerprint = `schedule-near:${department}:${today}:${user.id}`;
+    const old = await db.workdayNotification.findUnique({where:{fingerprint}});
+    const state = states.get(user.id)!;
+    if (!state.active) {
+      if (old && ['pending','sent'].includes(old.status)) await db.workdayNotification.updateMany({where:{id:old.id,status:{in:['pending','sent']}},data:{status:'resolved',pushStatus:'cancelled',nextPushAttemptAt:null}});
+      continue;
+    }
+    if (old) {
+      const reopen = !['pending','sent'].includes(old.status);
+      if (reopen || old.title !== state.title || old.body !== state.body) await db.workdayNotification.update({where:{id:old.id},data:{title:state.title,body:state.body,...(reopen ? {status:old.sentAt?'sent':'pending',pushStatus:old.sentAt?'cancelled':'pending',nextPushAttemptAt:null} : {})}});
+    } else {
+      // A delivery already accepted today under the previous rule is not replayed.
+      // This creates an inbox item, not a fabricated provider-delivery receipt.
+      const alreadyNotified = await db.workdayNotification.findFirst({where:{userId:user.id,kind:{in:legacyKinds},sentAt:{gte:new Date(`${today}T00:00:00+03:00`)},pushDeliveredAt:{not:null}},select:{id:true}});
+      await db.workdayNotification.upsert({where:{fingerprint},create:{userId:user.id,fingerprint,kind:SCHEDULE_NEAR_KIND,title:state.title,body:state.body,scheduledAt:now,
+        ...(alreadyNotified ? {status:'sent',sentAt:now,pushStatus:'cancelled',lastError:'SCHEDULE_ALREADY_NOTIFIED_TODAY'} : {}),
+      },update:{}});
+    }
   }
 }
