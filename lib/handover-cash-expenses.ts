@@ -11,10 +11,17 @@ export type HandoverCashExpenses = {
   checkedAt: string; requestRefs: string[]; documentRefs: string[];
 };
 /** Full explanation only: direct cashbox ownership/allocation, never comment parsing or subset sums. */
-export function handoverCashExpenses(input: {actual:number;expected:number|null;capturedAt:string;cashboxRef:string;uniqueOwner:boolean;complete:boolean;checkedAt:string|null;now:number;rows:Array<{source:unknown;seenAt:string;cycle:number}>}): HandoverCashExpenses | null | undefined {
+type HandoverCashExpenseInput = {actual:number;expected:number|null;capturedAt:string;cashboxRef:string;uniqueOwner:boolean;complete:boolean;checkedAt:string|null;now:number;rows:Array<{source:unknown;seenAt:string;cycle:number}>};
+export function handoverCashExpenses(input:HandoverCashExpenseInput): HandoverCashExpenses | null | undefined {
+ // Prefer the complete set of requests already known at the count. Later
+ // multi-cashbox allocations are fallback evidence, never extra earlier spending.
+ const anchored=evaluateExpenses(input,false);
+ return anchored===null ? evaluateExpenses(input,true) : anchored;
+}
+function evaluateExpenses(input:HandoverCashExpenseInput,includeLateAllocations:boolean): HandoverCashExpenses | null | undefined {
  const captured=Date.parse(input.capturedAt), countedDay=new Date(input.capturedAt).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'}), difference=Math.round(((input.expected??input.actual)-input.actual)*100);
  if(input.expected===null||difference<=0||!Number.isFinite(captured))return null;
- const snapshot=employeeExpenseSnapshot(input);
+ const snapshot=employeeExpenseSnapshot({...input,rows:input.rows.filter(row=>{const at=parseOneCDateTime(text(record(row.source).date));return at!==null&&+at<=captured;})});
  if(snapshot.state!=='ready')return undefined;
  const before=(date:string)=>{const at=parseOneCDateTime(date);return at!==null&&+at<=captured;};
  const pending=snapshot.pending.filter(x=>before(x.date)), payable=snapshot.payable.filter(x=>before(x.date));
@@ -28,7 +35,7 @@ export function handoverCashExpenses(input: {actual:number;expected:number|null;
   if(!ownRequest&&!ownAllocation)continue;
   // A later ordinary request belongs to a later cash operation, not this count.
   // Late multi-cashbox requests retain their explicit allocation evidence.
-  if(ownRequest && +requestAt>captured)continue;
+  if(+requestAt>captured && (ownRequest || !includeLateAllocations))continue;
   if(s.deletionMark===true||s.posted===false||text(record(s.status).key)==='rejected')continue;
   // Paid rows also need fresh, explicit evidence. Absence/staleness is not a reversal.
   const seen=Date.parse(row.seenAt);

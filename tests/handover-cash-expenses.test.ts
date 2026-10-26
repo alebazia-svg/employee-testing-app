@@ -93,3 +93,24 @@ test('paid multi-cashbox rows with provider errors or truncated branches remain 
  const data=input(paid);data.rows.push({source:later,seenAt:new Date(now-1000).toISOString(),cycle:1});
  const result=handoverCashExpenses(data)!;assert.equal(result.state,'documented');assert.equal(result.documentedAmount,16000);assert.deepEqual(result.documentRefs,['rko']);
  });
+
+test('a complete anchored expense is not invalidated by an unrelated later multi-cashbox request',()=>{
+ const paid=source('payable',true),later=source('payable',true);
+ later.ref='later-allocation';later.cashbox.ref='';later.date='25.10.2026 18:15:00';later.amount=3500;later.execution.executed_amount=3500;
+ Object.assign(later.linkedCashExpenseOrders.rows[0],{ref:'later-order',amount:3500,request_amount:3500,executed_amount:3500});
+ paid.amount=350;paid.execution.executed_amount=350;Object.assign(paid.linkedCashExpenseOrders.rows[0],{amount:350,request_amount:350,executed_amount:350});
+ const data={...input(paid),actual:8250,expected:8600};data.rows.push({source:later,seenAt:new Date(now-1000).toISOString(),cycle:1});
+ const original=JSON.stringify(data);
+ const result=handoverCashExpenses(data)!;
+ assert.equal(result.state,'documented');assert.equal(result.documentedAmount,350);assert.deepEqual(result.documentRefs,['rko']);
+ assert.equal(JSON.stringify(data),original);
+});
+test('a partial anchored explanation may use the complete later allocation, without choosing amount subsets',()=>{
+ const paid=source('payable',true),later=source('payable',true);
+ paid.amount=6000;paid.execution.executed_amount=6000;Object.assign(paid.linkedCashExpenseOrders.rows[0],{amount:6000,request_amount:6000,executed_amount:6000});
+ later.ref='late';later.cashbox.ref='';later.date='25.10.2026 18:09:01';later.amount=10000;later.execution.executed_amount=10000;Object.assign(later.linkedCashExpenseOrders.rows[0],{ref:'late-rko',amount:10000,request_amount:10000,executed_amount:10000});
+ const data=input(paid);data.rows.push({source:later,seenAt:new Date(now-1000).toISOString(),cycle:1});
+ assert.equal(handoverCashExpenses(data)?.documentedAmount,16000);
+ later.amount=11000;later.execution.executed_amount=11000;Object.assign(later.linkedCashExpenseOrders.rows[0],{amount:11000,request_amount:11000,executed_amount:11000});
+ assert.equal(handoverCashExpenses(data),null);
+});

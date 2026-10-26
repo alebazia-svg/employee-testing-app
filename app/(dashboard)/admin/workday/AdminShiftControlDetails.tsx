@@ -1,4 +1,5 @@
 'use client';
+import type { CashInventoryResolution } from '@/lib/cash-inventory-resolution';
 import type { HandoverCashExpenses } from '@/lib/handover-cash-expenses';
 import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayCardList, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
@@ -131,6 +132,7 @@ type EmployeeNavigation = {
 };
 
 export type ShiftAutoCheck = {
+  inventoryResolution?: CashInventoryResolution;
   expenseState?: 'awaiting_approval' | 'awaiting_documents' | 'documented';
   handoverExpenses?: HandoverCashExpenses;
   id: string;
@@ -461,7 +463,7 @@ function CashComparison({check,actual,encashment,encashmentCheck,draft=false}:{c
  const result=verdict.label+(verdict.difference===undefined?'':` ${formatMoney(verdict.difference)}`);
  const tone=verdict.tone;
  const encashmentVerdict=encashment?(encashment.encashmentExceptionRequestId && encashmentCheck?.status==='matched' ? handoverEncashmentResult(encashment,encashmentCheck) : draft?{label:'Черновик',tone:'amber'}:handoverEncashmentResult(encashment,encashmentCheck)):null;
- return <div className="team-handover-table-wrap"><table className="team-handover-table"><thead><tr><th scope="col">Проверка</th><th scope="col">Введено</th><th scope="col">1С</th><th scope="col">Результат</th></tr></thead><tbody><tr><th scope="row">Остаток кассы</th><td>{fact===null?'Не указано':formatMoney(fact)}</td><td>{expected===null?'Нет данных':formatMoney(expected)}</td><td>{check?.handoverExpenses && check.handoverExpenses.approvalAmount>0 && check.handoverExpenses.payableAmount>0 ? <div className='grid gap-1'><span className='team-status amber'>К согласованию {formatMoney(check.handoverExpenses.approvalAmount)}</span><span className='team-status amber'>Оформите расходник {formatMoney(check.handoverExpenses.payableAmount)}</span></div> : <span className={`team-status ${tone}`}>{result}</span>}</td></tr>{encashment&&<tr><th scope="row">Инкассация при сдаче</th><td>{encashment.requiresEncashment===true&&typeof encashment.encashmentAmount==='number'?formatMoney(encashment.encashmentAmount):'—'}</td><td>—</td><td><span className={`team-status ${encashmentVerdict?.tone}`}>{encashmentVerdict?.label}</span></td></tr>}</tbody></table></div>;
+ return <div className="team-handover-table-wrap"><table className="team-handover-table"><thead><tr><th scope="col">Проверка</th><th scope="col">Введено</th><th scope="col">{check?.inventoryResolution?'1С при пересчёте':'1С'}</th><th scope="col">Результат</th></tr></thead><tbody><tr><th scope="row">Остаток кассы</th><td>{fact===null?'Не указано':formatMoney(fact)}</td><td>{expected===null?'Нет данных':formatMoney(expected)}</td><td>{check?.handoverExpenses && check.handoverExpenses.approvalAmount>0 && check.handoverExpenses.payableAmount>0 ? <div className='grid gap-1'><span className='team-status amber'>К согласованию {formatMoney(check.handoverExpenses.approvalAmount)}</span><span className='team-status amber'>Оформите расходник {formatMoney(check.handoverExpenses.payableAmount)}</span></div> : <span className={`team-status ${tone}`}>{result}</span>}</td></tr>{encashment&&<tr><th scope="row">Инкассация при сдаче</th><td>{encashment.requiresEncashment===true&&typeof encashment.encashmentAmount==='number'?formatMoney(encashment.encashmentAmount):'—'}</td><td>—</td><td><span className={`team-status ${encashmentVerdict?.tone}`}>{encashmentVerdict?.label}</span></td></tr>}</tbody></table>{check?.inventoryResolution&&<p className='mt-2 text-xs font-semibold leading-snug text-slate-600'>{check.inventoryResolution.documentName}. Исходная разница {formatMoney(Math.abs(check.inventoryResolution.difference))} сохранена в истории.</p>}</div>;
 }
 
 function HandoverDetails({ data, department, onPreview, checks=[], submitted=true, finalizedByAdmin=false }: { finalizedByAdmin?:boolean; submitted?:boolean; data: unknown; department: string; onPreview: (photo: PhotoPreview) => void; checks?:ShiftAutoCheck[] }) {
@@ -597,7 +599,7 @@ function TaskDetailCard({
       {item.autoChecks.length > 0 ? (
         <div className='mt-3 grid gap-2'>
           {item.autoChecks.map((check) => {
-            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : check.status === 'unavailable' && item.task.category === 'cash' ? {label:'Сверка 1С недоступна',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_approval' ? {label:'Ожидает согласования заявки',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_documents' ? { label: 'Ожидает оформления заявок', className: 'bg-amber-50 text-amber-800' } : autoCheckBadge(check.status);
+            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : check.status === 'unavailable' && item.task.category === 'cash' ? {label:'Сверка 1С недоступна',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_approval' ? {label:'Ожидает согласования заявки',className:'bg-amber-50 text-amber-800'} : check.expenseState === 'awaiting_documents' ? { label: 'Ожидает оформления заявок', className: 'bg-amber-50 text-amber-800' } : check.inventoryResolution ? {label:'Оформлено инвентаризацией',className:'bg-slate-100 text-slate-700'} : autoCheckBadge(check.status);
             const cashPhotoHref = photoHref({ storagePath: check.cashOperation?.photoPath });
             const cashPhotoLabel = `Фото инкассации · ${formatMoney(check.cashOperation?.amount)}`;
             return (

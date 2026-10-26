@@ -1,3 +1,4 @@
+import { cashInventoryResolution } from '@/lib/cash-inventory-resolution';
 import { kkmCloseConfirmation, hasConfirmedKkmCloseEvidence } from '@/lib/kkm-close-confirmation';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { handoverExpenseLabel } from '@/lib/handover-cash-expenses';
@@ -889,7 +890,7 @@ function buildEmployeeAutoChecks({
         ? `Остаток 1С на момент проверки: ${formatMoney(personalCashAudit.balance)}${personalCashAudit.capturedAt ? ` · зафиксирован в ${formatTime(new Date(personalCashAudit.capturedAt))}` : ''}.`
         : 'Снимок при сдаче смены отсутствует; используется конечный остаток 1С за день.',
     }));
-    if (reserveCash) checks.push(moneyAutoCheck({
+    const reserveCheck = reserveCash ? moneyAutoCheck({
       id: `handover-reserve-${task.id}`,
       taskId: task.id,
       label: 'Пересчёт резерва',
@@ -900,7 +901,12 @@ function buildEmployeeAutoChecks({
         : reserveCashboxName
           ? `Снимок при сдаче смены отсутствует; используется конечный остаток кассы 1С «${reserveCashboxName}» за день.`
         : 'Касса резерва 1С не найдена.',
-    }));
+    }) : null;
+    if (reserveCheck) {
+      const inventory=reserveCashAudit?.status==='captured' ? cashInventoryResolution({actual:reserveCheck.actual??null,expected:reserveCheck.expected??null,capturedAt:reserveCashAudit.capturedAt,cashboxRef:reserveCashAudit.cashboxRef,statement:reserveStatement}) : null;
+      if(inventory)Object.assign(reserveCheck,{status:'matched',inventoryResolution:inventory,summary:`Разница ${formatMoney(Math.abs(inventory.difference))} оформлена инвентаризацией. Первоначальный пересчёт сохранён.`,evidence:inventory.documentName});
+      checks.push(reserveCheck);
+    }
 
     const discrepancyType = personalCash ? readText(personalCash.discrepancyType) : '';
     const discrepancyAmount = personalCash ? readNumber(personalCash.discrepancyAmount) : null;
@@ -1456,6 +1462,8 @@ export default async function AdminWorkdayPage(
       if (expenses) Object.assign(check, { handoverExpenses:expenses, expenseState:expenses.state,
         status:expenses.state==='documented'?'matched':'waiting',
         summary:expenses.state==='documented' ? `Разница ${formatMoney(audit.balance-check.actual)} подтверждена проведёнными расходниками по заявкам. Факт ${formatMoney(check.actual)} · остаток 1С при пересчёте ${formatMoney(audit.balance)}.` : handoverExpenseLabel(expenses) });
+      const inventory=cashInventoryResolution({actual:check.actual,expected:audit.balance,capturedAt:audit.capturedAt,cashboxRef:audit.cashboxRef,statement:cashRow?.result??null});
+      if(inventory && expenses?.state!=='documented')Object.assign(check,{status:'matched',inventoryResolution:inventory,handoverExpenses:undefined,expenseState:undefined,summary:`Разница ${formatMoney(Math.abs(inventory.difference))} оформлена инвентаризацией. Первоначальный пересчёт сохранён.`,evidence:inventory.documentName});
     }
     return [
       employee.id,
