@@ -26,6 +26,9 @@ export function handoverCashExpenses(input: {actual:number;expected:number|null;
   const ownRequest=text(record(s.cashbox).ref).toLowerCase()===input.cashboxRef.toLowerCase();
   const ownAllocation=Array.isArray(links.rows)&&links.rows.some(value=>text(record(record(value).cashbox).ref).toLowerCase()===input.cashboxRef.toLowerCase());
   if(!ownRequest&&!ownAllocation)continue;
+  // A later ordinary request belongs to a later cash operation, not this count.
+  // Late multi-cashbox requests retain their explicit allocation evidence.
+  if(ownRequest && +requestAt>captured)continue;
   if(s.deletionMark===true||s.posted===false||text(record(s.status).key)==='rejected')continue;
   // Paid rows also need fresh, explicit evidence. Absence/staleness is not a reversal.
   const seen=Date.parse(row.seenAt);

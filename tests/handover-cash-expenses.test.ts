@@ -85,3 +85,11 @@ test('paid multi-cashbox rows with provider errors or truncated branches remain 
   }
  }
 });
+
+ test('later same-cashbox expense does not contaminate an earlier documented count',()=>{
+ const paid=source('payable',true),later=source('payable',true);
+ later.ref='later-request';later.date='25.10.2026 18:15:00';later.amount=500;later.execution.executed_amount=500;
+ Object.assign(later.linkedCashExpenseOrders.rows[0],{ref:'later-order',amount:500,request_amount:500,executed_amount:500});
+ const data=input(paid);data.rows.push({source:later,seenAt:new Date(now-1000).toISOString(),cycle:1});
+ const result=handoverCashExpenses(data)!;assert.equal(result.state,'documented');assert.equal(result.documentedAmount,16000);assert.deepEqual(result.documentRefs,['rko']);
+ });
