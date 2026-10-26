@@ -27,3 +27,25 @@ test('period views skip preview, disabled, hidden and abandoned screens',()=>{
  for(const config of [{preview:{}},{visible:false},{}]){const p=periodPage(config);p.mount('2026-10',!!config.preview||config.visible===false);p.advance(350);assert.equal(p.events.length,0);}
  const p=periodPage();p.mount('2026-10');p.advance(100);p.mount('2026-09');p.advance(350);assert.equal(p.events.length,1);assert.equal(p.events[0].context.period,'2026-09');
 });
+
+test('schedule refresh preserves weekly API and attention refresh alongside bounded activity capture',async()=>{
+ const source=fs.readFileSync('app/(dashboard)/employee/EmployeeTodayClient.tsx','utf8');
+ const start=source.indexOf('  const syncScheduleState = useCallback(');
+ const end=source.indexOf('\n  useEffect(',start);
+ assert.ok(start>0&&end>start);
+ const code=ts.transpileModule(source.slice(start,end)+'\nexports.sync=syncScheduleState;', {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ for(const week of ['2026-11-02',null]){
+  const requests=[],audit=[],loaded=[],dispatched=[];let deps;
+  const context={exports:{},planningWeekStart:week,scheduleMode:'month',calendarMonth:'2026-10',today:'2026-10-26',activeTab:'schedule',preview:null,scheduleAuditSeen:{current:''},navigator:{onLine:true},Set,Event,
+   useCallback:(fn,values)=>{deps=values;return fn;},
+   beginEmployeeOperation:(action,options)=>{if(!options.disabled)audit.push({action,period:options.period});return stage=>{if(!options.disabled)audit.push({stage});};},
+   request:async url=>{requests.push(url);return {ok:true,json:async()=>({ownSchedule:[],departmentSchedule:[],range:{from:'2026-10-26',to:'2026-11-08'}})};},
+   isRecord:value=>!!value&&typeof value==='object',replaceScheduleRange:()=>[],replaceVacationRange:()=>[],
+   setLoadingScheduleMonth:()=>{},setOwnScheduleState:fn=>fn([]),setDepartmentScheduleState:fn=>fn([]),setOwnVacationsState:()=>{},setDepartmentVacationsState:()=>{},setReplacementRequestDates:()=>{},setLoadedScheduleMonths:fn=>fn(new Set()),setLoadedPlanningWeek:value=>loaded.push(value),window:{dispatchEvent:event=>dispatched.push(event.type)},
+  };
+  vm.runInNewContext(code,context);await context.exports.sync();await context.exports.sync();
+  assert.equal(requests[0],week?'/api/employee/workday/schedule?week=2026-11-02':'/api/employee/workday/schedule?month=2026-10');
+  assert.equal(audit.length,2);assert.equal(audit[0].period,week||'2026-10');assert.equal(audit[1].stage,'completed');
+  assert.deepEqual(dispatched,['mobo:attention-refresh','mobo:attention-refresh']);assert.equal(loaded.length,week?2:0);assert.ok(deps.includes(week));
+ }
+});

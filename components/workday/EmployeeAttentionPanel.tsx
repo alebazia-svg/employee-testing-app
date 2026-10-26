@@ -93,9 +93,9 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const selected = items.find(item => item.id === selectedId);
   const selectedExpenseUnavailable = expenseUnavailable || expenseUnavailableRefs.includes(selected?.expenseRef ?? selectedId?.split(':')[3] ?? '');
   const reading = useRef(new Set<number>());
-  useEffect(() => {
-    if (preview || !open || !selected) return;
-    for (const id of selected.notificationIds ?? []) {
+  const markRead = (item: Item) => {
+    if (preview) return;
+    for (const id of item.notificationIds ?? []) {
       if (reading.current.has(id)) continue;
       reading.current.add(id);
       void fetch('/api/employee/workday-notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(response => {
@@ -103,11 +103,24 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
         setLiveItems(items => items.map(item => ({ ...item, notificationIds: item.notificationIds?.filter(value => value !== id) })));
       }).catch(() => reading.current.delete(id));
     }
+  };
+  useEffect(() => {
+    if (!open || !selected) return;
+    markRead(selected);
   }, [open, selected, preview]);
   const close = () => { if (busy) return; recordSelected('close'); setOpen(false); setSelectedId(null); setScope(null); };
+  const openCalendar = (item: Item) => {
+    markRead(item);
+    close();
+    window.dispatchEvent(new CustomEvent('mobo:schedule-open', {detail:{date:item.scheduleDate,weekStart:item.scheduleWeekStart}}));
+  };
   const openSheet = (kind: Item['kind'] | null = null, id: string | null = null) => {
-    void refresh(); previousFocus.current = document.activeElement as HTMLElement;
-    setScope(kind); const rows = allItems.filter(item => !kind || item.kind === kind);
+    void refresh();
+    const rows = allItems.filter(item => !kind || item.kind === kind);
+    const direct = id ? rows.find(item=>item.id===id) : rows.length === 1 ? rows[0] : null;
+    if (direct?.scheduleAction === 'week') { openCalendar(direct); return; }
+    previousFocus.current = document.activeElement as HTMLElement;
+    setScope(kind);
     setSelectedId(id ?? (rows.length === 1 ? rows[0].id : null)); setOpen(true);
   };
   useEffect(() => {
@@ -118,7 +131,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const openedQuery = useRef(false);
   useEffect(() => { if (!openedQuery.current && ['cash', 'receipt', 'closing', 'encashment', 'schedule'].includes(searchParams.get('attention') ?? '')) { openedQuery.current = true; openSheet(searchParams.get('attention') as Item['kind'], searchParams.get('item')); } }, [searchParams]);
   useEffect(() => { if (view === 'attention') { previousFocus.current = document.activeElement as HTMLElement; setOpen(true); setSelectedId(items.length === 1 ? items[0].id : null); onBack(); } }, [view, onBack, items]);
-  const openItem = (id: string) => { setActionError(''); listScroll.current = scrollArea.current?.scrollTop ?? 0; lastSelectedId.current = id; setSelectedId(id); };
+  const openItem = (id: string) => { const item=allItems.find(i=>i.id===id); if(item?.scheduleAction==='week'){openCalendar(item);return;} setActionError(''); listScroll.current = scrollArea.current?.scrollTop ?? 0; lastSelectedId.current = id; setSelectedId(id); };
   const act = async (action: string) => {
     if (preview) { preview.blocked(); return; }
     if (!selected?.endpoint || busy) return;
@@ -176,7 +189,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
       const count = kind === 'cash' ? new Set(rows.map(row => row.expenseRef || row.id)).size : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup="dialog" className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
         <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} animated={reminderPreviewEnabled && actionable} />
-        <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? rows.length === 1 ? `По заявке ${rows[0].facts?.find(([label]) => label === 'Заявка')?.[1] || ''} в 1С` : 'Заявки готовы в 1С' : !actionable ? rows[0].status : ''}{kind !== 'cash' && rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
+        <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? rows.length === 1 ? `По заявке ${rows[0].facts?.find(([label]) => label === 'Заявка')?.[1] || ''} в 1С` : 'Заявки готовы в 1С' : rows.length===1 && rows[0].scheduleAction==='week' ? `${['Сегодня не отмечено','Завтра не отмечено'].includes(rows[0].status) ? rows[0].status + ' · ' : ''}Открыть график` : !actionable ? rows[0].status : ''}{kind !== 'cash' && !(rows.length===1 && rows[0].scheduleAction==='week') && rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
         {count > 1 && <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500" aria-label={kind === 'cash' ? `Заявок к оплате: ${count}` : undefined}>{count}</span>}<ChevronRight size={18} aria-hidden="true"/>
       </button>;
     })}</section>}

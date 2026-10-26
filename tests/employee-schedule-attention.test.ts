@@ -18,8 +18,8 @@ test('past dates, vacation, own working and restored coverage retire the action'
  assert.equal(scheduleAttentionItems(data).length,0,variant);
  }
 });
-test('unknown day asks to fill the plan, saved day off asks for replacement',()=>{
- const data=base(); data.entries.pop(); const result=scheduleAttentionItems(data)[0]; assert.equal(result.scheduleAction,'fill'); assert.deepEqual(result.actions,[{label:'Работаю',action:'schedule_working'},{label:'Выходной',action:'schedule_off'}]); assert.match(result.detail,/Выберите/);
+test('unknown day belongs to weekly planning, not a dated replacement question',()=>{
+ const data=base(); data.entries.pop(); assert.equal(scheduleAttentionItems(data).length,0);
  data.entries.push({date:'2026-10-27',userId:2,status:'off',user:{name:'Пример Милана'}});data.dated[0].notice.kind='schedule_fill_request';assert.equal(scheduleAttentionItems(data).length,0);
 });
 test('calendar questions do not overtake receipts and payable requests',()=>{

@@ -1,3 +1,4 @@
+import { scheduleWeekAllowsDate } from '@/lib/schedule-week-reminder';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey } from '@/lib/workday';
@@ -9,7 +10,7 @@ const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 type BulkMode = 'fill' | 'edit' | 'plan';
 type BulkChange = { date: string; status: 'working' | 'off'; previousStatus?: 'working' | 'off' | null };
 
-function parseBulkChanges(value: unknown, monthKey: string, today: string, mode: BulkMode) {
+function parseBulkChanges(value: unknown, monthKey: string, today: string, mode: BulkMode, weekStart?: string) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 31) return null;
   const changes: BulkChange[] = [];
   const dates = new Set<string>();
@@ -21,7 +22,7 @@ function parseBulkChanges(value: unknown, monthKey: string, today: string, mode:
     if (
       typeof date !== 'string'
       || !isValidScheduleDateKey(date)
-      || !date.startsWith(`${monthKey}-`)
+      || (weekStart ? !scheduleWeekAllowsDate(weekStart,date,today) : !date.startsWith(`${monthKey}-`))
       || date < today
       || (status !== 'working' && status !== 'off')
       || (mode === 'edit' && previousStatus !== 'working' && previousStatus !== 'off')
@@ -46,7 +47,9 @@ export async function POST(req: Request) {
   if (typeof monthKey !== 'string' || !isValidScheduleMonthKey(monthKey)) {
     return Response.json({ error: 'Некорректный месяц' }, { status: 400, headers: noStoreHeaders });
   }
-  const changes = parseBulkChanges(payload?.changes, monthKey, getMoscowDateKey(), mode);
+  const weekStart = payload?.weekStart;
+  if (weekStart !== undefined && (typeof weekStart !== 'string' || mode !== 'plan' || !scheduleWeekAllowsDate(weekStart,getMoscowDateKey(),getMoscowDateKey()))) return Response.json({error:'Некорректная неделя'},{status:400,headers:noStoreHeaders});
+  const changes = parseBulkChanges(payload?.changes, monthKey, getMoscowDateKey(), mode, weekStart);
   if (!changes) return Response.json({ error: 'Некорректный список дней' }, { status: 400, headers: noStoreHeaders });
 
   const result: { staleDates: string[]; coverageResults?: Array<{ date: string; state: 'full' | 'reduced' | 'empty' }> } = await prisma.$transaction(async (tx) => {

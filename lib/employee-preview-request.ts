@@ -26,5 +26,6 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (resource === 'payroll') for (const month of url.searchParams.getAll('month')) params.append('month', month);
   if (resource === 'payroll') for (const mode of url.searchParams.getAll('snapshot')) params.append('snapshot', mode);
   if (resource === 'schedule' && url.searchParams.has('month')) params.set('month', url.searchParams.get('month')!);
+  if (resource === 'schedule' && url.searchParams.has('week')) params.set('week', url.searchParams.get('week')!);
   return `/api/admin/employees/preview/${encodeURIComponent(visitId)}?${params}`;
 }

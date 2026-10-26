@@ -12,9 +12,9 @@ const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders });
-  const monthKey = new URL(req.url).searchParams.get('month');
-  const range = requestedDates(monthKey);
-  if (!range) return Response.json({ error: 'Некорректный месяц' }, { status: 400, headers: noStoreHeaders });
+  const params = new URL(req.url).searchParams;
+  const range = requestedDates(params.get('month'), params.get('week'));
+  if (!range) return Response.json({ error: 'Некорректный период графика' }, { status: 400, headers: noStoreHeaders });
   return Response.json(await scheduleSnapshot(user, range.dates, range.monthKey), { headers: noStoreHeaders });
 }
 

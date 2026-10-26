@@ -60,10 +60,9 @@ test('saving does not reset read or declined questions, skips vacation, working 
     },
   };
   await reconcileScheduleQuestions(db as never, { actorId: 1, department: 'retail', date, requestKnownOff: true });
-  assert.deepEqual(created.map(row => [row.userId, row.kind]), [[3, 'schedule_replacement_request'], [7, 'schedule_fill_request']]);
-  assert.equal(updated.length, 2);
-  assert.equal(updated[1].status, 'pending');
-  assert.equal(updated[1].readAt, null);
-  assert.equal(updated[0].status, undefined);
-  assert.equal(updated[0].readAt, undefined);
+  assert.deepEqual(created.map(row => [row.userId, row.kind]), [[3, 'schedule_replacement_request']]);
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].status, 'pending');
+  assert.equal(updated[0].readAt, null);
+
 });

@@ -1097,3 +1097,21 @@ requests, without Telegram for these new checks. Reading is not resolution;
 late receipt discovery stops attention and preserves history. Existing manual
 approval before sending a manager remark remains unchanged. Implementation
 and isolated verification: `fiscal-owner-inbox-20261020.md`; not yet deployed.
+
+## 2026-10-26 - Receipt Review Responsibility Follows Actual Retail Seating
+
+Owner confirmed: Milana uses retail workplace 1 (stable terminal key
+`1010808747019437`), Zukhra uses workplace 2 (`2332022071`). Magomed replaces
+an absent owner. Actual app shift intervals determine who was present at payment
+time; this responsibility is separate from the cashier proven by a 1C receipt.
+Keep workplace names and append the responsible employee in parentheses.
+Explicit KKM assignments and configured home KKM links take precedence. Unknown,
+conflicting or nonstandard staffing stays uncertain. Never infer fiscal guilt or
+close a missing-receipt discrepancy from seating alone. The owner accepted the
+isolated live preview on 2026-10-26, including the simplified missing-receipt
+card with a next action, collapsed source details and secondary closure actions.
+Implementation, TypeScript, production build and focused tests passed locally.
+The owner separately authorized production deployment later on 2026-10-26.
+Released as 1.18.4, source `a718908`, with authenticated UI and server checks
+complete; see `receipt-review-release-20261026.md`. No manual forwarding to
+employees or 1C document changes were performed.

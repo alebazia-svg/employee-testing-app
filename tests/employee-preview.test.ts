@@ -4,6 +4,7 @@ import { employeePreviewUrl } from '../lib/employee-preview-request';
 
 test('preview transport permits only explicitly mapped reads and drops extraneous identity parameters', () => {
   assert.equal(employeePreviewUrl('visit', '/api/employee/workday/schedule?month=2026-10&userId=999'), '/api/admin/employees/preview/visit?resource=schedule&month=2026-10');
+  assert.equal(employeePreviewUrl('visit', '/api/employee/workday/schedule?week=2026-10-26&userId=999&adminId=4'), '/api/admin/employees/preview/visit?resource=schedule&week=2026-10-26');
   for (const method of ['POST', 'PATCH', 'DELETE', 'PUT']) assert.throws(() => employeePreviewUrl('visit', '/api/employee/workday/schedule', { method }));
   for (const path of ['/api/employee/workday/start', '/api/auth/logout', '/api/employee/push-subscription', '/api/admin/employees', 'https://other.example/api/employee/workday/today', '//other.example/api/employee/workday/today']) assert.throws(() => employeePreviewUrl('visit', path));
 });
