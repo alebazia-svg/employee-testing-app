@@ -57,7 +57,7 @@ test('isolated DB: only today/tomorrow, one daily source, no repeats, legacy ret
   await reconcileScheduleCoverageQuestion(db,'wholesale',date,now);
   assert.equal((await loadScheduleCoverageQuestions(db,[`wholesale:${date}`],now)).get(`wholesale:${date}`)?.active,false);
   await db.$transaction(tx=>persistEmployeeScheduleChange(tx,{user:liana,date,status:'off',previousStatus:'working',departmentEntries:[{userId:liana.id,status:'working'},{userId:zalina.id,status:'working'}],source:'employee'}));
-  assert.equal((await loadScheduleCoverageQuestions(db,[`wholesale:${date}`],now)).get(`wholesale:${date}`)?.active,true);
+  assert.equal((await loadScheduleCoverageQuestions(db,[`wholesale:${date}`],now)).get(`wholesale:${date}`)?.active,false,'one working wholesale employee is normal under the preserved department policy');
  } finally {
   await db.workdayNotification.deleteMany({where:{fingerprint:{startsWith:'schedule-near:wholesale:2099-10-2'}}});
   await db.adminInboxEvent.deleteMany({where:{eventKey:`schedule-coverage:wholesale:${date}`}});

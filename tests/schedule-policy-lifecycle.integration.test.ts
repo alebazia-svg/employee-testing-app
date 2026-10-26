@@ -8,7 +8,7 @@ import {reconcileScheduleNearQuestions,activeScheduleNotices,reconcileScheduleQu
 import {SCHEDULE_NEAR_KIND} from '../lib/schedule-near-reminder';
 
 test('closed wholesale question stays out of ADMIN; retail reduced/empty and daily reminders follow live plans', {skip:process.env.SCHEDULE_POLICY_INTEGRATION!=='1'}, async()=>{
- assert.equal(process.env.DATABASE_URL,'postgresql://preview:handover-local-only@127.0.0.1:55471/schedule_policy_test');
+ assert.ok(['postgresql://preview:handover-local-only@127.0.0.1:55471/schedule_policy_test','postgresql://preview:handover-local-only@127.0.0.1:55471/schedule_policy_test_near_release'].includes(process.env.DATABASE_URL ?? ''),'Use only the dedicated localhost policy test databases');
  const prefix='schedule-policy-'+Date.now(),day='2099-10-26',tomorrow='2099-10-27',now=new Date(day+'T16:00:00Z'),ids:number[]=[],events:string[]=[];
  try{
   for(const [name,role,department] of [['ADMIN','ADMIN','retail'],['Залина','EMPLOYEE','wholesale'],['Лиана','EMPLOYEE','wholesale'],['Зухра','EMPLOYEE','retail'],['Милана','EMPLOYEE','retail']]){
