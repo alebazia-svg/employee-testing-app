@@ -1115,3 +1115,16 @@ The owner separately authorized production deployment later on 2026-10-26.
 Released as 1.18.4, source `a718908`, with authenticated UI and server checks
 complete; see `receipt-review-release-20261026.md`. No manual forwarding to
 employees or 1C document changes were performed.
+
+## 2026-10-26 - Source Outages Must Not Reopen Receipt Business Cases
+
+The owner requested a complete correction after an OFD timeout briefly expanded
+ADMIN attention from eight to 31 cases, including previously matched payments.
+Incomplete source reads belong to technical source health and immutable match
+evaluations. They must not create/reopen per-payment business reviews, change
+employee responses or revoke a previously confirmed match. A later complete read
+may still establish a real mismatch; confirmation is not permanent immunity.
+Legacy source-only cases remain inspectable without active business attention or
+push reminders. Genuine employee help/messages and missing-check/financial
+mismatches retain their normal lifecycle. Repeated evaluations update one event,
+with a concrete reason rather than a generic matching-alert title.
