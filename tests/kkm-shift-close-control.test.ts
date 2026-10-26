@@ -123,3 +123,39 @@ test('OFD closes the exact fiscal shift even when 1C still reports it open', asy
   shift.status = 'Закрыта'; shift.closedAt = report.closedAt;
   assert.equal((await verify()).status, 'ofd_missing');
 });
+
+test('reopened shift closes by fiscal check time even when the 1C document clock is ahead', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  const db: any = { userOneCCashboxMapping: { findUnique: async () => ({ oneCCashierRef: 'cashier' }) } };
+  const check = {
+    cashier: { ref: 'cashier' }, cashRegisterRef: 'kkm', kktRegistrationNumber: 'kkt',
+    dateTime: '2026-10-26T18:33:43+03:00', fiscalDateTime: '2026-10-26T18:26:00+03:00',
+  };
+  const shift = {
+    cashRegister: { ref: 'kkm', name: 'Касса' }, posted: true, deletionMark: false,
+    number: '1081', fiscalShiftNumber: '341', status: 'Закрыта',
+    datetime: '2026-10-26T18:33:23+03:00', openedAt: '2026-10-26T18:33:23+03:00', closedAt: '2026-10-26T18:34:13+03:00',
+  };
+  const report = { kktRegistrationNumber: 'kkt', shiftNumber: '341', openedAt: '2026-10-26T18:25:00+03:00', closedAt: '2026-10-26T18:26:00+03:00', documentLink: 'report-341' };
+  const previous = { ...report, shiftNumber: '340', openedAt: '2026-10-26T09:02:00+03:00', closedAt: '2026-10-26T18:02:00+03:00', documentLink: 'report-340' };
+  let reports = [previous, report];
+  const sources: any = {
+    loadOneCKkmChecks: async () => ({ complete: true, data: [check] }),
+    getCashShifts: async () => ({ ok: true, shifts: [shift, { ...shift, fiscalShiftNumber: '340', closedAt: '2026-10-26T18:09:56+03:00' }] }),
+    loadPlatformaOfdZReports: async () => ({ complete: true, data: reports }),
+  };
+  const verify = () => verifyEmployeeKkmShiftClose({ db, userId: 4, date: '2026-10-26' }, sources);
+  const evidence = await verify();
+  assert.equal(evidence.status, 'confirmed');
+  assert.equal(evidence.fiscalShiftNumber, '341');
+  assert.equal(evidence.ofdDocumentLink, 'report-341');
+  // First closure, another KKT, and closure before the fiscal check remain insufficient.
+  for (const invalid of [previous, { ...report, kktRegistrationNumber: 'other' }, { ...report, closedAt: '2026-10-26T18:25:00+03:00' }]) {
+    reports = [invalid];
+    assert.equal((await verify()).status, 'ofd_missing');
+  }
+  reports = [report];
+  // Without a fiscal timestamp retain the conservative document-time check.
+  check.fiscalDateTime = '';
+  assert.equal((await verify()).status, 'ofd_missing');
+});
