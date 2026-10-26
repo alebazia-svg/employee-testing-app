@@ -14,3 +14,13 @@ export function createKkmCloseConfirmation(data:unknown,userId:number,runId:numb
  if(method==='photo' && (typeof photo.storagePath!=='string' || !photo.storagePath.startsWith(`uploads/shift-control/${runId}/${taskId}/z-report-`)))return null;
  return kkmCloseConfirmation({...record(data),kkmCloseConfirmation:confirmation});
 }
+
+/** Confirmation is not a recount. Reuse server facts, even from an old phone. */
+export function preserveKkmCloseFacts(form:FormData,data:unknown,comment='') {
+ const source=record(data),cash=record(source.personalCash),reserve=record(source.reserveCash),terminal=record(source.terminalCheck),closing=record(source.storeClosing);
+ const value=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)||typeof v==='string'?String(v):'';
+ const bool=(v:unknown)=>typeof v==='boolean'?String(v):'';
+ const fields:Record<string,string>={personalCashBalance:value(cash.cashBalance),reserveCashBalance:value(reserve.cashBalance),discrepancyType:value(cash.discrepancyType),discrepancyAmount:value(cash.discrepancyAmount),encashmentAmount:value(cash.encashmentAmount),encashmentDirection:value(cash.encashmentDirection),terminalHadOperations:bool(terminal.hadOperations),terminalReconciliation:value(terminal.reconciliation),terminalComment:value(terminal.comment),hasTbankCredit:bool(closing.hasTbankCredit),tbankTerminalTotal:value(closing.tbankTerminalTotal),comment:typeof source.comment==='string'?source.comment:comment};
+ for(const [key,v]of Object.entries(fields))form.set(key,v);
+ for(const key of ['personalStatementPhoto','terminalReceiptsPhoto','tbankReceiptsPhoto','tbankTerminalReportPhoto','encashmentDocumentPhoto'])form.delete(key);
+}

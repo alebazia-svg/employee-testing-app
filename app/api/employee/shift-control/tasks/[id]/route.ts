@@ -1,5 +1,5 @@
 import { after } from 'next/server';
-import { createKkmCloseConfirmation, kkmCloseConfirmation as readKkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
+import { createKkmCloseConfirmation, preserveKkmCloseFacts, kkmCloseConfirmation as readKkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { scheduleHandoverCheckAudit } from '@/lib/employee-handover-audit-server';
@@ -22,7 +22,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { kkmShiftCloseRequiresEmployeeAction, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -37,6 +37,11 @@ const cashStatementOrganizationSearchName = 'оффоника';
 const reserveCashboxSearchName = 'резерв под телефоны';
 const depositSafeCashboxSearchName = 'сейф депозитный';
 const employeeRevisionHistoryKey = shiftControlEmployeeRevisionHistoryKey;
+
+async function handoverConflictResponse(workDayEntryId:number) {
+  const active=await prisma.workDayEntry.findFirst({where:{id:workDayEntryId,endedAt:null,status:{in:['active','missing_checkout']}},select:{id:true}});
+  return Response.json({error:active?'Данные смены обновились. Повторите завершение.':'Рабочий день уже завершён',code:active?'HANDOVER_CHANGED':'WORKDAY_ALREADY_CLOSED'},{status:409});
+}
 
 function readNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
@@ -275,7 +280,7 @@ async function savePhoto(file: File, runId: number, taskId: number, key: string)
 
 async function saveHandoverDraft(
   formData: FormData,
-  task: { id: number; runId: number; handoverData: unknown; run: { date: string; workDayEntryId: number; workDayEntry: { shiftCode: string } } },
+  task: { id: number; runId: number; updatedAt:Date; handoverData: unknown; run: { date: string; workDayEntryId: number; workDayEntry: { shiftCode: string } } },
   isRetail: boolean,
   includeReserve: boolean,
   userId: number,
@@ -312,6 +317,16 @@ async function saveHandoverDraft(
     if (isPhoto(file)) {
       photos[dataKey] = await savePhoto(file, task.runId, task.id, storageKey);
     }
+  }
+
+  // A KKM response adds evidence only; it must not recalculate or replace cash facts.
+  if (['photo', 'not_printed'].includes(readFormString(formData, 'kkmCloseConfirmation'))) {
+    const updatedTask = await updateActiveHandoverTask(prisma, {
+      taskId: task.id, workDayEntryId: task.run.workDayEntryId,
+      expectedUpdatedAt: task.updatedAt, expectedHandoverData: task.handoverData,
+      data: { handoverData: { ...existing, photos } as Prisma.InputJsonValue },
+    });
+    return updatedTask ? Response.json({ task: taskForEmployee(updatedTask) }) : handoverConflictResponse(task.run.workDayEntryId);
   }
 
   const existingAudit = isRecord(existing[shiftControlOneCAuditKey])
@@ -385,11 +400,11 @@ async function saveHandoverDraft(
   };
 
   const updatedTask = await updateActiveHandoverTask(prisma, {
-    taskId: task.id, workDayEntryId: task.run.workDayEntryId,
+    taskId: task.id, workDayEntryId: task.run.workDayEntryId, expectedUpdatedAt:task.updatedAt, expectedHandoverData:task.handoverData,
     data: { handoverData: nextData as Prisma.InputJsonValue, comment },
   });
 
-  if (!updatedTask) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
+  if (!updatedTask) return handoverConflictResponse(task.run.workDayEntryId);
   return Response.json({ task: taskForEmployee(updatedTask) });
 }
 
@@ -429,6 +444,11 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       return Response.json({ error: 'Заполните сдачу смены' }, { status: 400 });
     }
 
+    const closeConfirmationMethod = readFormString(formData,'kkmCloseConfirmation');
+    const closeConfirmationRequested = closeConfirmationMethod==='photo' || closeConfirmationMethod==='not_printed';
+    if (closeConfirmationRequested && user.department!=='retail') return Response.json({error:'Подтверждение ККМ доступно только для розничной смены'},{status:400});
+    if(closeConfirmationRequested)preserveKkmCloseFacts(formData,task.handoverData,task.comment);
+
     if (readFormString(formData, 'intent') === 'draft') {
       try {
         const isRetail = user.department === 'retail';
@@ -438,9 +458,6 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       }
     }
 
-    const closeConfirmationMethod = readFormString(formData,'kkmCloseConfirmation');
-    const closeConfirmationRequested = closeConfirmationMethod==='photo' || closeConfirmationMethod==='not_printed';
-    if (closeConfirmationRequested && user.department!=='retail') return Response.json({error:'Подтверждение ККМ доступно только для розничной смены'},{status:400});
     const refreshReceipts = () => refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
     if (closeConfirmationRequested || readKkmCloseConfirmation(task.handoverData)?.userId===user.id) after(refreshReceipts); else await refreshReceipts();
 
@@ -470,9 +487,11 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     const requiresKkmClose = isRetail;
     const draftResponse = await saveHandoverDraft(formData, task, isRetail, isStoreClosingEmployee, user.id, task.run.date);
     if (!draftResponse.ok) return draftResponse;
-    const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true } });
+    const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true, updatedAt:true } });
     if (!savedDraftTask) return Response.json({ error: 'Задача сдачи смены не найдена' }, { status: 404 });
     const handoverData = savedDraftTask.handoverData;
+    let handoverVersion=savedDraftTask.updatedAt;
+    let handoverSnapshot=savedDraftTask.handoverData;
     const personalCash = readRecord(handoverData, 'personalCash') ?? {};
     const reserveCash = readRecord(handoverData, 'reserveCash') ?? {};
     const personalCashBalance = readNumber(personalCash.cashBalance);
@@ -538,7 +557,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         evidence,
       };
       const savedCheck = await updateActiveHandoverTask(prisma, {
-        taskId: task.id, workDayEntryId: task.run.workDayEntryId,
+        taskId: task.id, workDayEntryId: task.run.workDayEntryId, expectedUpdatedAt:handoverVersion, expectedHandoverData:handoverSnapshot,
         data: {
           handoverData: {
             ...handoverRecord,
@@ -547,11 +566,13 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           } as Prisma.InputJsonValue,
         },
       });
-      if (!savedCheck) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
+      if (!savedCheck) return handoverConflictResponse(task.run.workDayEntryId);
+      handoverVersion=savedCheck.updatedAt;handoverSnapshot=savedCheck.handoverData;
       scheduleHandoverCheckAudit(req, user.id, task.id, readFormString(formData, 'activityAttempt'), evidence.status);
-      await syncKkmShiftCloseIssue(prisma, { userId:user.id, taskId:task.id, workDayEntryId:task.run.workDayEntryId, date:task.run.date, evidence, now, confirmationMethod:kkmCloseConfirmation?.method });
+      await syncKkmShiftCloseIssue(prisma, { userId:user.id, taskId:task.id, workDayEntryId:task.run.workDayEntryId, date:task.run.date, evidence, now, confirmationMethod:kkmCloseConfirmation?.method,expectedTaskUpdatedAt:handoverVersion,expectedHandoverData:handoverSnapshot });
       if (evidence.status !== 'confirmed' && !kkmCloseConfirmation) {
-        return Response.json({error:'Сфотографируйте чек закрытия смены',code:'KKM_CLOSE_PHOTO_REQUIRED'},{status:409});
+        const issues=await findOpenRequiredWorkdayIssues(prisma,user.id);
+        return Response.json({error:'Подтвердите закрытие кассы',code:'OPEN_REQUIRED_ISSUES',issues},{status:409});
       }
     }
 
@@ -562,7 +583,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       : null;
     if (requiredIssueIds.length && !closeException) {
       const savedBlocked = await updateActiveHandoverTask(prisma, {
-        taskId: task.id, workDayEntryId: task.run.workDayEntryId,
+        taskId: task.id, workDayEntryId: task.run.workDayEntryId, expectedUpdatedAt:handoverVersion, expectedHandoverData:handoverSnapshot,
         data: { handoverData: {
           ...(isRecord(handoverData) ? handoverData : {}),
           ...(kkmCloseCheckAudit ? { kkmCloseCheck: kkmCloseCheckAudit } : {}),
@@ -570,7 +591,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           closeBlockedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue },
       });
-      if (!savedBlocked) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
+      if (!savedBlocked) return handoverConflictResponse(task.run.workDayEntryId);
       return Response.json({
         error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
         code: 'OPEN_REQUIRED_ISSUES',
@@ -748,6 +769,9 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           const tasks = await tx.shiftControlTask.findMany({ where: { runId: task.runId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
           return { task: tasks.find((item) => item.id === task.id)!, tasks, run, workDay };
         }
+        await tx.$queryRaw`SELECT id FROM "ShiftControlTask" WHERE id = ${task.id} FOR UPDATE`;
+        const currentTask=await tx.shiftControlTask.findUniqueOrThrow({where:{id:task.id},select:{updatedAt:true,handoverData:true}});
+        if(+currentTask.updatedAt!==+handoverVersion || JSON.stringify(currentTask.handoverData)!==JSON.stringify(handoverSnapshot))throw new Error('HANDOVER_CHANGED');
         await tx.shiftControlTask.updateMany({
           where: {
             runId: task.runId,
@@ -768,7 +792,13 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
             numericValue: personalCashBalance,
             booleanValue: null,
             comment,
-            handoverData: finalHandoverData as Prisma.InputJsonValue,
+            handoverData: (kkmCloseConfirmation ? {
+              ...handoverRecord,
+              draft: false,
+              submittedAt: now.toISOString(),
+              kkmCloseCheck: kkmCloseCheckAudit ?? null,
+              kkmCloseConfirmation,
+            } : finalHandoverData) as Prisma.InputJsonValue,
           },
         });
         await tx.shiftControlTask.updateMany({
@@ -780,7 +810,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           data: {
             status: 'done',
             completedAt: now,
-            comment: 'Фото чека закрытия смены загружено в мастере сдачи смены',
+            comment: kkmCloseConfirmation?.method==='not_printed' ? 'Сотрудник сообщил: чек закрытия не распечатался; сверка ОФД продолжается' : kkmCloseCheckAudit?.status==='confirmed' ? 'Закрытие кассы подтверждено ОФД' : 'Чек закрытия смены сохранён при сдаче смены',
           },
         });
         const updatedRun = await tx.shiftControlRun.update({
@@ -832,6 +862,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           : 'Смена сдана, рабочий день завершён',
       });
     } catch (error) {
+      if(error instanceof Error && error.message==='HANDOVER_CHANGED')return handoverConflictResponse(task.run.workDayEntryId);
       return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить сдачу смены' }, { status: 400 });
     }
   }

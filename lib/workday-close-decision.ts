@@ -101,7 +101,7 @@ export async function decideWorkdayCloseException(db: PrismaClient, input: {
 // A handover can be waiting on 1C when an administrator closes its workday.
 // Never let that late draft/check overwrite the retained closure evidence.
 export async function updateActiveHandoverTask(db: PrismaClient, input: {
-  workDayEntryId: number; taskId: number; data: Prisma.ShiftControlTaskUpdateInput;
+  workDayEntryId: number; taskId: number; data: Prisma.ShiftControlTaskUpdateInput; expectedUpdatedAt?:Date; expectedHandoverData?:unknown;
 }) {
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "WorkDayEntry" WHERE id = ${input.workDayEntryId} FOR UPDATE`;
@@ -109,6 +109,11 @@ export async function updateActiveHandoverTask(db: PrismaClient, input: {
       where: { id: input.workDayEntryId, endedAt: null, status: { in: ['active', 'missing_checkout'] } },
     });
     if (!active) return null;
+    if (input.expectedUpdatedAt || 'expectedHandoverData' in input) {
+      await tx.$queryRaw`SELECT id FROM "ShiftControlTask" WHERE id = ${input.taskId} FOR UPDATE`;
+      const task=await tx.shiftControlTask.findUnique({where:{id:input.taskId},select:{updatedAt:true,handoverData:true}});
+      if(!task || input.expectedUpdatedAt && +task.updatedAt!==+input.expectedUpdatedAt || 'expectedHandoverData' in input && JSON.stringify(task.handoverData)!==JSON.stringify(input.expectedHandoverData))return null;
+    }
     return tx.shiftControlTask.update({ where: { id: input.taskId }, data: input.data });
   });
 }

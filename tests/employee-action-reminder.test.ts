@@ -71,3 +71,10 @@ test('KKM reminder returns directly to the confirmation action and repeats after
  assert.equal(reminder.target,'checklist');assert.equal(reminder.href,'/employee#pwa-current-action');assert.equal(reminder.remindAfterMs,15*60_000);
  assert.notEqual(employeeActionReminder(fixture(),[{...item,state:'waiting'}],now)?.id,item.id);
 });
+
+test('an unanswered previous-day KKM prompt is immediately reachable after midnight', () => {
+  const item = { ...issue('action'), kind: 'closing' as const, date: '2026-10-21' };
+  const reminder = employeeActionReminder(fixture(), [item], now)!;
+  assert.equal(reminder.href, '/employee#pwa-current-action');
+  assert.equal(reminder.remindAfterMs, undefined);
+});

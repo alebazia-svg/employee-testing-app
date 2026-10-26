@@ -217,3 +217,10 @@ test('one KKM reminder is due after fifteen minutes, and neither a response nor 
  await syncKkmShiftCloseIssue(db,{...input,confirmationMethod:'not_printed'});assert.equal(existing.employeeActionRequired,false);assert.equal(existing.nextReminderAt,null);
  active=false;await syncKkmShiftCloseIssue(db,{...input,workdayCompleted:true});assert.equal(existing.employeeActionRequired,false);assert.equal(reminders.size,1);
 });
+
+import { preserveKkmCloseFacts } from '../lib/kkm-close-confirmation';
+test('a stale confirmation cannot overwrite the current cash count, comment or financial photos',()=>{
+ const form=new FormData();form.set('personalCashBalance','1');form.set('reserveCashBalance','99999');form.set('comment','stale phone');form.set('encashmentDocumentPhoto','wrong photo');form.set('zReportPhoto','new receipt');
+ preserveKkmCloseFacts(form,{personalCash:{cashBalance:17702,encashmentAmount:null},reserveCash:{cashBalance:500},comment:'Current employee note'});
+ assert.equal(form.get('personalCashBalance'),'17702');assert.equal(form.get('reserveCashBalance'),'500');assert.equal(form.get('comment'),'Current employee note');assert.equal(form.has('encashmentDocumentPhoto'),false);assert.equal(form.get('zReportPhoto'),'new receipt');
+});

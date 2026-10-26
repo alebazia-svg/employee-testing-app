@@ -33,3 +33,31 @@ test('saved employee confirmations stay ADMIN-only through outages and resolve a
   } finally {await db.adminInboxEvent.deleteMany({where:{sourceType:'workday_control_issue',sourceId:String(issue.id)}});await db.user.delete({where:{id:user.id}});}
  }}finally{await db.$disconnect();}
 });
+
+test('an old failed check cannot restore a blocker after the employee responds and finishes', {skip:process.env.KKM_CONFIRMATION_INTEGRATION!=='1'},async()=>{
+ assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55479/kkm_close_test');
+ const {prisma:db}=await import('../lib/prisma');const {recheckOpenKkmShiftCloseIssues:recheck,syncKkmShiftCloseIssue:sync}=await import('../lib/kkm-shift-close-control');
+ const {updateActiveHandoverTask}=await import('../lib/workday-close-decision');
+ const now=new Date('2026-10-26T18:30:00Z');
+ const u=await db.user.create({data:{login:`kkm-stale-${Date.now()}`,name:'Учебный сотрудник',passwordHash:'disabled',role:'EMPLOYEE'}});
+ const d=await db.workDayEntry.create({data:{userId:u.id,date:'2026-10-26',department:'retail',shiftCode:'11_20',shiftLabel:'11–20'}});
+ const run=await db.shiftControlRun.create({data:{userId:u.id,workDayEntryId:d.id,date:d.date,department:'retail'}});
+ const original={personalCash:{cashBalance:17702},photos:{zReport:null}};
+ const task=await db.shiftControlTask.create({data:{runId:run.id,title:'Сдать смену',category:'handover',sortOrder:1,handoverData:original}});
+ const issue=await db.workdayControlIssue.create({data:{userId:u.id,taskId:task.id,fingerprint:`kkm-shift-close:${d.id}`,ruleKey:'kkm_shift_not_closed',severity:'warning',title:'Подтвердите закрытие',detail:'Учебная проверка',employeeActionRequired:true,originDate:d.date}});
+ await db.userOneCCashboxMapping.create({data:{userId:u.id,oneCCashboxRef:'cash',oneCCashboxName:'Учебная касса',oneCCashierRef:'cashier'}});
+ let answered=false;
+ const evidence:any={status:'unavailable',checkedAt:now.toISOString(),cashierRef:'cashier',cashRegisterRef:'kkm',cashRegisterName:'Учебная касса',kktRegistrationNumber:'kkt',oneCShiftNumber:'',fiscalShiftNumber:'',oneCOpenedAt:'',oneCClosedAt:'',ofdOpenedAt:'',ofdClosedAt:'',ofdDocumentLink:'',sourceError:'Источники ещё не ответили'};
+ const sources:any={loadOneCKkmChecks:async()=>({complete:true,data:[{cashier:{ref:'cashier'},cashRegisterRef:'kkm',kktRegistrationNumber:'kkt',dateTime:'2026-10-26T18:05:00Z'}]}),getCashShifts:async()=>{
+  if(!answered){answered=true;const confirmation=createKkmCloseConfirmation(original,u.id,run.id,task.id,now,'not_printed')!;await updateActiveHandoverTask(db,{taskId:task.id,workDayEntryId:d.id,data:{handoverData:{...original,kkmCloseConfirmation:confirmation}}});await sync(db,{userId:u.id,taskId:task.id,workDayEntryId:d.id,date:d.date,evidence,now,confirmationMethod:'not_printed'});await db.workDayEntry.update({where:{id:d.id},data:{endedAt:now,status:'completed'}});}
+  return{ok:false,shifts:[]};},loadPlatformaOfdZReports:async()=>({complete:false,data:[]})};
+ try{
+  await recheck(now,sources);
+  const latest=await db.workdayControlIssue.findUniqueOrThrow({where:{id:issue.id}});assert.equal(latest.employeeActionRequired,false,'late source result must not erase the employee response');assert.equal(latest.nextReminderAt,null);
+  const saved=await db.shiftControlTask.findUniqueOrThrow({where:{id:task.id}});assert.equal((saved.handoverData as any).kkmCloseConfirmation.method,'not_printed');assert.equal((saved.handoverData as any).personalCash.cashBalance,17702);
+  // The same guard also rejects a late draft/audit while the day is still active.
+  await db.workDayEntry.update({where:{id:d.id},data:{endedAt:null,status:'active'}});
+  const late=await updateActiveHandoverTask(db,{taskId:task.id,workDayEntryId:d.id,expectedUpdatedAt:task.updatedAt,data:{handoverData:original}} as any);
+  assert.equal(late,null,'a stale draft must not overwrite the saved response');
+ }finally{await db.adminInboxEvent.deleteMany({where:{sourceType:'workday_control_issue',sourceId:String(issue.id)}});await db.user.delete({where:{id:u.id}});await db.$disconnect();}
+});

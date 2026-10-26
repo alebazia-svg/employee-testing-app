@@ -163,3 +163,17 @@ test('missing-checkout shift can close, but an already resolved request cannot g
   assert.equal((await resolved.decide())?.changed, false);
   assert.equal((await db.workDayEntry.findUniqueOrThrow({ where: { id: resolved.workDay.id } })).endedAt, null);
 });
+
+test('a stale handover snapshot cannot overwrite a newer employee response', async () => {
+  const f = await fixture();
+  const task = await db.shiftControlTask.findFirstOrThrow({ where: { runId: f.run!.id, category: 'handover' } });
+  const newerData = { personalCash: { cashBalance: 17702 }, kkmCloseConfirmation: { method: 'not_printed', userId: f.employee.id, confirmedAt: new Date().toISOString() } };
+  await db.shiftControlTask.update({ where: { id: task.id }, data: { handoverData: newerData } });
+  const result = await updateActiveHandoverTask(db, {
+    taskId: task.id, workDayEntryId: f.workDay.id,
+    expectedUpdatedAt: task.updatedAt, expectedHandoverData: task.handoverData,
+    data: { handoverData: { personalCash: { cashBalance: 1 } } },
+  });
+  assert.equal(result, null);
+  assert.deepEqual((await db.shiftControlTask.findUniqueOrThrow({ where: { id: task.id } })).handoverData, newerData);
+});

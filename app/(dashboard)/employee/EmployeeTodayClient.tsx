@@ -1298,6 +1298,8 @@ export function EmployeeTodayClient({
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [closeBlockedSheetOpen, setCloseBlockedSheetOpen] = useState(false);
   const [closeResolutionOpen, setCloseResolutionOpen] = useState(false);
+  const kkmCompletionErrorRef = useRef<number|null>(null);
+  const kkmPhotoRetry = useRef<{taskId:number;file:File}|null>(null);
   const [kkmConfirmationSavingMethod,setKkmConfirmationSavingMethod] = useState<'photo'|'not_printed'|null>(null);
   const [closeResolutionPath, setCloseResolutionPath] = useState<'photo' | 'technical' | null>('photo');
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
@@ -1590,6 +1592,7 @@ export function EmployeeTodayClient({
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
   const previousWorkDay = unfinished ?? (activeWorkDay && activeWorkDay.date < today ? activeWorkDay : null);
   const hasPreviousWorkday = Boolean(previousWorkDay);
+  const closingWorkDay = previousWorkDay ?? activeWorkDay;
   const lateArrivalDeviation = workDay?.deviations?.find((item) => item.kind === 'late_arrival') ?? null;
   const earlyFinishDeviation = workDay?.deviations?.find((item) => item.kind === 'early_finish') ?? null;
   const needsLateArrivalReason = Boolean(activeWorkDay && activeWorkDay.lateMinutes >= lateArrivalThresholdMinutes && !lateArrivalDeviation);
@@ -1609,7 +1612,7 @@ export function EmployeeTodayClient({
   const shiftCorrectionWindowOpen = Boolean(activeWorkDay && shiftCorrectionState.canCorrect);
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
-  const syncCurrentWorkdayState = useCallback(async (replaceInFlight = false) => {
+  const syncCurrentWorkdayState = useCallback(async (replaceInFlight = false, checkWorkDayId?:number) => {
     // iOS standalone web apps can leave a fetch pending while resuming. Do not
     // abort it on the next interval: that would keep the UI on its initial
     // server snapshot forever. A sync after a user action is different: it must
@@ -1625,7 +1628,8 @@ export function EmployeeTodayClient({
     const timeout = window.setTimeout(() => controller.abort(), workdaySyncTimeoutMs);
 
     try {
-      const response = await request('/api/employee/workday/today', {
+      const targetCheckId=checkWorkDayId ?? kkmCompletionErrorRef.current;
+      const response = await request('/api/employee/workday/today'+(targetCheckId?`?checkWorkDayId=${targetCheckId}`:''), {
         cache: 'no-store',
         signal: controller.signal,
       });
@@ -1654,7 +1658,9 @@ export function EmployeeTodayClient({
       setCashEncashmentExceptionRequestState(snapshot.cashEncashmentExceptionRequest);
       setShiftCorrectionState(snapshot.shiftCorrection);
       if (!snapshot.requiredIssues.length) setCloseBlocked(false);
-      return snapshot;
+      const checkedWorkDay=isRecord(payload)&&isRecord(payload.checkedWorkDay)?payload.checkedWorkDay:null;
+      if(kkmCompletionErrorRef.current && checkedWorkDay?.id===kkmCompletionErrorRef.current && (checkedWorkDay.status==='completed'||checkedWorkDay.endedAt)){kkmCompletionErrorRef.current=null;setError('');setHandoverSaveError('');setMessage('Рабочий день завершён');}
+      return {...snapshot,checkedWorkDay};
     } catch {
       if (workdaySyncAbortRef.current === controller) setIsOnline(false);
       // Keep the last valid snapshot and retry on the next scheduled sync.
@@ -1848,15 +1854,17 @@ export function EmployeeTodayClient({
   const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
   const closedWithoutEncashment = completedWithoutEncashment(handoverTask);
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
-    issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
+    issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === closingWorkDay?.date
   )) ?? null;
   const savedKkmConfirmation = kkmCloseConfirmation(handoverTask?.handoverData);
   const kkmFinishPending = !isCompleted && Boolean(savedKkmConfirmation) && handoverTask?.status!=='done' && !requiredIssuesState.some(issue=>issue.ruleKey!=='kkm_shift_not_closed');
-  const hasClosingReceipt = hasHandoverPhoto(readSavedPhoto(handoverTask?.handoverData,'zReport'));
+  const hasClosingReceipt = hasHandoverPhoto(readSavedPhoto(handoverTask?.handoverData,'zReport')) || Boolean(handoverTask && kkmPhotoRetry.current?.taskId===handoverTask.id);
   const kkmConfirmationRequired = !isCompleted && Boolean(completedKkmCloseCheck?.status) && !kkmClosureConfirmed && !kkmCloseConfirmation(handoverTask?.handoverData);
   const showKkmConfirmation = Boolean(kkmCloseIssue) || kkmConfirmationRequired || kkmFinishPending;
   const handoverWasBlocked = isRecord(handoverTask?.handoverData) && typeof handoverTask.handoverData.closeBlockedAt === 'string';
-  const showCloseResolution = !hasPreviousWorkday && !isCompleted && (kkmConfirmationRequired || kkmFinishPending || requiredIssuesState.length > 0 && (closeBlocked || handoverWasBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState)));
+  const priorCash=readRecord(handoverTask?.handoverData,'personalCash');
+  const canResolvePreviousKkm = Boolean(previousWorkDay && showKkmConfirmation && shiftControlState.run?.workDayEntryId===previousWorkDay.id && typeof priorCash?.cashBalance==='number' && Number.isFinite(priorCash.cashBalance));
+  const showCloseResolution = (!hasPreviousWorkday || canResolvePreviousKkm) && !isCompleted && (kkmConfirmationRequired || kkmFinishPending || requiredIssuesState.length > 0 && (closeBlocked || handoverWasBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState)));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
@@ -1955,7 +1963,7 @@ export function EmployeeTodayClient({
       personalCashBalance: draftCashBalance,
       cashCommentRequired: draft.cashCommentRequired,
       isRetail: user.department === 'retail',
-      isStoreClosingShift: isStoreClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode),
+      isStoreClosingShift: isStoreClosingShift(closingWorkDay?.shiftCode ?? workDay?.shiftCode),
       requiresKkmClose: user.department === 'retail',
     });
   }
@@ -2894,10 +2902,11 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function saveHandoverDraft(task: ShiftControlTask, draft = handoverDraft) {
+  async function saveHandoverDraft(task: ShiftControlTask, draft = handoverDraft, confirmationMethod?:'photo'|'not_printed') {
     if (preview) { setHandoverSavedDraft(draft); return { ...task, handoverData: null }; }
     const formData = new FormData();
     formData.append('intent', 'draft');
+    if(confirmationMethod)formData.append('kkmCloseConfirmation',confirmationMethod);
     ([
       'personalStatementPhoto',
       'terminalReceiptsPhoto',
@@ -3499,6 +3508,7 @@ export function EmployeeTodayClient({
 
   async function submitHandover(task: ShiftControlTask, draft = handoverDraft, steps = buildHandoverSteps(draft), confirmationMethod?: 'photo' | 'not_printed') {
     if (preview) { preview.blocked(); return; }
+    const closingWorkDayId=shiftControlState.run?.workDayEntryId ?? closingWorkDay?.id;
     for (const step of steps) {
       const stepError = getHandoverStepError(step, draft);
       if (stepError) {
@@ -3584,6 +3594,10 @@ export function EmployeeTodayClient({
         run: result.run ?? current.run,
         tasks: result.tasks ?? current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
       }));
+      kkmPhotoRetry.current=null;kkmCompletionErrorRef.current=null;
+      if (result.workDay && result.workDay.date<today) {
+        await syncCurrentWorkdayState(true);setActiveHandoverTaskId(null);setCloseResolutionOpen(false);setMessage('Смена за '+formatDateLabel(result.workDay.date)+' завершена');return;
+      }
       if (result.workDay) {
         setWorkDay(result.workDay);
         setUnfinished(null);
@@ -3596,8 +3610,10 @@ export function EmployeeTodayClient({
     } catch (reason) {
       // A lost response does not mean the server failed to finish the shift.
       // Re-read its state before offering another submission.
-      const snapshot = await syncCurrentWorkdayState(true);
-      if (snapshot?.workDay?.status === 'completed' || snapshot?.workDay?.endedAt) {
+      const snapshot = await syncCurrentWorkdayState(true,closingWorkDayId);
+      const checked=snapshot?.checkedWorkDay ?? (snapshot?.workDay?.id===closingWorkDayId?snapshot?.workDay:null);
+      if (checked?.id===closingWorkDayId && (checked?.status === 'completed' || checked?.endedAt)) {
+        kkmPhotoRetry.current=null;kkmCompletionErrorRef.current=null;setError('');
         setActiveHandoverTaskId(null);
         setHandoverSaveError('');
         setMessage('Рабочий день завершён');
@@ -3615,7 +3631,7 @@ export function EmployeeTodayClient({
         setHandoverSaveError('');
         if (!nextIssues.some((issue) => issue.ruleKey === 'kkm_shift_not_closed')) { setCloseResolutionOpen(false); setCloseBlockedSheetOpen(true); }
       } else {
-        if (confirmationMethod) setError('Не удалось завершить день. Подтверждение сохранено — попробуйте ещё раз.');
+        if (confirmationMethod) {kkmCompletionErrorRef.current=closingWorkDayId??null;setError('Не удалось завершить день. Попробуйте ещё раз — повторное фото не нужно.');}
         setHandoverSaveError(reason instanceof TypeError || reason instanceof EmployeeNetworkError
           ? 'Нет связи с порталом. Когда связь появится, нажмите «Сдать смену» ещё раз.'
           : reason instanceof Error ? reason.message : 'Не удалось сдать смену');
@@ -3703,9 +3719,12 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function confirmKkmClose(task: ShiftControlTask, file: File | null, method:'photo'|'not_printed'='photo') {
+  async function confirmKkmClose(task: ShiftControlTask, file: File | null, method:'photo'|'not_printed'='photo', retry=false) {
     if (preview) { preview.blocked(); return; }
+    if(!file && method==='photo' && !retry)return;
     const baseDraft = activeHandoverTaskId===task.id ? handoverDraft : draftFromHandoverData(task.handoverData);
+    if(file)kkmPhotoRetry.current={taskId:task.id,file};
+    if(!file && method==='photo' && !hasHandoverPhoto(baseDraft.zReportPhoto) && kkmPhotoRetry.current?.taskId===task.id)file=kkmPhotoRetry.current.file;
     if (!file && method==='photo' && !hasHandoverPhoto(baseDraft.zReportPhoto)) return;
     setKkmConfirmationSavingMethod(method);
     setIsSaving(true);
@@ -3713,11 +3732,12 @@ export function EmployeeTodayClient({
     try {
       const nextDraft = { ...baseDraft, ...(file ? {zReportPhoto:file} : {}) };
       setHandoverDraft(nextDraft);
-      const savedTask = await saveHandoverDraft(task, nextDraft);
+      const savedTask = file ? await saveHandoverDraft(task, nextDraft,method) : task;
       const savedDraft = isRecord(savedTask.handoverData) ? draftFromHandoverData(savedTask.handoverData) : nextDraft;
       setHandoverDraft(savedDraft);
       await submitHandover(task, savedDraft, buildHandoverSteps(savedDraft), method);
     } catch (reason) {
+      if(reason instanceof EmployeeApiError && reason.code==='HANDOVER_CHANGED')await syncCurrentWorkdayState(true);
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить подтверждение. Попробуйте ещё раз.');
     } finally {
       setKkmConfirmationSavingMethod(null);
@@ -4495,7 +4515,7 @@ export function EmployeeTodayClient({
               </div>
             </div>
           ) : null}
-          {activeTab === 'day' && previousWorkDay && (
+          {activeTab === 'day' && previousWorkDay && !canResolvePreviousKkm && (
             <Card className='mb-4 space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
               <h2 className='text-xl font-black text-slate-950'>Сдать смену · {formatDateLabel(previousWorkDay.date)}</h2>
               <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
@@ -4869,12 +4889,13 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {activeWorkDay && showCloseResolution && (
+              {closingWorkDay && showCloseResolution && (
                 <Card id='pwa-current-action' className='space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
                   {showKkmConfirmation && handoverTask ? <>
+                    {canResolvePreviousKkm && <p className='text-xs font-semibold text-slate-500'>Смена за {formatDateLabel(previousWorkDay!.date)}</p>}
                     <h2 className='text-xl font-black text-slate-950'>{kkmFinishPending?'Завершить рабочий день':'Чек закрытия смены'}</h2>
                     <p className='text-sm font-semibold leading-snug text-slate-600'>{kkmFinishPending?'Подтверждение сохранено. Осталось завершить рабочий день.':'Касса печатает бумажный чек после закрытия смены. Сфотографируйте его целиком.'}</p>
-                    {kkmFinishPending || error && hasClosingReceipt ? <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving} onClick={()=>void confirmKkmClose(handoverTask,null,savedKkmConfirmation?.method??'photo')}>{isSaving?'Завершаем день…':'Завершить день'}</Button> : <label className='employee-material-primary-action flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-xl px-4 text-sm font-extrabold'>
+                    {kkmFinishPending || error && hasClosingReceipt ? <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving} onClick={()=>void confirmKkmClose(handoverTask,null,savedKkmConfirmation?.method??'photo',true)}>{isSaving?'Завершаем день…':'Завершить день'}</Button> : <label className='employee-material-primary-action flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-xl px-4 text-sm font-extrabold'>
                       <span className='flex items-center gap-2.5'><Camera className='h-5 w-5 shrink-0' />{isSaving && kkmConfirmationSavingMethod==='photo' ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}</span><ChevronRight className='h-4 w-4 shrink-0 opacity-70' aria-hidden='true' />
                       <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={event=>{const file=event.target.files?.[0]??null;event.currentTarget.value='';void confirmKkmClose(handoverTask,file);}} />
                     </label>}
