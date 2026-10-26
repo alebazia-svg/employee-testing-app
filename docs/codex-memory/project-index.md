@@ -33,7 +33,7 @@ project from scratch.
   latest owner rule supersedes the earlier weekly obligation and wholesale target
   of two: wholesale one is normal; retail one is a soft replacement question;
   zero staff needs attention. Personal completion reminders cover today/tomorrow
-  only. Implemented and verified locally; production release is not yet approved.
+  only. Released and independently verified as 1.18.9 / 401a2a7.
 
 - Weekly schedule reminder local candidate: `schedule-week-reminder-candidate-20261026.md` —
   Friday planning, one bounded weekly calendar and live retirement; locally

@@ -1,9 +1,10 @@
 # Schedule notification correction — 2026-10-26
 
-Status: implemented and verified locally on the receipt-shift-responsibility
-worktree, based on production 1.18.8 / 7b56cae. Not deployed; exact production
-release approval is pending. The latest owner clarification supersedes the
-weekly obligation described in schedule-week-reminder-candidate-20261026.md.
+Status: released and independently verified as 1.18.9, source
+401a2a7098393baad8b73f40a5f66fc1fab9eb7f, following explicit owner production
+approval on 2026-10-26. Built from production 1.18.8 / 7b56cae plus the scoped
+correction a1f8b97. This owner clarification supersedes the weekly obligation
+described in schedule-week-reminder-candidate-20261026.md.
 
 ## Behavior
 
@@ -40,8 +41,9 @@ weekly obligation described in schedule-week-reminder-candidate-20261026.md.
   Employee saw only “Завтра не заполнен”; opening the normal calendar, saving
   tomorrow as off and returning removed the reminder immediately. Screenshot:
   /tmp/mobo-schedule-policy-admin.jpg.
-- Physical phone/push appearance and production behavior remain unverified.
-  No real employee messages were sent during tests.
+- Physical phone/push appearance remains unverified. No real employee messages
+  were sent during local tests; ordinary production dispatch uses the approved
+  application policy. Production verification is recorded below.
 - Main checkout's unrelated dirty files were left untouched.
 
 ## Exact runtime and test files
@@ -56,10 +58,48 @@ weekly obligation described in schedule-week-reminder-candidate-20261026.md.
 - lib/work-schedule-coverage.ts
 - lib/work-schedule-notifications.ts
 - lib/workday-notifications.ts
-- package.json (adds near-day test to test:workday; release version unchanged)
+- package.json (near-day test in test:workday, release 1.18.9)
+- package-lock.json (both root versions synchronized to 1.18.9)
 - tests/employee-schedule-attention.test.ts
 - tests/schedule-coverage-question.test.ts
 - tests/schedule-near-reminder.test.ts (new)
 - tests/schedule-policy-lifecycle.integration.test.ts (new)
 - tests/schedule-week-reminder.test.ts
 - tests/work-schedule-coverage.test.ts
+
+## Production release verification
+
+- Owner explicitly chose “Выпустить на рабочий портал”. Fresh live metadata
+  and origin/design-local-updates were both 1.18.8 before choosing patch 1.18.9;
+  rechecked before push. Server previous commit was
+  7b56caee68e0c2554614dae8a9e5410b23e320ae; exact target independently read over SSH
+  is 401a2a7098393baad8b73f40a5f66fc1fab9eb7f.
+- Public version 1.18.9, builtAt 2026-10-26T17:13:34.277Z (20:13 Moscow).
+  Authenticated ADMIN version/build label agrees. Existing Docker metadata
+  revision remains null/source unknown; server identity was checked separately.
+- Public health ok, container running/healthy. Current image:
+  sha256:b2fb99d2481fc3c31dff05df2a59aca3ff43816dbe971c090de961d3cc76a9a0.
+  Previous image / reserve 1:
+  sha256:7382104f00e1bd029cafddc0fa4ba847a6913e788849d28872c2cf8efbe66705.
+  Reserve 2:
+  sha256:4a9b0cb449891cae83db3fbdee06ce91f5ffaa32eb77cce56ebd25e6ea7f89d6.
+  All three verified registry entries existed before build. Registration was
+  performed after independent verification and after releasing the deploy lock.
+  Release exit code 0. Server.env hash and uploads mounts matched before/after.
+- No migrations or manual production schedule/notification data edits. Existing
+  approved retention was available but not needed: free space was 18 GiB before
+  and 17 GiB after build. No cleanup executed in this release.
+- Under the owner's authenticated account, the actual 09:11 “Опт · 26 октября:
+  неполный график” disappeared from attention, count 6 -> 5. Other five matters
+  remained. The original 09:11 record is still present in History. Screenshot:
+  /tmp/mobo-schedule-policy-1.18.9-inbox.jpg.
+- Real read-only employee inspection: Zukhra has working days on 26/27 October
+  and unfilled 28-31 October. No completion reminder is shown. The normal monthly
+  calendar remains accessible. No employee plan/answer was submitted. Screenshot:
+  /tmp/mobo-schedule-policy-1.18.9-employee.jpg.
+- Ordinary notification service ran after restart, 17:19:04–17:19:32 UTC,
+  ExecMainStatus=0, inactive afterward. Its privileged journal is not readable by
+  bela; individual provider-delivery counters were not independently inspected.
+- Release metadata checks: 5 passes. Final TypeScript and optimized build passed
+  locally; server build and health checks passed. Physical iPhone rendering and
+  new real push delivery are not claimed. Main checkout WIP remains untouched.

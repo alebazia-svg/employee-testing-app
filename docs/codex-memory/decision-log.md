@@ -1153,3 +1153,8 @@ and date, preserving history and suppressing a replacement reminder when the
 legacy provider already accepted one today. No payroll five-day enforcement,
 attendance scoring, schema changes or manual production data cleanup.
 Local implementation/verification: `schedule-policy-correction-20261026.md`.
+
+The owner separately authorized production deployment. Released and independently
+verified as 1.18.9 / 401a2a7; the actual old wholesale question is history-only,
+active attention count fell 6 to 5, and employee inspection no longer requires
+empty later days. See the correction note for release and verification limits.
