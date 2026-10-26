@@ -1,3 +1,5 @@
+import { schedulePushAt } from './schedule-coverage-question';
+import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
 import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef } from './work-schedule-notifications';
 import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
@@ -292,7 +294,7 @@ export function notificationTargetKey(notification: { id: number; taskId: number
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
   const schedule = scheduleNoticeRef(notification.fingerprint ?? '');
-  if (schedule && scheduleNoticeKinds.includes(notification.kind ?? '')) return `schedule:${schedule.department}:${schedule.date.slice(0, 7)}`;
+  if (schedule && scheduleNoticeKinds.includes(notification.kind ?? '')) return `schedule:${schedule.department}:${schedule.date}`;
   const digest = notification.kind === 'schedule_replacement_digest' ? /^schedule-coverage-digest:([^:]+):(\d{4}-\d{2}):/.exec(notification.fingerprint ?? '') : null;
   if (digest) return `schedule:${digest[1]}:${digest[2]}`;
   return workdayNotificationThreadKey(notification);
@@ -369,6 +371,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
+  await queueScheduleFillQuestions(prisma, now).catch(() => undefined);
   await queueDeliveryReadyPush(now).catch(() => undefined);
   await queueCashIssuePush(now).catch(() => undefined);
   await queueEmployeeExpensePushes(now).catch(() => undefined);
@@ -437,6 +440,9 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     // Recheck calendar state immediately before delivery: a colleague may have
     // answered while the dispatcher was processing another notification.
     if (scheduleNoticeKinds.includes(notification.kind) && !(await activeScheduleNotices(prisma, [notification])).has(notification.id)) continue;
+    const scheduleRef = scheduleNoticeRef(notification.fingerprint);
+    const calendarDue = scheduleRef && scheduleNoticeKinds.includes(notification.kind) ? schedulePushAt(scheduleRef.date, dispatchTime()) : null;
+    if (calendarDue && calendarDue > dispatchTime()) { await prisma.workdayNotification.updateMany({where:{id:notification.id,status:{in:['pending','sent']}},data:{scheduledAt:calendarDue,nextPushAttemptAt:calendarDue}}); continue; }
     const sendTime = dispatchTime();
     const notBefore = employeePushNotBefore(sendTime);
     if (notBefore > sendTime) {

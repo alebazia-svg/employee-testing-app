@@ -1,3 +1,4 @@
+import { loadScheduleCoverageQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
 import { loadExpenseRouting } from './employee-expense-routing-snapshot';
 import { adminExpenseRouteKey, adminExpenseRouteCopy, ADMIN_EXPENSE_ISSUE_SOURCE } from './employee-expense-routing';
@@ -74,6 +75,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   ]);
 
   const rows = [...new Map([...displayRows, ...unreadRows, ...lifecycleRows].map((row) => [row.id, row])).values()];
+  const scheduleQuestions = await loadScheduleCoverageQuestions(prisma, rows.filter(r=>r.event.sourceType==='work_schedule_coverage').map(r=>r.event.sourceId), now);
   const cashRouting = rows.some(r => r.event.sourceType === ADMIN_EXPENSE_ISSUE_SOURCE) ? await loadExpenseRouting(now) : null;
   const cashParts = new Map(cashRouting?.adminItems.map(i => [adminExpenseRouteKey(i), i]));
   const hasTaxReminder = rows.some((row) => row.event.sourceType === 'tax_control');
@@ -241,7 +243,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
+      current: sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
         : sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
         : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
@@ -282,6 +284,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
       sourceState,
     };
+    if (sourceType === 'work_schedule_coverage' && sourceState.active) { const q=scheduleQuestions.get(sourceId)!; item.event.title=q.title; item.event.body=q.body; item.event.href=`/admin/attendance?date=${sourceId.split(':')[1]}`; }
     if (sourceType === ADMIN_EXPENSE_ISSUE_SOURCE) {
       const part = cashParts.get(row.event.eventKey);
       const unavailable = cashRouting?.state !== 'ready' || cashRouting.unavailableRefs.includes(row.event.eventKey.split(':')[1]);

@@ -1,3 +1,4 @@
+import { schedulePushAt } from './schedule-coverage-question';
 import 'server-only';
 import type { Prisma } from '@prisma/client';
 import { getMoscowDateKey } from './workday';
@@ -14,9 +15,9 @@ export function scheduleNoticeRef(fingerprint: string) {
 }
 
 export function scheduleQuestionKind(input: { status?: string; onVacation: boolean; shortage: boolean; requestKnownOff: boolean }) {
-  if (input.onVacation || !input.shortage || input.status === 'working') return null;
+  if (input.onVacation || input.status === 'working') return null;
   if (!input.status) return 'schedule_fill_request';
-  return input.status === 'off' && input.requestKnownOff ? 'schedule_replacement_request' : null;
+  return input.status === 'off' && input.shortage && input.requestKnownOff ? 'schedule_replacement_request' : null;
 }
 
 export function scheduleQuestionIsActive(input: { kind: string; status?: string; onVacation: boolean; shortage: boolean; date: string; today: string }) {
@@ -86,9 +87,9 @@ export async function activeScheduleNotices(db: Db, rows: Array<{ id: number; ki
   return result;
 }
 
-export async function reconcileScheduleQuestions(db: Db, input: { actorId: number; department: string; date: string; requestKnownOff: boolean }) {
+export async function reconcileScheduleQuestions(db: Db, input: { actorId: number; department: string; date: string; requestKnownOff: boolean; now?: Date }) {
   const { department, date } = input;
-  const now = new Date();
+  const now = input.now ?? new Date();
   const prefix = `schedule-coverage:${department}:${date}:`;
   const [employees, entries, vacations, notices] = await Promise.all([
     db.user.findMany({ where: { role: 'EMPLOYEE', isActive: true, department }, select: { id: true, name: true } }),
@@ -102,7 +103,7 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
   const activeIds = new Set(employees.map(row => row.id));
   const cancelIds = notices.filter(notice => {
     const status = entries.find(row => row.userId === notice.userId)?.status;
-    return !activeIds.has(notice.userId) || notice.userId === input.actorId || !scheduleQuestionIsActive({ kind: notice.kind, status, onVacation: vacationIds.has(notice.userId), shortage, date, today: getMoscowDateKey() });
+    return !activeIds.has(notice.userId) || notice.userId === input.actorId || !scheduleQuestionIsActive({ kind: notice.kind, status, onVacation: vacationIds.has(notice.userId), shortage, date, today: getMoscowDateKey(now) });
   }).map(row => row.id);
   // Keep an explicit answer distinct from a question retired by restored coverage.
   // Only the latter may become relevant again after another colleague changes plans.
@@ -110,10 +111,10 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
     const ids = notices.filter(row => cancelIds.includes(row.id) && (row.userId === input.actorId) === actor).map(row => row.id);
     if (ids.length) await db.workdayNotification.updateMany({ where: { id: { in: ids }, status: { in: ['pending', 'sent'] } }, data: { status, pushStatus: 'cancelled', nextPushAttemptAt: null } });
   }
-  if (date < getMoscowDateKey()) return;
+  if (date < getMoscowDateKey(now)) return;
   const dateLabel = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }).format(new Date(`${date}T12:00:00Z`));
   const names = working.map(row => schedulePersonName(employees.find(person => person.id === row.userId)?.name ?? '')).join(', ');
-  const staffing = names ? (working.length === 1 ? `По графику работает один сотрудник — ${names}.` : `По графику работают: ${names}.`) : 'На этот день пока никто не отметил работу.';
+  const staffing = names ? `По графику: ${names}.` : 'На этот день в графике пока никто не отмечен.';
   for (const employee of employees) {
     if (employee.id === input.actorId) continue;
     const status = entries.find(row => row.userId === employee.id)?.status;
@@ -123,11 +124,11 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
     // One question per employee/date. Reading keeps it open; an answer is final.
     if (old && !['pending', 'sent', 'resolved'].includes(old.status)) continue;
     const title = kind === 'schedule_fill_request' ? `Отметьте график на ${dateLabel}` : `Сможете работать ${dateLabel}?`;
-    const body = `${staffing} ${kind === 'schedule_fill_request' ? 'Отметьте рабочий день или выходной.' : 'У вас отмечен выходной.'}`;
+    const body = kind === 'schedule_fill_request' ? `Ваш график на ${dateLabel} не заполнен. Отметьте: работаете вы или у вас выходной.` : `${staffing} У вас выходной. Сможете выйти?`;
     if (old?.status === 'resolved') {
-      await db.workdayNotification.update({ where: { id: old.id }, data: { kind, title, body, status: 'pending', scheduledAt: now, sentAt: null, readAt: null, pushStatus: 'pending', pushDeliveredAt: null, nextPushAttemptAt: null, lastError: '', attemptCount: 0 } });
+      await db.workdayNotification.update({ where: { id: old.id }, data: { kind, title, body, status: 'pending', scheduledAt: schedulePushAt(date, now), sentAt: null, readAt: null, pushStatus: 'pending', pushDeliveredAt: null, nextPushAttemptAt: null, lastError: '', attemptCount: 0 } });
     } else if (old) {
       if (!cancelIds.includes(old.id) && (old.title !== title || old.body !== body)) await db.workdayNotification.update({ where: { id: old.id }, data: { title, body } });
-    } else await db.workdayNotification.create({ data: { userId: employee.id, fingerprint: `${prefix}${employee.id}`, kind, title, body, scheduledAt: now } });
+    } else await db.workdayNotification.upsert({ where: {fingerprint:`${prefix}${employee.id}`}, create: { userId: employee.id, fingerprint: `${prefix}${employee.id}`, kind, title, body, scheduledAt: schedulePushAt(date, now) }, update:{} });
   }
 }

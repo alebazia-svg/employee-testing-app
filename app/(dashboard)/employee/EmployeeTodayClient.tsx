@@ -4584,7 +4584,7 @@ export function EmployeeTodayClient({
                     getColleagueRows(pendingScheduleChange.date).filter(({ entry }) => entry?.status === 'working'),
                   ) && (
                     <p className='text-sm font-extrabold text-amber-950'>
-                      В смене останется {scheduleNames(getColleagueRows(pendingScheduleChange.date).filter(({ entry }) => entry?.status === 'working'))}.
+                      В графике останется {scheduleNames(getColleagueRows(pendingScheduleChange.date).filter(({ entry }) => entry?.status === 'working'))}.
                     </p>
                   )}
                   <p className={cn('text-sm font-semibold leading-relaxed text-amber-900', pendingScheduleChange.coverage.state === 'reduced' && 'mt-1')}>
@@ -4626,9 +4626,9 @@ export function EmployeeTodayClient({
                     const remainingNames = scheduleNames(rows.filter(({ entry }) => entry?.status === 'working'));
                     const unfilledNames = scheduleNames(rows.filter(({ person, entry }) => !entry && !departmentVacationForDate(date, person.id)));
                     const consequence = remainingNames
-                      ? unfilledNames ? `в графике остаётся ${remainingNames}.` : `работать останется только ${remainingNames}.`
+                      ? unfilledNames ? `в графике остаётся ${remainingNames}.` : `по графику останется только ${remainingNames}.`
                       : coverage.state === 'reduced' ? 'в графике останется один сотрудник.'
-                      : unfilledNames ? 'пока никто не отметил, что работает.' : 'работать будет некому.';
+                      : unfilledNames ? 'пока никто не отметил рабочий день в графике.' : 'по графику никто не запланирован.';
                     return <div key={date}>
                       <p><strong>{formatDateLabel(date)}</strong> — {consequence}</p>
                       {unfilledNames && <p className='mt-1 text-sm text-slate-500'>Не отметили график: {unfilledNames}.</p>}

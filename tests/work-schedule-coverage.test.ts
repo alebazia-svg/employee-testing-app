@@ -12,7 +12,7 @@ test('retail and wholesale target two employees without blocking reduced staffin
 
 test('coverage copy distinguishes reduced and empty department states', () => {
   assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 1)).title, /один сотрудник/);
-  assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 0)).title, /никого не будет/);
+  assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 0)).title, /В графике никого/);
   assert.equal(scheduleCoverageCopy(scheduleCoverage('retail', 1)).action, 'Сохранить выходной');
 });
 

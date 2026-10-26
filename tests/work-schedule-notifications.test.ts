@@ -11,7 +11,7 @@ test('ask missing colleagues; ask known days off only on an explicit loss of cov
   assert.equal(scheduleQuestionKind({ ...base, status: 'off', requestKnownOff: true }), 'schedule_replacement_request');
   assert.equal(scheduleQuestionKind({ ...base, status: 'working', requestKnownOff: true }), null);
   assert.equal(scheduleQuestionKind({ ...base, onVacation: true }), null);
-  assert.equal(scheduleQuestionKind({ ...base, shortage: false }), null);
+  assert.equal(scheduleQuestionKind({ ...base, shortage: false }), 'schedule_fill_request');
 });
 test('filling remains actionable until own answer; replacement retires when coverage is restored', () => {
   const base = { kind: 'schedule_fill_request', onVacation: false, shortage: false, date, today: '2099-10-01' };
@@ -22,10 +22,10 @@ test('filling remains actionable until own answer; replacement retires when cove
   assert.equal(scheduleQuestionIsActive({ ...base, onVacation: true }), false);
   assert.equal(scheduleQuestionIsActive({ ...base, today: '2099-10-27' }), false);
 });
-test('pushes share a monthly target while individual dates keep distinct questions', () => {
+test('each date has its own reminder target, future delivery is deferred', () => {
   const row = { id: 1, taskId: null, issueId: null, reviewId: null, kind: 'schedule_fill_request', fingerprint: 'schedule-coverage:retail:2099-10-26:2' };
   assert.deepEqual(scheduleNoticeRef(row.fingerprint), { department: 'retail', date, userId: 2 });
-  assert.equal(notificationTargetKey(row), notificationTargetKey({ ...row, id: 2, fingerprint: 'schedule-coverage:retail:2099-10-27:2' }));
+  assert.notEqual(notificationTargetKey(row), notificationTargetKey({ ...row, id: 2, fingerprint: 'schedule-coverage:retail:2099-10-27:2' }));
   assert.notEqual(notificationTargetKey(row), notificationTargetKey({ ...row, fingerprint: 'schedule-coverage:retail:2099-11-01:2' }));
 });
 test('monthly legacy notice uses audited unchanged reductions and respects date-specific answers', async () => {
@@ -54,7 +54,7 @@ test('saving does not reset read or declined questions, skips vacation, working 
         { id: 60, userId: 6, kind: 'schedule_fill_request', title: 'Old', body: '', status: 'answered' },
         { id: 80, userId: 8, kind: 'schedule_replacement_request', title: 'Old', body: '', status: 'resolved' },
       ],
-      create: async ({ data }: any) => { created.push(data); },
+      upsert: async ({ create }: any) => { created.push(create); },
       update: async ({ data }: any) => { updated.push(data); },
       updateMany: async () => {},
     },

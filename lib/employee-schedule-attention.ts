@@ -39,12 +39,12 @@ export function scheduleAttentionItems({ userId, department, today, dated, entri
     const fill = !own;
     const names = day.filter(row => row.status === 'working' && !vacationIds.has(row.userId)).map(row => schedulePersonName(row.user.name)).join(', ');
     const workingCount = day.filter(row => row.status === 'working' && !vacationIds.has(row.userId)).length;
-    const staffing = names ? (workingCount === 1 ? `По графику работает один сотрудник — ${names}.` : `По графику работают: ${names}.`) : 'На этот день пока никто не отметил работу.';
+    const staffing = names ? `По графику: ${names}.` : 'На этот день в графике пока никто не отмечен.';
     const dateLabel = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }).format(new Date(`${date}T12:00:00Z`));
     result.set(id, {
       id, kind: 'schedule', title: fill ? `Отметьте график на ${dateLabel}` : `Сможете работать ${dateLabel}?`,
       state: 'action', status: fill ? 'График не отмечен' : 'Нужен ваш ответ', priority: 3, date,
-      detail: `${staffing} ${fill ? 'Ваш график ещё не заполнен.' : 'У вас отмечен выходной.'}`,
+      detail: fill ? 'Выберите: работаете вы или у вас выходной.' : `${staffing} У вас выходной. Сможете выйти?`,
       scheduleNoticeId: notice.id, scheduleExpectedStatus: own?.status === 'off' ? 'off' : null,
       scheduleDate: date, scheduleAction: fill ? 'fill' : 'replacement',
       notificationIds: notice.readAt ? [] : [notice.id],

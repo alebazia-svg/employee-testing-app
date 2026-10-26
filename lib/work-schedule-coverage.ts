@@ -48,15 +48,15 @@ export function shouldRequestScheduleReplacement(input: {
 export function scheduleCoverageCopy(coverage: ScheduleCoverage) {
   if (coverage.state === 'empty') {
     return {
-      title: 'В отделе никого не будет',
-      body: 'Коллегам придёт просьба выйти на замену.',
+      title: 'В графике никого не останется',
+      body: 'Коллегам придёт вопрос по графику.',
       action: 'Сохранить выходной',
     };
   }
   if (coverage.state === 'reduced') {
     return {
-      title: 'Останется один сотрудник',
-      body: 'Коллегам придёт просьба выйти на замену.',
+      title: 'В графике останется один сотрудник',
+      body: 'Коллегам придёт вопрос по графику.',
       action: 'Сохранить выходной',
     };
   }

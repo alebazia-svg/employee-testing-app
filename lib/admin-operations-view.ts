@@ -97,7 +97,7 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
   'work_schedule.coverage_gap': {
     category: 'requests',
     typeLabel: 'График отдела',
-    actionLabel: 'Открыть день',
+    actionLabel: 'Открыть график',
   },
 };
 
@@ -149,6 +149,7 @@ export function adminInboxSourceState(input: {
       ? { active: true, label: 'Текущая заявка', tone: 'active' }
       : { active: false, label: 'В истории', tone: 'history' };
   }
+  if (input.sourceType === 'work_schedule_coverage') return input.current ? {active:true,label:'Уточнить график',tone:'attention'} : {active:false,label:'Больше не актуально',tone:'resolved'};
   if (input.sourceType === 'tax_control') {
     return input.current
       ? { active: true, label: 'Документы ожидаются', tone: 'attention' }
