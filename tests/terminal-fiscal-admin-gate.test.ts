@@ -298,7 +298,7 @@ test('a source outage preserves a genuine open missing-check case and its employ
 test('a genuine ambiguity names its cause and refreshes one existing event without creating repeats',async()=>{
  const f=fixture();
  await stageFiscalAdminReview(f.db,{...f.record,reasonCode:'ONE_C_MULTIPLE_CANDIDATES',candidateCount:2});
- assert.equal(f.events[0].title,'В 1С найдено несколько подходящих чеков');
+ assert.equal(f.events[0].title,'В 1С найдено несколько подходящих документов');
  await stageFiscalAdminReview(f.db,{...f.record,reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH',candidateCount:1});
  assert.equal(f.events.length,1);
  assert.equal(f.events[0].title,'В ОФД отличается сумма оплаты картой');
