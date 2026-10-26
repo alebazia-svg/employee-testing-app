@@ -222,3 +222,49 @@ test('an OFD candidate retires an employee request and cannot be approved as mis
  await stageFiscalAdminReview(f.db,{...candidate,status:'confirmed',reasonCode:'MATCH_CONFIRMED'});
  assert.equal(f.reviews[0].status,'resolved');
 });
+
+test('owner seating works with empty home KKM settings for both actual app shifts', async () => {
+  const f = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 4, name: 'Абшаева Зухра', home: null }, { id: 3, name: 'Чеченова Милана', home: null },
+  ] });
+  f.db.terminalFiscalMapping.findUnique = async () => ({ oneCCashRegisterRef: 'kkm-zukhra', terminalKey: '2332022071' });
+  const result = await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra');
+  assert.equal(result.primary?.id, 4);
+  assert.equal(result.reason, 'home_workstation');
+});
+
+test('Magomed replaces absent home owner with empty personal KKM settings', async () => {
+  const f = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 3, name: 'Чеченова Милана', home: null }, { id: 5, name: 'Костеренко Магомед', home: null },
+  ] });
+  f.db.terminalFiscalMapping.findUnique = async () => ({ oneCCashRegisterRef: 'kkm-zukhra', terminalKey: '2332022071' });
+  f.db.terminalFiscalMapping.findMany = async () => [
+    { oneCCashRegisterRef: 'kkm-zukhra', terminalKey: '2332022071' },
+    { oneCCashRegisterRef: 'kkm-milana', terminalKey: '1010808747019437' },
+  ];
+  assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).primary?.id, 5);
+  f.db.workDayEntry.findMany = async () => [
+    { userId: 3, startedAt: new Date('2026-09-10T06:00:00Z'), endedAt: null, user: { name: 'Чеченова Милана' } },
+    { userId: 6, startedAt: new Date('2026-09-10T06:00:00Z'), endedAt: null, user: { name: 'Новый сотрудник' } },
+  ];
+  assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).confidence, 'uncertain');
+});
+
+test('seating policy respects explicit home KKM and never guesses outside actual shift intervals', async () => {
+  const f = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 4, name: 'Абшаева Зухра', home: 'kkm-milana' }, { id: 3, name: 'Чеченова Милана', home: 'kkm-zukhra' },
+  ] });
+  f.db.terminalFiscalMapping.findUnique = async () => ({ oneCCashRegisterRef: 'kkm-zukhra', terminalKey: '2332022071' });
+  assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).primary?.id, 3);
+  f.db.workDayEntry.findMany = async () => [
+    { userId: 3, startedAt: new Date(+f.at - 3600000), endedAt: new Date(+f.at - 1), user: { name: 'Чеченова Милана' } },
+    { userId: 4, startedAt: new Date(+f.at + 1), endedAt: null, user: { name: 'Абшаева Зухра' } },
+  ];
+  assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).primary, null);
+  f.db.workDayEntry.findMany = async () => [
+    { userId: 3, startedAt: new Date(+f.at - 3600000), endedAt: null, user: { name: 'Чеченова Милана' } },
+    { userId: 4, startedAt: new Date(+f.at - 3600000), endedAt: null, user: { name: 'Абшаева Зухра' } },
+    { userId: 5, startedAt: new Date(+f.at - 3600000), endedAt: null, user: { name: 'Костеренко Магомед' } },
+  ];
+  assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).confidence, 'uncertain');
+});

@@ -1,3 +1,4 @@
+import { fiscalWorkstationLabel } from './retail-workstation-responsibility';
 import { portalPersonName } from '@/lib/portal-person';
 import 'server-only';
 import {getAttendanceRows,getScheduleRows} from './google-sheets';
@@ -41,7 +42,8 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
   const archivedUnresolved = review.status === 'resolved' && review.reasonCode === TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED;
   const shared = review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day';
   const pendingAdmin = TERMINAL_FISCAL_ADMIN_FIRST && review.status === 'admin_review' && !resolved;
-  const proposed = pendingAdmin ? await fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId) : null;
+  const responsibility = await fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId);
+  const proposed = pendingAdmin ? responsibility : null;
   const simpleCheck = pendingAdmin && !match?.oneCSourceRef && match?.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND'
     && match.tbankComplete && match.oneCComplete;
   const showDiscussion = (!pendingAdmin && !resolved) || review.messages.length > 0;
@@ -61,7 +63,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
   const cashier = match?.oneCCashierRef ? await prisma.userOneCCashboxMapping.findUnique({where:{oneCCashierRef:match.oneCCashierRef},select:{isActive:true,user:{select:{name:true}}}}) : null;
   let googleHint:ReturnType<typeof retailWorkplaceHint>=null;
   const dateKey=(at:Date)=>at.toLocaleDateString('en-CA',{timeZone:'Europe/Moscow'});
-  if(!cashier?.isActive && !resolved && review.mapping && dateKey(review.bankOperationAt)===dateKey(new Date())) {
+  if(!cashier?.isActive && responsibility.confidence !== 'high' && !resolved && review.mapping && dateKey(review.bankOperationAt)===dateKey(new Date())) {
     const read=(async()=>{
       const users=await prisma.user.findMany({where:{role:'EMPLOYEE',department:'retail',isActive:true},select:{id:true,name:true,oneCCashboxMapping:{select:{isActive:true,oneCCashRegisterRef:true}}}});
       const day=dateKey(review.bankOperationAt);
@@ -92,7 +94,8 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
     id:review.id,currentUserId,open,resolved,archivedUnresolved,pendingAdmin,simpleCheck,elapsedMinutes,view,
     amount:`${(review.amountKopecks/100).toLocaleString('ru-RU',{maximumFractionDigits:2})} ₽`,
     at:review.bankOperationAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),
-    workstation:review.mapping?.workstation?.label || review.mapping?.label || null,
+    workstation:fiscalWorkstationLabel(review.mapping?.workstation?.label || review.mapping?.label || null, responsibility.confidence === 'high' ? responsibility.primary?.name ?? null : null),
+    responsible:responsibility.confidence === 'high' ? responsibility.primary?.name ?? null : null,
     terminal:aqsi ? `aQsi · ${aqsi}` : review.mapping ? `Терминал · ${review.mapping.terminalKey}` : null,
     manager:cashier?.isActive ? cashier.user.name : null,
     googleHint,

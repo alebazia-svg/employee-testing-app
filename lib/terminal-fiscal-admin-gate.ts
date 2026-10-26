@@ -1,3 +1,4 @@
+import { retailHomeTerminalKey, isRetailWorkstationReplacement } from './retail-workstation-responsibility';
 import { isFiscalChainReason } from './terminal-fiscal-chain-review';
 import 'server-only';
 import { createHash } from 'node:crypto';
@@ -118,7 +119,7 @@ export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   // Otherwise the ADMIN keeps the existing shared delivery instead of guessing.
   if (!mappingId || active.length !== 2 || users.length !== 2) return ambiguous();
   const mapping = await db.terminalFiscalMapping.findUnique({
-    where: { id: mappingId }, select: { oneCCashRegisterRef: true },
+    where: { id: mappingId }, select: { oneCCashRegisterRef: true, terminalKey: true },
   });
   if (!mapping?.oneCCashRegisterRef) return ambiguous();
   const userIds = users.map((user) => user.id);
@@ -138,18 +139,30 @@ export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   const homeMappings = await db.userOneCCashboxMapping.findMany({
     where: { userId: { in: userIds }, isActive: true }, select: { userId: true, oneCCashRegisterRef: true },
   });
-  const directIds = [...new Set(homeMappings.filter((item) => item.oneCCashRegisterRef === mapping.oneCCashRegisterRef).map((item) => item.userId))];
+  // Owner-confirmed physical seating is independent of personal 1C cashboxes.
+  // An explicit home KKM remains authoritative when one has been configured.
+  const homeTerminal = (user: ProposedUser) => retailHomeTerminalKey(user.name);
+  const hasExplicitHome = (id: number) => homeMappings.some(item => item.userId === id && item.oneCCashRegisterRef);
+  const policyIds = users.filter(user => !hasExplicitHome(user.id) && homeTerminal(user) === mapping.terminalKey).map(user => user.id);
+  const directIds = [...new Set(homeMappings.filter((item) => item.oneCCashRegisterRef === mapping.oneCCashRegisterRef).map((item) => item.userId).concat(policyIds))];
   if (directIds.length === 1) return ordered(directIds[0], 'home_workstation');
   if (directIds.length > 1) return ambiguous();
 
   const activeMappings = await db.terminalFiscalMapping.findMany({
     where: { isActive: true, effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },
-    select: { oneCCashRegisterRef: true },
+    select: { oneCCashRegisterRef: true, terminalKey: true },
   });
   const knownWorkstations = new Set(activeMappings.map((item) => item.oneCCashRegisterRef));
   const fixedEmployeeIds = new Set(homeMappings.filter((item) => item.oneCCashRegisterRef && knownWorkstations.has(item.oneCCashRegisterRef)).map((item) => item.userId));
+  const knownTerminals = new Set(activeMappings.map(item => item.terminalKey));
+  for (const user of users) {
+    const key = homeTerminal(user);
+    if (!hasExplicitHome(user.id) && key && knownTerminals.has(key)) fixedEmployeeIds.add(user.id);
+  }
   const floating = users.filter((user) => !fixedEmployeeIds.has(user.id));
-  return floating.length === 1 ? ordered(floating[0].id, 'floating_employee') : ambiguous();
+  return floating.length === 1 && isRetailWorkstationReplacement(floating[0].name)
+    && fixedEmployeeIds.size === 1 && knownTerminals.has(mapping.terminalKey)
+    ? ordered(floating[0].id, 'floating_employee') : ambiguous();
 }
 
 export async function approveFiscalReview(db: PrismaClient, id: string, adminId: number, expectedIds: number[], bodyFor: (at: Date, amount: number, shared: boolean) => string) {
