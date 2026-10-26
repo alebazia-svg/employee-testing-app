@@ -1,12 +1,44 @@
 # Weekly schedule reminder — local candidate 2026-10-26
 
 Owner approved a defined weekly policy after reviewing the unshipped monthly
-prototype, then explicitly authorized production deployment. Current phase:
-release 1.18.3 prepared; deployment/production verification pending.
+prototype, then explicitly authorized production deployment. Main weekly
+reminder was released and verified as 1.18.3; inspection parity follow-up below
+is locally verified and awaits the parallel 1.18.4 release before deployment.
 Live public metadata and freshly fetched deployment branch were both 1.18.2
 before preparing this patch. Runtime commit: 8167990. Previous server source:
 d9da4c7cbb7b09b86aeeac3b75c0d0e0d461e041. No migration or schema delta;
 rollback to the previous app image remains compatible.
+
+## Production 1.18.3 verification
+
+- Deployed source 9dbe926696bd1632988d07d1bae5e8689bc8b28d, runtime 8167990.
+- Public version 1.18.3, builtAt 2026-10-26T15:02:48.195Z (18:02 Moscow).
+  Authenticated ADMIN footer matches. Metadata revision is null in the existing
+  Docker pipeline; server source was verified independently over SSH.
+- Running image sha256:a7245f982dc56194db10411ad090d2494f7698964bdba88e2c4b7620cf0d72b1,
+  healthy, public API health ok. Env hash and uploads mounts unchanged.
+- Previous image sha256:4cdb1c936362243e998b9afcc1a87bfb5ea9fd83e53c6a7e9740095c225a53ff.
+  Verified registry now holds current plus 1.18.2 and 1.18.1
+  (sha256:a39a49a9bcdd44182528950bbe1f7927897b97e41859ba27f1ea8afefcc7b0b7).
+  Registration succeeded after releasing the deploy lock; release exit 0.
+- Real Zukhra read-only inspection shows “Заполните график / Завтра не отмечено”
+  and opens the bounded calendar, retaining the unrelated handover reminder.
+  No employee answers or schedule edits were made. Screenshots are
+  /tmp/mobo-schedule-week-production-1.18.3.png and
+  /tmp/mobo-schedule-reminder-production-1.18.3.png.
+- No migration, manual production DB write, 1C write or physical-device push
+  test. Disk free after release 17 GiB; prior service stayed healthy during build.
+
+## Inspection parity follow-up
+
+Final review found ADMIN inspection dropped the new week query, so a midweek
+inspection could still read only today forward. The read-only transport and
+inspection GET now forward and validate the same week range as the employee
+endpoint. Identity filtering, actor-bound visits and blocked writes remain.
+The real isolated HTTP test compares both snapshots, rejects far weeks,
+employee access and POST. Transport tests, TypeScript and build passed.
+Parallel receipt release a718908 (1.18.4) was fast-forwarded without editing its
+files. Do not push while its deploy still expects that exact branch tip.
 
 ## Accepted policy
 
@@ -94,6 +126,7 @@ no browser errors on the reviewed flow. No production or physical-device tests.
 - `app/(dashboard)/employee/EmployeeTodayClient.tsx`
 - `app/api/employee/workday/schedule/bulk/route.ts`
 - `app/api/employee/workday/schedule/route.ts`
+- `app/api/admin/employees/preview/[visitId]/route.ts`
 - `components/workday/EmployeeActionReminder.tsx`
 - `components/workday/EmployeeAttentionPanel.tsx`
 - `lib/employee-action-reminder.ts`
@@ -102,6 +135,7 @@ no browser errors on the reviewed flow. No production or physical-device tests.
 - `lib/employee-notification-snapshot.ts`
 - `lib/employee-schedule-attention.ts`
 - `lib/employee-schedule-snapshot.ts`
+- `lib/employee-preview-request.ts`
 - `lib/schedule-coverage-reconciliation.ts`
 - `lib/schedule-week-reminder.ts`
 - `lib/work-schedule-notifications.ts`
@@ -113,4 +147,5 @@ no browser errors on the reviewed flow. No production or physical-device tests.
 - `tests/schedule-reminders.integration.test.ts`
 - `tests/schedule-week-reminder.test.ts`
 - `tests/schedule-week-bulk.integration.test.ts`
+- `tests/employee-preview.test.ts`
 - `tests/work-schedule-notifications.test.ts`
