@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { terminalFiscalSourceIncomplete } from './terminal-fiscal-reason-view';
 import { createHash } from 'node:crypto';
 import { TERMINAL_FISCAL_ADMIN_FIRST, stageFiscalAdminReview, fiscalProposedRecipients } from './terminal-fiscal-admin-gate';
 import type { PrismaClient } from '@prisma/client';
@@ -443,6 +444,9 @@ export async function syncTerminalFiscalEmployeeReviews(
   const mode = input.mode ?? 'notify';
 
   for (const record of input.output.records) {
+    // Technical attempts are audited by persistence/source-health, not by the
+    // per-payment business lifecycle. Preserve employee help and prior decisions.
+    if (terminalFiscalSourceIncomplete(record.reasonCode)) continue;
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
     const operationAt = new Date(record.evidence.bankTransactionDate);
     const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {

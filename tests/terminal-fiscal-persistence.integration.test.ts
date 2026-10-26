@@ -382,3 +382,28 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   await prisma.user.deleteMany({where:{id:{in:[admin.id,...users.map(u=>u.id)]}}});
  }
 });
+
+test('confirmed snapshot survives repeated source outages, with every failed cycle audited and a full real mismatch still applied', async () => {
+ const mapping=await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:marker+'-outage',oneCAcquiringTerminalRef:'outage-acq',oneCCashRegisterRef:'outage-kkm',kktRegistrationNumber:'outage-kkt',effectiveFrom:new Date('2026-08-10')}});
+ const at='2026-08-10T07:00:00Z';
+ const leaseInput={algorithmVersion:'mvp-1',mappingId:mapping.id,periodFrom:new Date('2026-08-10T00:00:00Z'),periodTo:new Date('2026-08-11T00:00:00Z')};
+ const complete={tbank:true,oneC:true,ofd:true};
+ const base:any={matchingKey:marker+'-outage-match',version:'mvp-1',status:'confirmed',reasonCode:'MATCH_CONFIRMED',evaluatedAt:at,graceUntil:at,mappingId:mapping.id,bankOperationKey:marker+'-outage-bank',oneCCheckKey:marker+'-outage-check',ofdReceiptKey:marker+'-outage-ofd',oneCCashierRef:'outage-cashier',operationType:'sale',amountKopecks:50000,candidateCount:1,timeDifferenceSeconds:3,evidence:{bankTransactionDate:at},sourceCheckedAt:{tbank:at,oneC:at,ofd:at},sourceCompleteness:complete,history:[]};
+ const persist=async(record:any,key:string)=>{
+  const lease=await acquireTerminalFiscalRunLease(prisma,leaseInput);assert.ok(lease);
+  await persistTerminalFiscalCycle(prisma,{lease,cycleKey:marker+key,output:{version:'mvp-1',evaluatedAt:record.evaluatedAt,records:[record]},sourceCheckedAt:record.sourceCheckedAt,sourceCompleteness:record.sourceCompleteness});
+ };
+ await persist(base,'-outage-initial');
+ const before=await prisma.terminalFiscalMatch.findFirstOrThrow({where:{mappingId:mapping.id}});
+ for(const [i,reasonCode] of ['SOURCE_OFD_INCOMPLETE','SOURCE_ONE_C_INCOMPLETE','SOURCE_TBANK_INCOMPLETE'].entries()){
+  await persist({...base,status:'unavailable',reasonCode,oneCCheckKey:i===0?base.oneCCheckKey:undefined,ofdReceiptKey:undefined,oneCCashierRef:undefined,evaluatedAt:`2026-08-10T07:0${i+1}:00Z`,sourceCompleteness:{tbank:i!==2,oneC:i!==1,ofd:i!==0}},'-outage-'+i);
+  assert.deepEqual(await prisma.terminalFiscalMatch.findUnique({where:{id:before.id}}),before);
+ }
+ assert.equal(await prisma.terminalFiscalMatchEvaluation.count({where:{matchId:before.id,status:'unavailable'}}),3);
+ const run=await prisma.terminalFiscalMatchRun.findUniqueOrThrow({where:{id:before.runId}});
+ assert.equal(run.tbankComplete,false);
+ await persist({...base,evaluatedAt:'2026-08-10T07:05:00Z'},'-outage-restored');
+ assert.equal((await prisma.terminalFiscalMatch.findUniqueOrThrow({where:{id:before.id}})).status,'confirmed');
+ await persist({...base,status:'mismatch',reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH',evaluatedAt:'2026-08-10T07:06:00Z'},'-outage-real-mismatch');
+ assert.equal((await prisma.terminalFiscalMatch.findUniqueOrThrow({where:{id:before.id}})).status,'mismatch');
+});

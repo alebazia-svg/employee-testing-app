@@ -51,7 +51,11 @@ export default async function AdminPage() {
       orderBy: { lastDetectedAt: 'desc' }, take: 40,
     }),
     prisma.terminalFiscalEmployeeReview.findMany({
-      where: { status: { in: ['open', 'admin_review'] } },
+      where: { status: { in: ['open', 'admin_review'] }, OR: [
+        { NOT: { reasonCode: { startsWith: 'SOURCE_' } } },
+        { messages: { some: { author: { role: 'EMPLOYEE' } } } },
+        { participants: { some: { response: 'help' } } },
+      ] },
       select: { id: true, status: true, assignmentScope: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
       orderBy: { updatedAt: 'desc' }, take: 40,
     }),

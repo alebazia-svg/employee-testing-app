@@ -268,3 +268,39 @@ test('seating policy respects explicit home KKM and never guesses outside actual
   ];
   assert.equal((await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra')).confidence, 'uncertain');
 });
+
+test('dependency failures never fan out into payment reviews or reopen confirmed cases', async () => {
+ for (const reasonCode of ['SOURCE_OFD_INCOMPLETE','SOURCE_ONE_C_INCOMPLETE','SOURCE_TBANK_INCOMPLETE','SOURCE_TBANK_HISTORICAL_INCOMPLETE']) {
+  const f=fixture();
+  const outage={...f.record,status:'unavailable',reasonCode,oneCCheckKey:'known-check',candidateCount:1} as MatchingAuditRecord;
+  await stageFiscalAdminReview(f.db,outage);
+  assert.equal(f.reviews.length,0);assert.equal(f.events.length,0);
+  await stageFiscalAdminReview(f.db,f.record);
+  await stageFiscalAdminReview(f.db,{...f.record,status:'confirmed'});
+  const before=JSON.stringify(f.reviews);
+  await stageFiscalAdminReview(f.db,outage);
+  assert.equal(JSON.stringify(f.reviews),before);
+  assert.equal(f.events.length,1);assert.equal(f.notifications.length,0);
+ }
+});
+
+test('a source outage preserves a genuine open missing-check case and its employee help', async () => {
+ const f=fixture();await stageFiscalAdminReview(f.db,f.record);
+ await approveFiscalReview(f.db,f.reviews[0].id,1,[4,5],()=> 'Проверьте чек');
+ f.participants[0].response='help';
+ const before=JSON.stringify({reviews:f.reviews,notifications:f.notifications,participants:f.participants,events:f.events});
+ for(let i=0;i<3;i++)await stageFiscalAdminReview(f.db,{...f.record,status:'unavailable',reasonCode:'SOURCE_OFD_INCOMPLETE'});
+ assert.equal(JSON.stringify({reviews:f.reviews,notifications:f.notifications,participants:f.participants,events:f.events}),before);
+ await stageFiscalAdminReview(f.db,{...f.record,status:'confirmed'});
+ assert.equal(f.reviews[0].status,'resolved');
+});
+
+test('a genuine ambiguity names its cause and refreshes one existing event without creating repeats',async()=>{
+ const f=fixture();
+ await stageFiscalAdminReview(f.db,{...f.record,reasonCode:'ONE_C_MULTIPLE_CANDIDATES',candidateCount:2});
+ assert.equal(f.events[0].title,'В 1С найдено несколько подходящих чеков');
+ await stageFiscalAdminReview(f.db,{...f.record,reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH',candidateCount:1});
+ assert.equal(f.events.length,1);
+ assert.equal(f.events[0].title,'В ОФД отличается сумма оплаты картой');
+ assert.match(f.events[0].body,/повторно пробивать чек до проверки не нужно/);
+});
