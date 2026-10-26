@@ -1,3 +1,4 @@
+import {terminalPaymentCopy,terminalPaymentMetadata,terminalReceiptNumber} from './terminal-payment-copy';
 import { retailHomeTerminalKey, isRetailWorkstationReplacement } from './retail-workstation-responsibility';
 import { terminalFiscalSourceIncomplete, terminalFiscalReasonLabel } from './terminal-fiscal-reason-view';
 import { isFiscalChainReason } from './terminal-fiscal-chain-review';
@@ -96,12 +97,13 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
       : uncertain ? `${terminalFiscalReasonLabel(record.reasonCode)}. Проверьте документы; повторно пробивать чек до проверки не нужно.`
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
+    const displayBody=body+(terminalReceiptNumber(record.evidence.terminalReceiptNumber)?` Чек терминала № ${record.evidence.terminalReceiptNumber}.`:'');
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
-        title, body,
+        title, body:displayBody,
         href: `/admin/workday/payment-checks/${review.id}`, sourceType: 'terminal_fiscal_review', sourceId: review.id, occurredAt: now },
-      update: { title, body },
+      update: { title, body:displayBody },
     });
     await tx.adminInboxReceipt.createMany({ data: admins.map((a) => ({ eventId: event.id, userId: a.id })), skipDuplicates: true });
   });
@@ -194,9 +196,12 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
     await tx.adminInboxEvent.upsert({ where: { eventKey: fiscalApprovalKey(id) }, create: {
       eventKey: fiscalApprovalKey(id), type: 'terminal_fiscal_review.approved', title: proposed.confidence === 'high' ? 'Проверка передана менеджеру' : 'Проверка передана менеджерам',
       body: `Администратор ${adminId} · ${recipients.map((u) => u.name).join(', ')}`, href: `/admin/workday/payment-checks/${id}`, sourceType: 'terminal_fiscal_review', sourceId: id, occurredAt: now }, update: {} });
+    const original=await tx.adminInboxEvent.findUnique({where:{eventKey:`${review.reviewKey}:admin-first`},select:{body:true}});
+    const metadata=terminalPaymentMetadata(original?[original]:[]);
+    const employeeBody=terminalPaymentCopy({operationAt:review.bankOperationAt,amountKopecks:review.amountKopecks,receiptNumber:metadata.receiptNumber,method:match?.bankOperationRawType??undefined,shared:proposed.confidence!=='high',relative:false}).body;
     for (const u of recipients) await tx.workdayNotification.upsert({ where: { fingerprint: `${review.reviewKey}:approved:${u.id}` }, create: {
       fingerprint: `${review.reviewKey}:approved:${u.id}`, userId: u.id, reviewId: id, kind: 'terminal_fiscal_review',
-      title: 'В 1С нет чека', body: bodyFor(review.bankOperationAt, review.amountKopecks, proposed.confidence !== 'high'), scheduledAt: now }, update: {} });
+      title: 'В 1С не найден чек продажи', body: employeeBody, scheduledAt: now }, update: {} });
     return { alreadyApproved: false };
   });
 }

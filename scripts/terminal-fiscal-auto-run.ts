@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldEvaluateDayClosure, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
+import { terminalFiscalIsRegularTick, terminalFiscalPendingPeriods, parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldEvaluateDayClosure, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
 import { syncTerminalFiscalEmployeeReviews } from '../lib/terminal-fiscal-employee-review';
 import { loadDailyFiscalReport } from '../lib/terminal-fiscal-daily-report-loader';
@@ -9,8 +9,10 @@ import { getMoscowDateKey } from '../lib/workday';
 async function main() {
   const options = parseTerminalFiscalAutoRunCli(process.argv.slice(2));
   const now = new Date();
-  const periods = terminalFiscalAutomaticPeriods(options.mode, now);
-  if (options.mode === 'current' && options.persist && terminalFiscalShouldRunUnresolvedSweep(now)) {
+  const pendingTick=process.argv.includes('--pending-rechecks')&&options.mode==='current'&&options.persist&&!terminalFiscalIsRegularTick(now);
+  const pending=pendingTick ? await prisma.terminalFiscalEmployeeReview.findMany({where:{status:'open',bankOperationAt:{gte:new Date(+now-7*86400000)}},select:{bankOperationAt:true}}) : [];
+  const periods = pendingTick ? terminalFiscalPendingPeriods(pending.map(r=>r.bankOperationAt),now) : terminalFiscalAutomaticPeriods(options.mode, now);
+  if (!pendingTick && options.mode === 'current' && options.persist && terminalFiscalShouldRunUnresolvedSweep(now)) {
     const unresolved = await prisma.terminalFiscalEmployeeReview.findMany({
       where: { status: { in: ['admin_review', 'open'] } },
       select: { bankOperationAt: true },
@@ -70,7 +72,7 @@ async function main() {
         });
       }
     }
-    if (options.persist && terminalFiscalShouldEvaluateDayClosure(options.mode, period, now)) {
+    if (!pendingTick && options.persist && terminalFiscalShouldEvaluateDayClosure(options.mode, period, now)) {
       const day = getMoscowDateKey(period.periodFrom);
       const report = await loadDailyFiscalReport(day);
       const decision = terminalFiscalDayClosureDecision({

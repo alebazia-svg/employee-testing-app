@@ -109,6 +109,7 @@ export type TerminalMapping = {
 export type BankOperation = {
   terminalKey: string;
   rrn: string;
+  terminalReceiptNumber?: string;
   transactionDate: string;
   amountKopecks: number;
   type: 'Debit' | 'Credit' | 'Other';
@@ -199,6 +200,7 @@ export type MatchingAuditRecord = {
     amountCoverage?: {bankKeys:string[];oneCRefs:string[]};
     bankTransactionDate: string;
     bankOperationRawType?: string;
+    terminalReceiptNumber?: string;
     oneCDateTime?: string;
     oneCFiscalDateTime?: string;
     oneCTotalKopecks?: number;
@@ -833,6 +835,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       evidence: {
         bankTransactionDate: operation.transactionDate,
         bankOperationRawType: operation.rawType,
+        terminalReceiptNumber: operation.terminalReceiptNumber,
         oneCDateTime: oneCCheck?.dateTime,
         oneCFiscalDateTime: oneCCheck?.fiscalDateTime,
         oneCTotalKopecks: oneCCheck?.totalKopecks,

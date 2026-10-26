@@ -29,6 +29,13 @@ project from scratch.
 
 ## Read First By Task
 
+- Personal fiscal help and short employee payment copy: `fiscal-help-preview-20261026.md` —
+  released/verified 1.18.14 / e778abf on 2026-10-27 after owner visual approval.
+  Separate named help push; actual printed terminal check number; 30-minute first
+  reminder retained, guarded minute rechecks and 5–10-second visible refresh.
+  Effective server drop-in is preserved; rollback must restore the prior fiscal
+  unit pair/drop-in before reverting app code. Physical-phone push remains unverified.
+
 - Latest owner-approved schedule rule: `schedule-near-reminder-candidate-20261026.md` —
   only today/tomorrow may cause the fill reminder; ordinary unrestricted month
   calendar. Supersedes weekly obligation/default weekly view in 1.18.5.

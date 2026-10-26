@@ -17,3 +17,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     throw error;
   }
 }
+
+/** Lightweight automatic retirement check; never runs matching or changes an answer. */
+export async function GET(_request:Request,context:{params:Promise<{id:string}>}) {
+  const user=await getCurrentUser();
+  if(!user||user.role!=='EMPLOYEE')return Response.json({error:'Forbidden'},{status:403});
+  const review=await prisma.terminalFiscalEmployeeReview.findFirst({where:{id:(await context.params).id,OR:[{employeeId:user.id},{participants:{some:{userId:user.id}}}]},select:{status:true}});
+  if(!review)return Response.json({error:'Not found'},{status:404});
+  return Response.json(review,{headers:{'Cache-Control':'private, no-store'}});
+}

@@ -1,3 +1,4 @@
+import {terminalReceiptNumber} from './terminal-payment-copy';
 import 'server-only';
 
 import type { BankOperation } from '@/lib/terminal-fiscal-matching';
@@ -89,6 +90,7 @@ export async function loadAqsiOperations(input: {
       operations.set(id, {
         terminalKey: input.portalTerminalKey,
         rrn,
+        ...(terminalReceiptNumber(content?.sequenceNumber) ? {terminalReceiptNumber:terminalReceiptNumber(content?.sequenceNumber)!} : {}),
         transactionDate,
         amountKopecks,
         type,

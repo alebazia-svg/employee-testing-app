@@ -308,6 +308,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       item.event.body = 'Связь запроса с исполнением в 1С сейчас не подтверждена. Это не новый запрос денег. Проверьте связанную заявку и расходник в 1С, прежде чем оформлять повторную выдачу.';
       item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
     }
+    if (row.event.type === 'terminal_fiscal_review.help_requested') item.event.push={identity:row.event.title,detail:row.event.body,action:'Помочь сотруднику'};
     if (sourceState.active && item.meta.category !== 'system') {
       item.event.push ??= pushDetails.get(`${sourceType}:${sourceId}`);
       item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;

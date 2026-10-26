@@ -33,9 +33,10 @@ test('automatic runner remains non-persisting without the explicit audit flag', 
   assert.throws(() => parseTerminalFiscalAutoRunCli(['--mode', 'other']), /Usage/);
 });
 
-test('production current-day audit runs every five minutes', () => {
+test('minute timer enables guarded pending-case rechecks', () => {
   const timer = readFileSync('ops/systemd/offonika-terminal-fiscal-current.timer', 'utf8');
-  assert.match(timer, /OnCalendar=\*-\*-\* \*:02\/5:00 Europe\/Moscow/);
+  assert.match(timer, /OnCalendar=\*-\*-\* \*:\*:00 Europe\/Moscow/);
+  assert.match(readFileSync('ops/systemd/offonika-terminal-fiscal-current.service','utf8'),/--pending-rechecks/);
 });
 
 test('current automation also revisits the previous day for late checks', () => {
