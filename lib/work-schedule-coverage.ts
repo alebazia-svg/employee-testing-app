@@ -8,7 +8,9 @@ export type ScheduleCoverage = {
 };
 
 export function departmentScheduleTarget(department: string) {
-  return department === 'retail' || department === 'wholesale' ? 2 : 1;
+  // Wholesale colleagues alternate days off; one working employee is normal.
+  // Retail normally needs two, but reduced staffing is a question, never a ban.
+  return department === 'retail' ? 2 : 1;
 }
 
 export function scheduleCoverage(department: string, workingCount: number): ScheduleCoverage {

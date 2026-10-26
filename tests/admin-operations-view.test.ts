@@ -97,3 +97,14 @@ test('encashment permission is a decision for one shift, not a permanent owner a
   assert.equal(adminInboxSourceState({...base,businessStatus:'pending',sourceDate:'2026-10-12'}).active,true);
   assert.equal(adminInboxSourceState({...base,businessStatus:'pending',reasonCode:'other'}).active,true);
 });
+
+test('technical receipt cases do not require business attention while genuine employee replies remain visible', () => {
+ const input={sourceType:'terminal_fiscal_review',businessStatus:'admin_review',reasonCode:'SOURCE_OFD_INCOMPLETE'};
+ assert.equal(adminInboxSourceState({...input,eventType:'terminal_fiscal_review.created'}).active,false);
+ for(const eventType of ['terminal_fiscal_review.employee_action','terminal_fiscal_review.employee_message']) {
+  assert.equal(adminInboxSourceState({...input,eventType}).active,true);
+ }
+ assert.equal(adminInboxSourceState({...input,reasonCode:'ONE_C_CANDIDATE_NOT_FOUND'}).active,true);
+ assert.equal(adminInboxSourceState({...input,reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH'}).active,true);
+ assert.equal(adminInboxSourceState({...input,businessStatus:'resolved',eventType:'terminal_fiscal_review.employee_action'}).active,false);
+});

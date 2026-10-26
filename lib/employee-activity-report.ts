@@ -1,4 +1,5 @@
 import 'server-only';
+import { readOperationContext } from './employee-operation-policy';
 import { buildAuditTimeline, noticeAuditKey, type AuditEpisode } from './employee-audit-timeline';
 import { readInteraction } from './employee-interaction-policy';
 import { prisma } from './prisma';
@@ -9,8 +10,8 @@ import { expenseRemaining, EMPLOYEE_EXPENSE_KIND, EXPENSE_SOURCE_MAX_AGE_MS } fr
 import { expenseRecord as record, expenseText as text } from './expense-request-list-view';
 import { readHandoverContext, handoverEventTitle } from './employee-handover-audit-policy';
 
-export type ActivityFact = { id: string; section: ActivitySection; at: string; title: string; note: string; visit: boolean };
-export type ActivityObligation = { id: number; title: string; body: string; sentAt: string; openedAt: string | null; legacyReadAt: string | null; push: string; result: string; resultAt: string | null; note: string; attention: 'owner' | 'employee' | 'unknown' | null; reason: string; sourceAt: string | null };
+export type ActivityFact = { id: string; section: ActivitySection; at: string; title: string; note: string; visit: boolean; period?: string };
+export type ActivityObligation = { id: number; auditKey?: string; title: string; body: string; sentAt: string; openedAt: string | null; legacyReadAt: string | null; push: string; result: string; resultAt: string | null; note: string; attention: 'owner' | 'employee' | 'unknown' | null; reason: string; sourceAt: string | null };
 export type ActivityEpisode = { id: string; title: string; at: string; result: string; facts: ActivityFact[] };
 export type EmployeeActivityReport = {
   date: string; checkedAt: string; startedAt: string | null; retentionDays: number; truncated: boolean;
@@ -18,6 +19,7 @@ export type EmployeeActivityReport = {
   sections: { id: ActivitySection; label: string; visits: number; actions: number; lastAt: string | null; events: ActivityFact[] }[];
   audit?: AuditEpisode[];
   obligations: ActivityObligation[]; episodes: ActivityEpisode[];
+  cashEvidence?: {key:string;factId?:string;at:string;postedAt:string|null;document:string|null;status:string}[];
 };
 /** Local persisted evidence only. Opening this screen never runs 1C reconciliation. */
 export async function employeeActivityReport(userId: number, date: string, now = new Date()): Promise<EmployeeActivityReport> {
@@ -29,17 +31,21 @@ export async function employeeActivityReport(userId: number, date: string, now =
     prisma.workDayEntry.findMany({ where: { userId, OR: [{ startedAt: range }, { endedAt: range }] }, orderBy: { startedAt: 'desc' }, take: 10 }),
     prisma.shiftControlTask.findMany({ where: { run: { userId }, completedAt: range, status: 'done' }, orderBy: { completedAt: 'desc' }, take: 201 }),
     prisma.workScheduleChange.findMany({ where: { userId, source: { in: ['employee', 'employee_bulk', 'employee_bulk_edit'] }, createdAt: range }, orderBy: { createdAt: 'desc' }, take: 201 }),
-    prisma.cashOperation.findMany({ where: { userId, createdAt: range }, orderBy: { createdAt: 'desc' }, take: 201 }),
+    prisma.cashOperation.findMany({ where: { userId, OR:[{createdAt:range},{oneCPostedAt:range}] }, orderBy: { createdAt: 'desc' }, take: 201 }),
     prisma.workdayNotification.findMany({ where: { userId, sentAt: range }, orderBy: { sentAt: 'asc' }, take: 201,
       include: { task: { select: { status: true, title: true, completedAt: true, numericValue: true } }, issue: { select: { status: true, resolvedAt: true } }, review: { select: { status: true, resolvedAt: true } } } }),
   ]);
   const relatedIds=events.flatMap(e=>{const c=readInteraction(e.context);return e.notificationId?[e.notificationId]:c?.target==='notification'?[Number(c.ref)]:[];});
-  const previousNotices=relatedIds.length?await prisma.workdayNotification.findMany({where:{userId,id:{in:relatedIds},NOT:{sentAt:range}},take:200}):[];
+  const previousNotices=relatedIds.length?await prisma.workdayNotification.findMany({where:{userId,id:{in:relatedIds},NOT:{sentAt:range}},take:201,
+    include: { task: { select: { status: true, title: true, completedAt: true, numericValue: true } }, issue: { select: { status: true, resolvedAt: true } }, review: { select: { status: true, resolvedAt: true } } } }):[];
   const auditNotices=[...notifications,...previousNotices];
+  const operationRefs=events.flatMap(e=>{const c=e.kind==='operation'?readOperationContext(e.context):null;return c?.action==='cash_send'&&c.ref?[c.ref]:[];});
+  const earlierCash=operationRefs.length?await prisma.cashOperation.findMany({where:{userId,idempotencyKey:{in:operationRefs},id:{notIn:cash.map(c=>c.id)}},take:201}):[];
+  const cashEvidence=[...cash,...earlierCash].map(c=>({key:c.idempotencyKey,factId:`cash:${c.id}`,at:c.createdAt.toISOString(),postedAt:c.oneCPostedAt?.toISOString()||null,document:c.oneCDocumentNumber,status:c.status}));
   const shift: EmployeeActivityReport['shift'] = { status: days[0]?.endedAt ? 'completed' : days[0]?.status === 'active' ? 'active' : 'unknown', startedAt: days[0]?.startedAt?.toISOString() ?? null, endedAt: days[0]?.endedAt?.toISOString() ?? null };
   const opens = notifications.length ? await prisma.portalActivityEvent.findMany({ where: { userId, kind: 'notification_open', notificationId: { in: notifications.map(n => n.id) }, session: { isService: false } }, orderBy: { createdAt: 'asc' }, take: 201 }) : [];
   const expenseRef = (n: typeof notifications[number]) => n.kind === EMPLOYEE_EXPENSE_KIND ? n.fingerprint.split(':')[3] || '' : '';
-  const refs = notifications.map(expenseRef).filter(Boolean);
+  const refs = auditNotices.map(expenseRef).filter(Boolean);
   const cases = refs.length ? await prisma.expenseRequestAdminCase.findMany({ where: { oneCRequestRef: { in: refs } }, include: { evaluations: { orderBy: { evaluatedAt: 'desc' }, take: 1 } } }) : [];
   const facts: ActivityFact[] = events.filter(e => ['visit','notification_open'].includes(e.kind)).map(e => ({ id: e.id, section: e.section as ActivitySection, at: e.createdAt.toISOString(),
     title: e.kind === 'visit' ? 'Открыл раздел' : notifications.some(n => n.id === e.notificationId) ? `Открыл уведомление «${notifications.find(n => n.id === e.notificationId)!.title}»` : 'Открыл уведомление', note: e.kind === 'visit' ? 'Раздел был открыт в видимом приложении.' : 'Открытие в приложении зафиксировано; это не подтверждает выполнение поручения.', visit: e.kind === 'visit' }));
@@ -51,7 +57,11 @@ export async function employeeActivityReport(userId: number, date: string, now =
     add(`end:${d.id}`, 'day', d.endedAt, 'Смена завершена', 'Факт завершения; это мог сделать и администратор.');
   }
   for (const t of tasks) add(`task:${t.id}`, 'day', t.completedAt, `${t.title}${t.numericValue !== null ? ` · ${t.numericValue.toLocaleString('ru-RU')}` : ''}`);
-  for (const s of schedules) add(`schedule:${s.id}`, 'schedule', s.createdAt, `Сохранил график: ${new Date(`${s.date}T12:00:00+03:00`).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long' })} — ${s.nextStatus === 'working' ? 'рабочий день' : 'выходной'}`);
+  for (const s of schedules) {
+    const label=(status:string|null)=>status==='working'?'рабочий день':status==='off'?'выходной':'не указан';
+    add(`schedule:${s.id}`, 'schedule', s.createdAt, `График ${new Date(`${s.date}T12:00:00+03:00`).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long' })}: ${label(s.previousStatus)} → ${label(s.nextStatus)}`);
+    const fact=facts.find(f=>f.id===`schedule:${s.id}`);if(fact)fact.period=s.date.slice(0,7);
+  }
   for (const c of cash) add(`cash:${c.id}`, 'day', c.createdAt, `Кассовая операция · ${c.amount.toLocaleString('ru-RU')} ₽`, c.oneCPostedAt ? `Проведено в 1С · № ${c.oneCDocumentNumber || 'не передан'}` : 'Запись в портале; проведение в 1С не подтверждено.');
   facts.sort((a,b) => b.at.localeCompare(a.at));
   const episodes = new Map<number, ActivityEpisode>();
@@ -73,7 +83,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
   }
   for (const item of episodes.values()) { item.facts.sort((a,b) => a.at.localeCompare(b.at)); item.at = item.facts.at(-1)!.at; }
   const grouped = new Map<string, ActivityObligation>();
-  for (const n of notifications.slice(0,200)) {
+  for (const n of auditNotices.filter(n => n.sentAt).sort((a,b) => +a.sentAt! - +b.sentAt!)) {
     const opened = opens.find(e => e.notificationId === n.id);
     const informational = employeeNotificationOpening(n) === 'notice' || n.kind === EMPLOYEE_EXPENSE_KIND && n.fingerprint.endsWith(':coordinate');
     let result = informational ? 'Информационное сообщение' : 'Выполнение не подтверждено', resultAt: string | null = null, title = n.task?.title || n.title;
@@ -104,19 +114,19 @@ export async function employeeActivityReport(userId: number, date: string, now =
     const done = !['Выполнение не подтверждено','Информационное сообщение'].includes(result);
     const attention: ActivityObligation['attention'] = done || informational ? null : !knownOpen ? 'unknown' : shift.status === 'completed' ? 'owner' : shift.status === 'active' ? 'employee' : 'unknown';
     const reason = attention === 'owner' ? 'Смена завершена, а вопрос остался открытым. Уточните, что помешало выполнению.' : attention === 'employee' ? 'Сотрудник ещё на смене. Поручение остаётся в работе; просрочка не установлена.' : attention === 'unknown' ? 'Недостаточно свежих данных о результате или смене. Задержку сотрудника подтвердить нельзя.' : '';
-    const item: ActivityObligation = { id: n.id, title, body: n.body, sentAt: n.sentAt!.toISOString(), openedAt: opened?.createdAt.toISOString() ?? null, legacyReadAt: n.readAt?.toISOString() ?? null,
+    const item: ActivityObligation = { id: n.id, auditKey: noticeAuditKey(n), title, body: n.body, sentAt: n.sentAt!.toISOString(), openedAt: opened?.createdAt.toISOString() ?? null, legacyReadAt: n.readAt?.toISOString() ?? null,
       push: n.pushDeliveredAt ? 'Push принят службой доставки; показ на устройстве не подтверждён.' : 'Приём push службой доставки не подтверждён.', result, resultAt, note, attention, reason, sourceAt };
-    const key = informational ? `notice:${n.id}` : n.taskId ? `task:${n.taskId}` : n.issueId ? `issue:${n.issueId}` : n.reviewId ? `review:${n.reviewId}` : expenseRef(n) ? `expense:${expenseRef(n)}` : n.fingerprint;
+    const key = noticeAuditKey(n);
     const previous = grouped.get(key);
     if (previous) { item.sentAt = previous.sentAt; item.openedAt = [previous.openedAt, item.openedAt].filter((v): v is string => !!v).sort()[0] || null; }
     grouped.set(key, item);
   }
   const audit=buildAuditTimeline(events,auditNotices,date,[
-    ...[...grouped.values()].filter(n=>!['Выполнение не подтверждено','Информационное сообщение'].includes(n.result)).map(n=>({id:noticeAuditKey(notifications.find(v=>v.id===n.id)!),title:n.title,result:n.result,at:n.resultAt})),
+    ...[...grouped.values()].filter(n=>!['Выполнение не подтверждено','Информационное сообщение'].includes(n.result)).map(n=>({id:n.auditKey!,title:n.title,result:n.result,at:n.resultAt})),
     ...[...episodes.values()].filter(e=>e.result==='Сдача смены завершена').map(e=>({id:e.id,title:e.title,result:e.result,at:tasks.find(t=>`handover:${t.id}`===e.id)?.completedAt?.toISOString()??null})),
   ]);
-  return { audit, date, checkedAt: now.toISOString(), startedAt: coverage?.startedAt.toISOString() ?? null, retentionDays: ACTIVITY_RETENTION_DAYS, shift,
-    truncated: events.length >= 600 || tasks.length > 200 || schedules.length > 200 || cash.length > 200 || notifications.length > 200,
+  return { audit, cashEvidence, date, checkedAt: now.toISOString(), startedAt: coverage?.startedAt.toISOString() ?? null, retentionDays: ACTIVITY_RETENTION_DAYS, shift,
+    truncated: events.length >= 600 || tasks.length > 200 || schedules.length > 200 || cash.length > 200 || earlierCash.length > 200 || notifications.length > 200 || previousNotices.length > 200 || opens.length > 200 || days.length >= 10,
     sections: Object.entries(activitySections).map(([id,label]) => { const rows = facts.filter(f => f.section === id); return { id: id as ActivitySection, label, visits: rows.filter(f => f.visit).length, actions: rows.filter(f => !f.visit).length, lastAt: rows[0]?.at || null, events: rows }; }),
     obligations: [...grouped.values()], episodes: [...episodes.values()].sort((a,b) => b.at.localeCompare(a.at)) };
 }

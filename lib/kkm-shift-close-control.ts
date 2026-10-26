@@ -98,7 +98,9 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   if (!ofd.complete) return { ...common, status: 'unavailable', sourceError: 'Платформа OFD временно не ответила полностью.' };
   // The same physical KKT and fiscal shift may already be closed even while 1C lags.
   // Never accept another shift or a closing report older than the employee's last check.
-  const lastCheckAt = Date.parse(lastCheck.dateTime);
+  // Compare KKT events on the fiscal clock: the 1C document clock can be ahead
+  // of the receipt and Z-report. Without fiscal evidence remain conservative.
+  const lastCheckAt = Date.parse(lastCheck.fiscalDateTime || lastCheck.dateTime);
   const report = ofd.data.find((item) => Boolean(shift.fiscalShiftNumber)
     && item.kktRegistrationNumber === lastCheck.kktRegistrationNumber
     && item.shiftNumber === shift.fiscalShiftNumber

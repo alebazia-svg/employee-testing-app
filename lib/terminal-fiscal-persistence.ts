@@ -1,3 +1,4 @@
+import { terminalFiscalSourceIncomplete } from './terminal-fiscal-reason-view';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
@@ -149,11 +150,16 @@ export async function persistTerminalFiscalCycle(prisma: PrismaClient, input: {
             ...(data.ofdFiscalKeyHash ? [{ ofdFiscalKeyHash: data.ofdFiscalKeyHash }] : []),
           ],
         },
-        select: { id: true },
+        select: { id: true, bankOperationHash: true, status: true },
       });
       const identityIds = [...new Set(identities.map(({ id }) => id))];
       if (identityIds.length > 1) throw new Error('TERMINAL_FISCAL_ASSIGNMENT_CONFLICT');
-      const match = identityIds.length === 1
+      // An incomplete read cannot revoke a confirmed financial fact. Preserve its
+      // original checkedAt/identity; append the failed attempt below for audit/health.
+      const confirmed = identities.find(item => item.bankOperationHash === data.bankOperationHash && item.status === 'confirmed');
+      const match = confirmed && terminalFiscalSourceIncomplete(record.reasonCode)
+        ? { id: confirmed.id }
+        : identityIds.length === 1
         ? await tx.terminalFiscalMatch.update({ where: { id: identityIds[0] }, data, select: { id: true } })
         : await tx.terminalFiscalMatch.create({ data, select: { id: true } });
       const evaluation = await tx.terminalFiscalMatchEvaluation.createMany({

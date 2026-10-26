@@ -1,3 +1,4 @@
+import { terminalFiscalSourceIncomplete } from './terminal-fiscal-reason-view';
 export type AdminInboxCategory = 'requests' | 'messages' | 'decisions' | 'system';
 
 export type AdminInboxEventMeta = {
@@ -167,6 +168,13 @@ export function adminInboxSourceState(input: {
       : { active: false, label: 'Исправлено', tone: 'resolved' };
   }
   if (input.sourceType === 'terminal_fiscal_review') {
+    // Legacy outage-generated cases remain inspectable, without posing as an
+    // unresolved business decision. Actual employee replies still need attention.
+    if (['open', 'admin_review'].includes(input.businessStatus ?? '')
+      && terminalFiscalSourceIncomplete(input.reasonCode ?? '')
+      && !['terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'].includes(input.eventType ?? '')) {
+      return { active: false, label: 'Ожидаются данные источника', tone: 'neutral' };
+    }
     if (input.businessStatus === 'open') return { active: true, label: 'Проверка активна', tone: 'attention' };
     if (input.businessStatus === 'admin_review') return { active: true, label: 'На контроле администратора', tone: 'active' };
     if (input.reasonCode === 'OWNER_ARCHIVED_UNRESOLVED') return { active: false, label: 'В истории · не исправлено', tone: 'history' };

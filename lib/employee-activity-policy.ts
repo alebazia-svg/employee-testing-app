@@ -1,4 +1,5 @@
 import { readInteraction, type InteractionContext } from './employee-interaction-policy';
+import { readOperationContext, type OperationContext } from './employee-operation-policy';
 import { readHandoverContext, type HandoverContext } from './employee-handover-audit-policy';
 export const activitySections = {
   day: 'Рабочий день', schedule: 'График', payroll: 'Моя зарплата', notifications: 'Уведомления',
@@ -8,7 +9,7 @@ export const activitySections = {
 export type ActivitySection = keyof typeof activitySections;
 export type ActivityInput = { key: string; kind: 'visit'; section: ActivitySection } |
   { key: string; kind: 'notification_open'; notificationId: number } |
-  { key: string; kind: 'handover'; context: HandoverContext } | { key: string; kind: 'interaction'; context: InteractionContext };
+  { key: string; kind: 'handover'; context: HandoverContext } | { key: string; kind: 'interaction'; context: InteractionContext } | {key:string;kind:'operation';context:OperationContext};
 export const ACTIVITY_RETENTION_DAYS = 90;
 export const ACTIVITY_DAILY_LIMIT = 600;
 export function parseActivityInput(value: unknown): ActivityInput | null {
@@ -19,6 +20,7 @@ export function parseActivityInput(value: unknown): ActivityInput | null {
   if (p.kind === 'notification_open' && Object.keys(p).every(k => ['key','kind','notificationId'].includes(k)) && typeof p.notificationId === 'number' && Number.isSafeInteger(p.notificationId) && p.notificationId > 0) return p as ActivityInput;
   if (p.kind === 'interaction' && Object.keys(p).every(k => ['key','kind','context'].includes(k)) && readInteraction(p.context)) return p as ActivityInput;
   if (p.kind === 'handover' && Object.keys(p).every(k => ['key','kind','context'].includes(k)) && readHandoverContext(p.context)) return p as ActivityInput;
+  if (p.kind === 'operation' && Object.keys(p).every(k => ['key','kind','context'].includes(k)) && readOperationContext(p.context)) return p as ActivityInput;
   return null;
 }
 export function activityDayBounds(date: string) {

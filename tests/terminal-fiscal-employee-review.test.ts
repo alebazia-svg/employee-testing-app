@@ -611,3 +611,9 @@ test('thirty-minute boundary and handover override never bypass source and OFD s
  assert.equal(evaluateTerminalFiscalEmployeeReview({...args,minimumAgeMs:0,record:{...before,reasonCode:'OFD_CANDIDATE_REQUIRES_LINK'}}).action,'admin_only');
  assert.equal(evaluateTerminalFiscalEmployeeReview({...args,minimumAgeMs:0,record:{...before,sourceCompleteness:{...before.sourceCompleteness,oneC:false}}}).action,'wait');
 });
+
+test('an outage batch does not query recipients, create reviews, resolve real cases or send employees anything', async () => {
+ const records=['SOURCE_OFD_INCOMPLETE','SOURCE_ONE_C_INCOMPLETE','SOURCE_TBANK_INCOMPLETE'].map((reasonCode,index)=>record({status:'unavailable',reasonCode:reasonCode as MatchingAuditRecord['reasonCode'],matchingKey:'outage-'+index,oneCCheckKey:index===0?'existing-check':undefined}));
+ const result=await syncTerminalFiscalEmployeeReviews({} as PrismaClient,{output:{version:'mvp-1',evaluatedAt:records[0].evaluatedAt,records},mapping,oneCChecks:[],mode:'notify'});
+ assert.deepEqual(result,{opened:0,resolved:0,adminOnly:0,shadowed:0});
+});

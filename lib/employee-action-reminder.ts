@@ -1,6 +1,6 @@
+import { scheduleCalendarHref } from './schedule-near-reminder';
 import { getMoscowDateKey, getMoscowMinutes } from './workday';
 import { orderEmployeeAttention, type EmployeeAttentionItem } from './employee-attention';
-import { scheduleCalendarHref } from './schedule-near-reminder';
 
 export type ReminderWorkday = {
   workDay: { status: string; date: string; endedAt?: string | Date | null } | null;

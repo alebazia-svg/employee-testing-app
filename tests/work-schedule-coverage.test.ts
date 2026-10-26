@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { departmentScheduleTarget, scheduleCoverage, scheduleCoverageCopy, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '../lib/work-schedule-coverage';
 
-test('retail and wholesale target two employees without blocking reduced staffing', () => {
+test('retail normally targets two; wholesale accepts one and neither blocks reduced staffing', () => {
   assert.equal(departmentScheduleTarget('retail'), 2);
-  assert.equal(departmentScheduleTarget('wholesale'), 2);
+  assert.equal(departmentScheduleTarget('wholesale'), 1);
   assert.deepEqual(scheduleCoverage('retail', 2), { targetCount: 2, workingCount: 2, state: 'full', needsReplacement: false });
   assert.deepEqual(scheduleCoverage('retail', 1), { targetCount: 2, workingCount: 1, state: 'reduced', needsReplacement: true });
   assert.deepEqual(scheduleCoverage('retail', 0), { targetCount: 2, workingCount: 0, state: 'empty', needsReplacement: true });
@@ -40,4 +40,11 @@ test('employee schedule uses first names while preserving a safe fallback', () =
   assert.equal(schedulePersonName('Магомед'), 'Магомед');
   assert.equal(schedulePersonLabel('Чеченова Милана', ['Чеченова Милана', 'Алиева Милана']), 'Милана Ч.');
   assert.equal(schedulePersonLabel('Абшаева Зухра', ['Абшаева Зухра', 'Костеренко Магомед']), 'Зухра');
+});
+
+test('wholesale one or two employees is normal; empty department still needs cover',()=>{
+ for(const n of [1,2])assert.equal(scheduleCoverage('wholesale',n).needsReplacement,false);
+ assert.equal(scheduleCoverage('wholesale',0).needsReplacement,true);
+ assert.equal(shouldRequestScheduleReplacement({previousStatus:'working',nextStatus:'off',coverage:scheduleCoverage('wholesale',1)}),false);
+ assert.equal(shouldRequestScheduleReplacement({previousStatus:'working',nextStatus:'off',coverage:scheduleCoverage('wholesale',0)}),true);
 });

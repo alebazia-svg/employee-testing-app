@@ -1,6 +1,7 @@
 'use client';
 import { HandoverAuditShown } from '@/components/HandoverAuditShown';
 import { useEmployeeActivityVisit, sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
+import { beginEmployeeOperation, useEmployeePeriodView } from '@/components/EmployeeOperationAudit';
 import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import { closeReasonRequiresComment } from '@/lib/workday-close-request';
 import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
@@ -1270,7 +1271,7 @@ export function EmployeeTodayClient({
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
   const [activeTab, setActiveTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
-  useEmployeeActivityVisit(activeTab === 'attention' ? 'notifications' : activeTab);
+  useEmployeeActivityVisit(activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1324,6 +1325,9 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
+  useEmployeePeriodView('schedule_view', scheduleMode === 'month' ? calendarMonth : selectedScheduleDate, activeTab === 'schedule');
+  const scheduleAuditSeen = useRef('');
+  useEffect(() => { if (activeTab !== 'schedule') scheduleAuditSeen.current = ''; }, [activeTab]);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkOriginalStatuses, setBulkOriginalStatuses] = useState<Record<string, BulkScheduleStatus | null>>({});
@@ -1694,14 +1698,17 @@ export function EmployeeTodayClient({
         .filter((item) => item.userId === user.id)
         .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
       for (const item of items) {
+        const finishAudit = beginEmployeeOperation('cash_send',{ref:item.id});
         try {
           const result = await uploadFormData<{ operation: CashOperation }>(item.url, 'POST', cashOutboxFormData(item), 'Не удалось отправить сохранённую операцию');
           if (!cashOutboxResponseAcknowledges(result, item)) {
             throw new Error('Портал не подтвердил сохранение операции. Сумма и фото остаются на телефоне.');
           }
+          finishAudit('completed');
           await removeEmployeeCashOutboxItem(item.id);
           saved += 1;
         } catch (reason) {
+          finishAudit('queued',navigator.onLine ? 'request' : 'network');
           failure = reason instanceof Error ? reason.message : 'Не удалось отправить сохранённую инкассацию.';
           break;
         }
@@ -1744,15 +1751,19 @@ export function EmployeeTodayClient({
 
   const syncScheduleState = useCallback(async () => {
     const requestedMonth = scheduleMode === 'month' ? calendarMonth : null;
+    const auditPeriod = requestedMonth || today.slice(0,7);
+    const auditKey = `${scheduleMode}:${auditPeriod}`;
+    const finishAudit = beginEmployeeOperation('schedule_load', {disabled:!!preview || activeTab !== 'schedule' || scheduleAuditSeen.current === auditKey,period:auditPeriod});
+    if (activeTab === 'schedule') scheduleAuditSeen.current = auditKey;
     if (requestedMonth) setLoadingScheduleMonth(requestedMonth);
     try {
       const query = requestedMonth ? `?month=${encodeURIComponent(requestedMonth)}` : '';
       const response = await request(`/api/employee/workday/schedule${query}`, { cache: 'no-store' });
-      if (!response.ok) return;
+      if (!response.ok) { finishAudit('failed','request'); return; }
       const payload: unknown = await response.json();
-      if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule)) return;
+      if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule)) { finishAudit('failed','incomplete'); return; }
       const range = payload.range;
-      if (!isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') return;
+      if (!isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') { finishAudit('failed','incomplete'); return; }
       if (typeof payload.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.today)) setToday(payload.today);
       setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], range.from as string, range.to as string));
       setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], range.from as string, range.to as string));
@@ -1765,12 +1776,14 @@ export function EmployeeTodayClient({
         setLoadedScheduleMonths((current) => new Set(current).add(requestedMonth));
       }
       window.dispatchEvent(new Event('mobo:attention-refresh'));
+      finishAudit('completed');
     } catch {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       // Keep the last valid schedule and retry on the next visible sync.
     } finally {
       if (requestedMonth) setLoadingScheduleMonth((current) => (current === requestedMonth ? null : current));
     }
-  }, [calendarMonth, scheduleMode]);
+  }, [calendarMonth, scheduleMode, activeTab, preview, today]);
 
   useEffect(() => {
     if (activeTab !== 'schedule') return;
@@ -2161,6 +2174,7 @@ export function EmployeeTodayClient({
 
   async function saveVacation() {
     if (preview) { preview.blocked(); return; }
+    const finishAudit = beginEmployeeOperation('vacation_save',{period:vacationFrom});
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -2178,6 +2192,7 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось сохранить отпуск');
       if (!isRecord(payload.vacation)) throw new Error('Сервер вернул неполные данные отпуска');
+      finishAudit('completed');
       const savedVacation = payload.vacation as EmployeeVacation;
       setOwnVacationsState((current) => [...current.filter((item) => item.id !== savedVacation.id), savedVacation]);
       setDepartmentVacationsState((current) => [...current.filter((item) => item.id !== savedVacation.id), { ...savedVacation, user }]);
@@ -2187,6 +2202,7 @@ export function EmployeeTodayClient({
       setCalendarMonth(monthKeyFromDate(vacationFrom));
       setMessage(editingVacation ? 'Отпуск изменён' : 'Отпуск отмечен в графике');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить отпуск');
     } finally {
       setIsSaving(false);
@@ -2196,6 +2212,7 @@ export function EmployeeTodayClient({
   async function cancelVacation() {
     if (preview) { preview.blocked(); return; }
     if (!editingVacation) return;
+    const finishAudit = beginEmployeeOperation('vacation_cancel',{period:editingVacation.dateFrom});
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -2207,12 +2224,14 @@ export function EmployeeTodayClient({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отменить отпуск');
+      finishAudit('completed');
       setOwnVacationsState((current) => current.filter((item) => item.id !== editingVacation.id));
       setDepartmentVacationsState((current) => current.filter((item) => item.id !== editingVacation.id));
       setVacationEditorOpen(false);
       setEditingVacation(null);
       setMessage('Отпуск удалён из графика');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось отменить отпуск');
     } finally {
       setIsSaving(false);
@@ -2221,6 +2240,7 @@ export function EmployeeTodayClient({
 
   async function updateSchedule(date: string, status: 'working' | 'off', confirmCoverageImpact = false) {
     if (preview) { preview.blocked(); return; }
+    const finishAudit = beginEmployeeOperation('schedule_save',{period:date});
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -2245,14 +2265,17 @@ export function EmployeeTodayClient({
           coverage: payload.coverage as unknown as ScheduleCoverage,
           copy: payload.copy as PendingScheduleChange['copy'],
         });
+        finishAudit('confirmation');
         return;
       }
       if (!response.ok) throw new Error(payload.error || 'Не удалось обновить график');
       if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
+      finishAudit('completed');
       setPendingScheduleChange(null);
       setEditingScheduleDate(null);
       setMessage(status === 'working' ? 'Рабочий день сохранён' : 'Выходной сохранён');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
     } finally {
       setIsSaving(false);
@@ -2293,6 +2316,7 @@ export function EmployeeTodayClient({
   async function saveBulkSchedule() {
     if (preview) { preview.blocked(); return; }
     if (isSaving || bulkScheduleChanges.length === 0) return;
+    const finishAudit = beginEmployeeOperation('schedule_save',{period:calendarMonth});
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -2307,10 +2331,12 @@ export function EmployeeTodayClient({
         if (response.status === 409) await syncScheduleState();
         throw new Error(isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить график');
       }
+      finishAudit('completed');
       cancelBulkSchedule();
       await syncScheduleState();
       setMessage('График сохранён');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
       setBulkScheduleConfirmOpen(false);
     } finally {
@@ -2320,6 +2346,7 @@ export function EmployeeTodayClient({
 
   async function declineScheduleReplacement(date: string) {
     if (preview) { preview.blocked(); return; }
+    const finishAudit = beginEmployeeOperation('schedule_save',{period:date});
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -2332,8 +2359,10 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось сохранить ответ');
       if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
+      finishAudit('completed');
       setMessage('Ответ сохранён');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить ответ');
     } finally {
       setIsSaving(false);
@@ -2471,6 +2500,7 @@ export function EmployeeTodayClient({
       setError('QR-подтверждение не найдено. Отсканируйте код ещё раз.');
       return;
     }
+    const finishAudit = beginEmployeeOperation('day_start',{period:today});
     setIsSaving(true);
     try {
       const response = await request('/api/employee/workday/start', {
@@ -2489,9 +2519,11 @@ export function EmployeeTodayClient({
       // Safari/PWA can retain pre-start values in part of the React tree even
       // after the workday response is applied. Use the same full reload that
       // reliably refreshes these values when the employee does it manually.
+      finishAudit('completed');
       window.location.reload();
       return;
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
       setIsSaving(false);
@@ -2499,9 +2531,11 @@ export function EmployeeTodayClient({
   }
 
   async function finishWorkDay() {
+    const finishAudit = beginEmployeeOperation('day_end',{period:today,disabled:!!preview});
     setError('');
     setMessage('');
     if (shiftControlEnabled && showShiftControl && handoverTask && !isHandoverDone) {
+      finishAudit('failed','prerequisite');
       setError('Сначала сдайте смену');
       setShowFullShiftPlan(false);
       if (canActOnShiftTask(handoverTask)) startHandoverWizard(handoverTask);
@@ -2514,6 +2548,7 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) {
         if (payload.code === 'OPEN_REQUIRED_ISSUES') {
+          finishAudit('failed','prerequisite');
           setCloseBlocked(true);
           if (Array.isArray(payload.issues)) setRequiredIssuesState(payload.issues);
           if (!payload.issues?.some?.((issue: RequiredWorkdayIssue) => issue.ruleKey === 'kkm_shift_not_closed')) setCloseBlockedSheetOpen(true);
@@ -2522,11 +2557,13 @@ export function EmployeeTodayClient({
         throw new Error(payload.error || 'Не удалось завершить рабочий день');
       }
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
+      finishAudit('completed');
       setUnfinished(null);
       setNow(new Date());
       await syncCurrentWorkdayState(true);
       setMessage('');
     } catch (reason) {
+      finishAudit('failed',navigator.onLine ? 'request' : 'network');
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
     } finally {
       setIsSaving(false);
@@ -2799,6 +2836,7 @@ export function EmployeeTodayClient({
       lastError: '',
     };
     const formData = cashOutboxFormData(outboxItem);
+    const finishAudit = beginEmployeeOperation('cash_send',{ref:outboxItem.id});
 
     setError('');
     setIsSaving(true);
@@ -2822,6 +2860,7 @@ export function EmployeeTodayClient({
       if (!cashOutboxResponseAcknowledges(result, outboxItem)) {
         throw new Error('Портал не подтвердил сохранение операции.');
       }
+      finishAudit('completed');
       if (savedLocally) {
         await removeEmployeeCashOutboxItem(outboxItem.id);
         savedLocally = false;
@@ -2832,6 +2871,7 @@ export function EmployeeTodayClient({
       await syncCurrentWorkdayState(true);
       setMessage(result.message ?? `Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
+      finishAudit(savedLocally ? 'queued' : 'failed',navigator.onLine ? 'request' : 'network');
       if (savedLocally) {
         setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
         setMessage('Инкассация сохранена на телефоне. Не вводите её повторно.');

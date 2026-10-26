@@ -1,4 +1,5 @@
 import { retailHomeTerminalKey, isRetailWorkstationReplacement } from './retail-workstation-responsibility';
+import { terminalFiscalSourceIncomplete, terminalFiscalReasonLabel } from './terminal-fiscal-reason-view';
 import { isFiscalChainReason } from './terminal-fiscal-chain-review';
 import 'server-only';
 import { createHash } from 'node:crypto';
@@ -32,6 +33,9 @@ function money(value: number) {
 }
 
 export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping, options: {minimumAgeMs?:number} = {}) {
+  // An unavailable dependency is a technical incident, never one new case per payment.
+  // Keep existing financial reviews and employee responses unchanged until a complete read.
+  if (terminalFiscalSourceIncomplete(record.reasonCode)) return;
   const hash = createHash('sha256').update(record.matchingKey).digest('hex');
   const reviewKey = `terminal-fiscal-review:${hash}`;
   const now = new Date(record.evaluatedAt);
@@ -85,19 +89,19 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
-    const title = record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
+    const title = record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? terminalFiscalReasonLabel(record.reasonCode) : 'В 1С нет чека';
     const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK'
       ? 'Есть возможный чек ОФД. Требуется связать документы; просьба пробить повторный чек не отправляется.'
       : possibleSplit
       ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
-      : uncertain ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
+      : uncertain ? `${terminalFiscalReasonLabel(record.reasonCode)}. Проверьте документы; повторно пробивать чек до проверки не нужно.`
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
         title, body,
         href: `/admin/workday/payment-checks/${review.id}`, sourceType: 'terminal_fiscal_review', sourceId: review.id, occurredAt: now },
-      update: possibleSplit || record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? { title, body } : {},
+      update: { title, body },
     });
     await tx.adminInboxReceipt.createMany({ data: admins.map((a) => ({ eventId: event.id, userId: a.id })), skipDuplicates: true });
   });

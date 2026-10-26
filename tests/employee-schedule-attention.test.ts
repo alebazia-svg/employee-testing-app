@@ -5,7 +5,7 @@ import { employeeActionReminder } from '../lib/employee-action-reminder';
 import { employeeAttentionIconKind, employeeReminderIconKind } from '../lib/employee-notice-icons';
 const base = () => ({ userId: 2, department: 'retail', today: '2026-10-23', dated: [{ date: '2026-10-27', notice: { id: 1, kind: 'schedule_replacement_request', title: 'Сможете выйти 27 октября?', readAt: null as Date | null } }], entries: [{ date: '2026-10-27', userId: 3, status: 'working', user: { name: 'Пример Магомед' } }, { date: '2026-10-27', userId: 2, status: 'off', user: { name: 'Пример Милана' } }, {date:'2026-10-23',userId:2,status:'off',user:{name:'Пример Милана'}}, {date:'2026-10-24',userId:2,status:'off',user:{name:'Пример Милана'}}], vacations: [] as Array<{userId:number;dateFrom:string;dateTo:string}> });
 test('reading preserves the request and its cross-tab reminder', () => {
- const data=base(); const before=scheduleAttentionItems(data); data.dated[0].notice.readAt=new Date(); const after=scheduleAttentionItems(data);
+ const data=base(); const before=scheduleAttentionItems(data).filter(i=>i.scheduleAction==='replacement'); data.dated[0].notice.readAt=new Date(); const after=scheduleAttentionItems(data).filter(i=>i.scheduleAction==='replacement');
  assert.equal(after.length,1); assert.deepEqual(after[0].notificationIds,[]); assert.deepEqual(after[0].actions,before[0].actions);
  const reminder=employeeActionReminder(null,after)!; assert.equal(reminder.target,'attention'); assert.match(reminder.href,/attention=schedule/); assert.equal(employeeReminderIconKind(reminder),'schedule'); assert.equal(employeeAttentionIconKind('schedule'),'schedule');
 });

@@ -46,6 +46,7 @@ export function useEmployeeActivityVisit(section: ActivitySection | null, disabl
   }, [section, disabled, preview]);
 }
 export function EmployeeActivityTracker() {
-  useEmployeeActivityVisit(activityRoute(usePathname()));
+  const section=activityRoute(usePathname());
+  useEmployeeActivityVisit(section==='payroll'?null:section); // Payroll records a period-aware view itself.
   return null;
 }

@@ -21,15 +21,16 @@ export function scheduleCoverageQuestion(input: {
   const working = people.filter(p => input.entries.some(e => e.userId === p.id && e.status === 'working'));
   const missing = people.filter(p => !input.entries.some(e => e.userId === p.id));
   const coverage = scheduleCoverage(input.department, working.length);
-  const active = input.employees.length > 0 && input.date >= input.today && coverage.needsReplacement;
+  const tomorrow = new Date(Date.parse(`${input.today}T12:00:00Z`) + 86400000).toISOString().slice(0,10);
+  const active = input.employees.length > 0 && input.date >= input.today && input.date <= tomorrow && missing.length === 0 && coverage.needsReplacement;
   const department = input.department === 'retail' ? 'Розница' : 'Опт';
   const date = new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(new Date(`${input.date}T12:00:00+03:00`));
-  const title = `${department} · ${date}: ${working.length === 0 ? 'никто не отмечен в графике' : 'неполный график'}`;
+  const title = `${department} · ${date}: ${working.length === 0 ? (missing.length ? 'нет запланированного выхода' : 'никто не работает по графику') : 'один сотрудник — нужна ли подмена?'}`;
   const body = input.employees.map(p => {
     const vacation = input.vacations.some(v=>v.userId===p.id&&v.dateFrom<=input.date&&v.dateTo>=input.date);
     const status = input.entries.find(e => e.userId === p.id)?.status;
     return `${schedulePersonName(p.name)} — ${vacation ? 'отпуск' : status === 'working' ? 'работает по графику' : status === 'off' ? 'выходной' : 'график не заполнен'}`;
-  }).join('; ') + '. Уточните состав по графику.';
+  }).join('; ') + (working.length === 0 ? (missing.length ? '. Сначала отметьте рабочие дни или выходные.' : '. Уточните, кто сможет выйти.') : '. Для розницы обычно нужны двое. Это вопрос о подмене, а не ошибка сотрудника.');
   return {active,title,body,missingIds:missing.map(p=>p.id),workingCount:working.length};
 }
 
