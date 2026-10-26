@@ -1128,3 +1128,28 @@ Legacy source-only cases remain inspectable without active business attention or
 push reminders. Genuine employee help/messages and missing-check/financial
 mismatches retain their normal lifecycle. Repeated evaluations update one event,
 with a concrete reason rather than a generic matching-alert title.
+
+
+## 2026-10-26 - Near-day reminders and department-specific staffing
+
+Owner clarified the actual staffing process after a 09:11 wholesale coverage
+question remained active with one planned worker and one planned day off.
+Wholesale has two employees with individual five-day weeks: one or two working
+is normal; zero needs a staffing decision. Retail normally needs two; one is a
+rare, nonblocking replacement question, never an employee error. Zero needs
+attention in either department. Unknown/unfilled plans are not proof that nobody
+will work.
+
+The owner explicitly replaced the earlier weekly completion obligation with
+personal reminders about today and tomorrow only. Working, off and an active
+vacation all cover the corresponding personal date. Other empty dates remain
+optional; the full calendar remains accessible. Genuine colleague replacement
+requests remain actionable and retire when department coverage recovers.
+
+Active attention, bell and push eligibility must recheck live plans, not treat
+reading as resolution or leave a corrected case active until a background run.
+Use one persisted daily reminder per person and one staffing event per department
+and date, preserving history and suppressing a replacement reminder when the
+legacy provider already accepted one today. No payroll five-day enforcement,
+attendance scoring, schema changes or manual production data cleanup.
+Local implementation/verification: `schedule-policy-correction-20261026.md`.
