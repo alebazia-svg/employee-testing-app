@@ -1,4 +1,5 @@
 import 'server-only';
+import { enrichAcquiringOrders } from './terminal-fiscal-acquiring-order';
 
 import { createHash } from 'node:crypto';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
@@ -344,7 +345,8 @@ export async function loadOneCAcquiringOperations(input: { fromDate: string; toD
   if (!config.baseUrl || !config.user || !config.password) return { complete: false, checkedAt, data: [], errorCode: 'ONE_C_NOT_CONFIGURED' };
   const query = new URLSearchParams({
     date_from: input.fromDate,
-    date_to: input.toDate,
+    // The register endpoint has an inclusive end; the source contract is [from,to).
+    date_to: new Date(Date.parse(`${input.toDate}T00:00:00Z`) - 86400000).toISOString().slice(0, 10),
     organization: 'ОФФОНИКА',
     limit: '2000',
   });
@@ -361,7 +363,12 @@ export async function loadOneCAcquiringOperations(input: { fromDate: string; toD
     return { complete: false, checkedAt, data: normalized, errorCode: 'ONE_C_ACQUIRING_NORMALIZATION_FAILED' };
   }
   if (root.truncated === true) return { complete: false, checkedAt, data: normalized, errorCode: 'ONE_C_ACQUIRING_TRUNCATED' };
-  return { complete: true, checkedAt, data: normalized };
+  const enriched = await enrichAcquiringOrders(normalized, input, async (path) => {
+    const result = await fetchJson(`${config.baseUrl}${path}`, { headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
+    if (!result.response.ok) throw new Error('ORDER_EVIDENCE_REQUEST_FAILED');
+    return result.body;
+  });
+  return { complete: enriched.complete, checkedAt, data: enriched.data, errorCode: enriched.complete ? undefined : 'ONE_C_ACQUIRING_ORDER_INCOMPLETE' };
 }
 
 export async function loadOneCTerminalFiscalEvidence(input: { fromDate: string; toDate: string }): Promise<SourceSnapshot<OneCCheck>> {

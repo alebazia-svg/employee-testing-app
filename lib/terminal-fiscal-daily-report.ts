@@ -55,7 +55,9 @@ export function buildDailyFiscalReport(input:{from:Date;to:Date;parts:DailyFisca
     if(receipt.electronicKopecks===0)continue;
     if(![1,2].includes(receipt.operationType)){complete.ofd=false;continue;}
     const matches=[...checks.values()].filter(c=>c.sourceType!=='acquiring_operation'&&canonicalFiscalKey(c)===canonicalFiscalKey(receipt)&&c.kktRegistrationNumber===receipt.kktRegistrationNumber);
-    const owner=row(matches.length===1?matches[0].cashier:undefined),value=(receipt.operationType===2?-1:1)*receipt.electronicKopecks;owner.ofdKopecks+=value;
+    const acquired=[...records.values()].filter(r=>r.status==='confirmed'&&r.ofdReceiptKey===canonicalFiscalKey(receipt)&&r.oneCCheckKey);
+    const linked=matches.length===1?matches[0]:acquired.length===1?checks.get(acquired[0].oneCCheckKey!):undefined;
+    const owner=row(linked?.cashier),value=(receipt.operationType===2?-1:1)*receipt.electronicKopecks;owner.ofdKopecks+=value;
     movements.push({key:canonicalFiscalKey(receipt)??receipt.receiptAt,managerKey:owner.key,source:'ofd',at:receipt.receiptAt,amountKopecks:value,reference:`${receipt.operationType===2?'Возврат':'Чек'} № ${receipt.fiscalDocumentNumber}`});
   }
   if(unlinkedAcquiringCount)complete.oneC=false;

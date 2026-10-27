@@ -1,5 +1,6 @@
+import type { AcquiringOrder } from './terminal-fiscal-acquiring-order';
 import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.8';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.9';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -130,6 +131,8 @@ export type MatchingItem = {
   quantity: number;
   priceKopecks: number;
   sumKopecks: number;
+  paymentType?: number;
+  productType?: number;
 };
 
 export type OneCCashier = {
@@ -157,6 +160,8 @@ export type OneCCheck = {
   fiscalDocumentNumber?: string;
   fiscalSign?: string;
   fiscalConflict?: boolean;
+  acquiringOrderState?: 'complete' | 'unlinked' | 'ambiguous' | 'unavailable';
+  acquiringOrder?: AcquiringOrder;
 };
 
 export type OfdReceipt = {
@@ -196,6 +201,7 @@ export type MatchingAuditRecord = {
   timeDifferenceSeconds?: number;
   candidateCount: number;
   evidence: {
+    acquiringOrder?: AcquiringOrder;
     chain?: FiscalChainEvidence;
     amountCoverage?: {bankKeys:string[];oneCRefs:string[]};
     bankTransactionDate: string;
@@ -352,6 +358,24 @@ export function canonicalFiscalKey(value: {
     normalizeFiscalSign(value.fiscalSign),
   ];
   return parts.every(Boolean) ? parts.map((part) => `${part.length}:${part}`).join('|') : null;
+}
+
+export function isOrderPrepaymentReceipt(check: OneCCheck, receipt: OfdReceipt, operation: BankOperation, mapping: TerminalMapping) {
+  const order = check.acquiringOrder;
+  const bankAt = timestamp(operation.transactionDate), receiptAt = timestamp(receipt.receiptAt);
+  const itemKey = (item: MatchingItem) => JSON.stringify({
+    name: normalizeMatchingItemName(item.name.replace(/\s*\(шт\.?\)\s*$/iu, '')).replace(/[()]/g, '').replace(/\s+/g, ' ').trim(),
+    quantity: item.quantity, priceKopecks: item.priceKopecks, sumKopecks: item.sumKopecks,
+  });
+  return check.acquiringOrderState === 'complete' && Boolean(order?.items.length) && check.operationType === 'sale'
+    && operation.type === 'Debit' && bankAt !== null && receiptAt !== null
+    && receiptAt >= bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
+    && moscowDay(receipt.receiptAt) === moscowDay(operation.transactionDate)
+    && Boolean(canonicalFiscalKey(receipt)) && receipt.kktRegistrationNumber === mapping.kktRegistrationNumber
+    && receipt.operationType === 1 && receipt.totalKopecks === operation.amountKopecks
+    && receipt.electronicKopecks === operation.amountKopecks && order!.totalKopecks === operation.amountKopecks
+    && receipt.items.length > 0 && receipt.items.every(i => i.paymentType === 1 && i.productType === 10)
+    && JSON.stringify(order!.items.map(itemKey).sort()) === JSON.stringify(receipt.items.map(itemKey).sort());
 }
 
 function normalizedItems(items: MatchingItem[]) {
@@ -665,6 +689,21 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     const key = canonicalFiscalKey(candidate.check);
     return key ? [key] : [];
   })));
+  function acquiringReceiptCandidate(context: Context, check: OneCCheck, receipt: OfdReceipt) {
+    const bankAt = timestamp(context.operation.transactionDate), receiptAt = timestamp(receipt.receiptAt);
+    if (!context.mapping || !context.operationType || bankAt === null || receiptAt === null || now === null || receiptAt > now
+      || !canonicalFiscalKey(receipt) || receipt.operationType !== expectedOfdOperationType(context.operationType)
+      || receipt.kktRegistrationNumber !== context.mapping.kktRegistrationNumber
+      || receipt.totalKopecks !== context.operation.amountKopecks
+      || receipt.electronicKopecks !== context.operation.amountKopecks) return false;
+    // Preserve the existing narrow full-settlement fallback for unlinked
+    // documents. Prepayment always requires the explicit order/item proof.
+    if (check.acquiringOrderState === undefined || (check.acquiringOrderState === 'unlinked'
+      && receipt.items.length > 0 && receipt.items.every(i => i.paymentType === 4))) {
+      return Math.abs(receiptAt - bankAt) <= TERMINAL_FISCAL_TIME_TOLERANCE_MS;
+    }
+    return isOrderPrepaymentReceipt(check, receipt, context.operation, context.mapping);
+  }
   const records = contexts.map((context): MatchingAuditRecord => {
     const operation = context.operation;
     const operationAt = timestamp(operation.transactionDate);
@@ -750,21 +789,18 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         || (fiscalCandidateUse.get(canonicalFiscalKey(oneCCheck) ?? '') ?? 0) > 1) {
         reasonCode = 'ONE_C_CHECK_REUSED';
       } else if (isAcquiringOperation(oneCCheck)) {
-        const receipts = input.ofdReceipts.filter((receipt) => {
-          const receiptAt = timestamp(receipt.receiptAt);
-          return receiptAt !== null
-            && operationAt !== null
-            && Math.abs(receiptAt - operationAt) <= TERMINAL_FISCAL_TIME_TOLERANCE_MS
-            && receipt.operationType === expectedOfdOperationType(context.operationType!)
-            && receipt.kktRegistrationNumber === context.mapping?.kktRegistrationNumber
-            && receipt.totalKopecks === operation.amountKopecks
-            && receipt.electronicKopecks === operation.amountKopecks;
-        });
+        const receipts = input.ofdReceipts.filter(receipt => acquiringReceiptCandidate(context, oneCCheck!, receipt));
         if (receipts.length === 0) {
           status = isPending ? 'pending' : 'needs_review';
           reasonCode = isPending ? 'OFD_RECEIPT_PENDING' : 'OFD_RECEIPT_NOT_FOUND';
         } else if (receipts.length > 1) {
           reasonCode = 'OFD_RECEIPT_DUPLICATE';
+        } else if (input.oneCChecks.some(check => !isAcquiringOperation(check)
+          && canonicalFiscalKey(check) === canonicalFiscalKey(receipts[0]))
+          || contexts.some(peer => peer !== context && peer.candidates.some(({ check }) =>
+            isAcquiringOperation(check) && acquiringReceiptCandidate(peer, check, receipts[0])
+          ))) {
+          reasonCode = 'ONE_C_CHECK_REUSED';
         } else {
           ofdReceipt = receipts[0];
           status = 'confirmed';
@@ -836,6 +872,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         bankTransactionDate: operation.transactionDate,
         bankOperationRawType: operation.rawType,
         terminalReceiptNumber: operation.terminalReceiptNumber,
+        acquiringOrder: oneCCheck?.acquiringOrder,
         oneCDateTime: oneCCheck?.dateTime,
         oneCFiscalDateTime: oneCCheck?.fiscalDateTime,
         oneCTotalKopecks: oneCCheck?.totalKopecks,
