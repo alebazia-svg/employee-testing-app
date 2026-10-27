@@ -1,3 +1,4 @@
+import { reconcileCashInventoryIssues } from './cash-inventory-reconciliation';
 import { SCHEDULE_NEAR_KIND, scheduleNearNoticeRef, scheduleCalendarHref } from './schedule-near-reminder';
 import { schedulePushAt } from './schedule-coverage-question';
 import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
@@ -389,6 +390,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   await queueCashIssuePush(now).catch(() => undefined);
   await queueEmployeeExpensePushes(now).catch(() => undefined);
   await reconcileCashExpenseEvidence(now).catch(() => undefined);
+  await reconcileCashInventoryIssues(dispatchTime()).catch(() => undefined);
   await queueCollectionReadyPush(now).catch(() => undefined);
   await queueCashMorningPushes(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();

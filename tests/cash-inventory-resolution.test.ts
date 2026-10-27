@@ -30,3 +30,39 @@ test('ordinary expense, another cashbox/day, incomplete, stale, earlier or parti
   (i:ReturnType<typeof fixture>)=>{i.statement.movements.push({...i.statement.movements[0],incoming:100,outgoing:0});i.statement.movementsCount=2;},
  ]){const input=fixture();change(input);assert.equal(cashInventoryResolution(input,now),null);}
 });
+
+test('ordinary movements after an inventory do not undo its historical explanation',()=>{
+ const input=fixture();
+ input.statement.movements.push({period:'26.10.2026 22:00:00',incoming:1000,outgoing:0,documentType:'Приходный кассовый ордер',document:{ref:'sale',name:'Продажа'}});
+ input.statement.movementsCount=2;input.statement.incomingTotal=1000;input.statement.closingBalance=1000;
+ assert.equal(cashInventoryResolution(input,now)?.difference,-500);
+});
+const priorDay=()=>{
+ const s=structuredClone(statement);s.date=s.params.date='2026-10-25';s.openingBalance=s.closingBalance=500;s.incomingTotal=s.outgoingTotal=0;s.movements=[];s.movementsCount=0;
+ return s;
+};
+test('an unchanged discrepancy carries through a continuous opening balance to the next-day inventory',()=>{
+ const input={...fixture(),capturedAt:'2026-10-25T17:02:03.685Z',statement:priorDay(),followingStatements:[structuredClone(statement)],laterCounts:[{actual:0,expected:500,capturedAt:'2026-10-26T18:11:07.616Z',cashboxRef:'reserve'}]};
+ const before=structuredClone(input);
+ assert.equal(cashInventoryResolution(input,now)?.documentRef,'inventory');assert.deepEqual(input,before);
+ for(const change of [
+  (i:typeof input)=>{i.followingStatements[0].openingBalance=600;i.followingStatements[0].closingBalance=100;},
+  (i:typeof input)=>{i.followingStatements[0].date=i.followingStatements[0].params.date='2026-10-27';},
+  (i:typeof input)=>{i.followingStatements[0].params.organizationRef='other';},
+  (i:typeof input)=>{i.laterCounts[0].actual=500;},
+  (i:typeof input)=>{i.laterCounts[0].expected=600;i.laterCounts[0].actual=200;},
+ ]){const bad=structuredClone(input);change(bad);assert.equal(cashInventoryResolution(bad,now),null);}
+});
+test('a later backdated ordinary balance does not rewrite the captured gap; duplicate documents remain invalid',()=>{
+ const input=fixture();input.statement.openingBalance=600;input.statement.closingBalance=100;
+ assert.equal(cashInventoryResolution(input,now)?.difference,-500);
+ const duplicate=fixture();duplicate.statement.movements.push({...duplicate.statement.movements[0]});duplicate.statement.movementsCount=2;duplicate.statement.openingBalance=1000;duplicate.statement.outgoingTotal=1000;
+ assert.equal(cashInventoryResolution(duplicate,now),null);
+});
+test('two consistent partial inventories can document the entire original gap',()=>{
+ const input=fixture();input.statement.movements[0].outgoing=300;
+ input.statement.movements.push({...input.statement.movements[0],period:'26.10.2026 21:40:00',outgoing:200,document:{ref:'second',name:'Вторая инвентаризация'}});input.statement.movementsCount=2;
+ assert.equal(cashInventoryResolution(input,now)?.documentRef,'inventory,second');
+ input.statement.movements[1].outgoing=100;input.statement.outgoingTotal=400;input.statement.closingBalance=100;
+ assert.equal(cashInventoryResolution(input,now),null);
+});
