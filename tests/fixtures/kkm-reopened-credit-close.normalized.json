@@ -1,0 +1,179 @@
+{
+  "description": "Anonymized production regression: first closure342; reopened343 for a credit receipt without cashier/KKM ref; OFD clock differs from 1C document clock.",
+  "date": "2026-10-27",
+  "cashierRef": "employee-cashier",
+  "checks": [
+    {
+      "sourceRef": "check-1",
+      "sourceType": "sale_check",
+      "operationType": "sale",
+      "dateTime": "2026-10-27T12:21:52.000Z",
+      "fiscalDateTime": "2026-10-27T12:14:00.000Z",
+      "cashRegisterRef": "personal-kkt",
+      "kktRegistrationNumber": "kkt-1",
+      "totalKopecks": 40000,
+      "electronicKopecks": 40000,
+      "cashier": {
+        "ref": "employee-cashier",
+        "name": ""
+      },
+      "cardPayments": [],
+      "items": [],
+      "fiscalState": "confirmed",
+      "fiscalStateMeaning": "data_state_only",
+      "fiscalDriveNumber": "fn-1",
+      "fiscalDocumentNumber": "3247",
+      "fiscalSign": "4113673565",
+      "fiscalConflict": false
+    },
+    {
+      "sourceRef": "check-2",
+      "sourceType": "sale_check",
+      "operationType": "sale",
+      "dateTime": "2026-10-27T15:55:15.000Z",
+      "fiscalDateTime": "2026-10-27T15:47:00.000Z",
+      "cashRegisterRef": "personal-kkt",
+      "kktRegistrationNumber": "kkt-1",
+      "totalKopecks": 60000,
+      "electronicKopecks": 60000,
+      "cashier": {
+        "ref": "employee-cashier",
+        "name": ""
+      },
+      "cardPayments": [],
+      "items": [],
+      "fiscalState": "confirmed",
+      "fiscalStateMeaning": "data_state_only",
+      "fiscalDriveNumber": "fn-1",
+      "fiscalDocumentNumber": "3248",
+      "fiscalSign": "0895953847",
+      "fiscalConflict": false
+    },
+    {
+      "sourceRef": "check-3",
+      "sourceType": "sale_check",
+      "operationType": "sale",
+      "dateTime": "2026-10-27T15:55:35.000Z",
+      "fiscalDateTime": "2026-10-27T15:47:00.000Z",
+      "cashRegisterRef": "personal-kkt",
+      "kktRegistrationNumber": "kkt-1",
+      "totalKopecks": 50000,
+      "electronicKopecks": 50000,
+      "cashier": {
+        "ref": "employee-cashier",
+        "name": ""
+      },
+      "cardPayments": [],
+      "items": [],
+      "fiscalState": "confirmed",
+      "fiscalStateMeaning": "data_state_only",
+      "fiscalDriveNumber": "fn-1",
+      "fiscalDocumentNumber": "3249",
+      "fiscalSign": "1457919984",
+      "fiscalConflict": false
+    },
+    {
+      "sourceRef": "check-4",
+      "sourceType": "credit_realization",
+      "operationType": "sale",
+      "dateTime": "2026-10-27T16:31:51.000Z",
+      "fiscalDateTime": "2026-10-27T17:04:00.000Z",
+      "cashRegisterRef": "",
+      "kktRegistrationNumber": "kkt-1",
+      "totalKopecks": 1700000,
+      "electronicKopecks": 0,
+      "cashier": {
+        "ref": "",
+        "name": ""
+      },
+      "cardPayments": [],
+      "items": [],
+      "fiscalState": "confirmed",
+      "fiscalStateMeaning": "data_state_only",
+      "fiscalDriveNumber": "fn-1",
+      "fiscalDocumentNumber": "3252",
+      "fiscalSign": "1987890934",
+      "fiscalConflict": false
+    }
+  ],
+  "shifts": [
+    {
+      "ref": "shift-1",
+      "number": "OF-00001084",
+      "datetime": "2026-10-27T17:11:31.000Z",
+      "organization": {
+        "ref": "org",
+        "name": "Учебная организация"
+      },
+      "cashRegister": {
+        "ref": "personal-kkt",
+        "name": "Учебная ККТ"
+      },
+      "posted": true,
+      "deletionMark": false,
+      "openedAt": "2026-10-27T17:11:31.000Z",
+      "closedAt": "2026-10-27T17:11:53.000Z",
+      "fiscalShiftDate": "2026-10-27T17:04:00.000Z",
+      "fiscalShiftNumber": "343",
+      "status": "Закрыта",
+      "regulatoryStatus": "Создан отчет",
+      "checksCount": 0,
+      "unsentFiscalDocumentsCount": 1,
+      "ofdResponseTimeout": false,
+      "cashiers": []
+    },
+    {
+      "ref": "shift-2",
+      "number": "OF-00001083",
+      "datetime": "2026-10-27T12:21:32.000Z",
+      "organization": {
+        "ref": "org",
+        "name": "Учебная организация"
+      },
+      "cashRegister": {
+        "ref": "personal-kkt",
+        "name": "Учебная ККТ"
+      },
+      "posted": true,
+      "deletionMark": false,
+      "openedAt": "2026-10-27T12:21:32.000Z",
+      "closedAt": "2026-10-27T17:09:11.000Z",
+      "fiscalShiftDate": "2026-10-27T17:01:00.000Z",
+      "fiscalShiftNumber": "342",
+      "status": "Закрыта",
+      "regulatoryStatus": "Создан отчет",
+      "checksCount": 0,
+      "unsentFiscalDocumentsCount": 1,
+      "ofdResponseTimeout": false,
+      "cashiers": [
+        {
+          "cashier": {
+            "ref": "employee-cashier",
+            "name": ""
+          },
+          "firstCheckAt": "2026-10-27T12:21:52.000Z",
+          "lastCheckAt": "2026-10-27T15:55:35.000Z",
+          "checksCount": 3
+        }
+      ]
+    }
+  ],
+  "reports": [
+    {
+      "kktRegistrationNumber": "kkt-1",
+      "fiscalDriveNumber": "fn-1",
+      "shiftNumber": "342",
+      "openedAt": "2026-10-27T12:13:00.000Z",
+      "closedAt": "2026-10-27T17:01:00.000Z",
+      "documentLink": "report-342"
+    },
+    {
+      "kktRegistrationNumber": "kkt-1",
+      "fiscalDriveNumber": "fn-1",
+      "shiftNumber": "343",
+      "openedAt": "2026-10-27T17:03:00.000Z",
+      "closedAt": "2026-10-27T17:04:00.000Z",
+      "documentLink": "report-343"
+    }
+  ]
+}

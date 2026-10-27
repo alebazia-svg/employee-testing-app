@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   kkmShiftCloseOneCPeriod,
   kkmShiftCloseRequiresEmployeeAction,
@@ -16,6 +17,76 @@ test('1C KKM check period uses an exclusive next-day upper bound', () => {
 });
 
 const activatedAt = '2026-08-26T10:00:00.000Z';
+
+function reopenedCreditScenario() {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/kkm-reopened-credit-close.normalized.json', import.meta.url), 'utf8'));
+  const sources: any = {
+    loadOneCKkmChecks: async () => ({ complete: true, data: fixture.checks }),
+    getCashShifts: async () => ({ ok: true, shifts: fixture.shifts }),
+    loadPlatformaOfdZReports: async () => ({ complete: true, data: fixture.reports }),
+  };
+  const db: any = { userOneCCashboxMapping: { findUnique: async () => ({ oneCCashierRef: fixture.cashierRef }) } };
+  return { fixture, sources, db };
+}
+
+test('a reopened KKT closes after a credit receipt without cashier or cash-register ref', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  const { fixture, sources, db } = reopenedCreditScenario();
+  const result = await verifyEmployeeKkmShiftClose({ db, userId: 4, date: fixture.date }, sources);
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.fiscalShiftNumber, '343');
+  assert.equal(result.ofdClosedAt, '2026-10-27T17:04:00.000Z');
+  assert.equal(result.ofdDocumentLink, 'report-343');
+  assert.deepEqual(result.ofdClosures?.map(row => row.shiftNumber), ['342', '343']);
+  assert.equal(result.lastFiscalCheck?.sourceType, 'credit_realization');
+  assert.equal(result.lastFiscalCheck?.fiscalDocumentNumber, '3252');
+});
+
+test('a reopened credit closure rejects stale, foreign, ambiguous and incomplete evidence', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  const cases: Array<[string, (fixture:any, sources:any)=>void, string]> = [
+    ['only the first closure', f=>{f.reports.pop();}, 'ofd_missing'],
+    ['another fiscal drive', f=>{f.reports[1].fiscalDriveNumber='other-fn';}, 'ofd_missing'],
+    ['another physical KKT', f=>{f.reports[1].kktRegistrationNumber='other-kkt';}, 'ofd_missing'],
+    ['closure before the last fiscal receipt', f=>{f.reports[1].closedAt='2026-10-27T17:03:00Z';}, 'ofd_missing'],
+    ['opening after the last fiscal receipt', f=>{f.reports[1].openedAt='2026-10-27T17:04:01Z';f.reports[1].closedAt='2026-10-27T17:05:00Z';}, 'ofd_missing'],
+    ['credit without fiscal identity', f=>{f.checks.at(-1).fiscalDriveNumber='';}, 'unavailable'],
+    ['credit with conflicting fiscal evidence', f=>{f.checks.at(-1).fiscalConflict=true;}, 'unavailable'],
+    ['a subsequent receipt after the second closure', f=>{f.checks.push({...f.checks.at(-1),fiscalDateTime:'2026-10-27T17:05:00Z'});}, 'ofd_missing'],
+    ['overlapping OFD reports', f=>{f.reports.push({...f.reports[1],shiftNumber:'344'});}, 'unavailable'],
+    ['an invalid later receipt timestamp', f=>{f.checks.at(-1).fiscalDateTime='invalid';}, 'unavailable'],
+    ['conflicting fiscal drives at the same instant', f=>{f.checks.push({...f.checks.at(-1),fiscalDriveNumber:'other-fn'});}, 'unavailable'],
+    ['an incomplete OFD response', (_f,s)=>{s.loadPlatformaOfdZReports=async()=>({complete:false,data:[]});}, 'unavailable'],
+  ];
+  for(const [label,change,status] of cases){
+    const {fixture,sources,db}=reopenedCreditScenario();change(fixture,sources);
+    const original=JSON.stringify(fixture);
+    assert.equal((await verifyEmployeeKkmShiftClose({db,userId:4,date:fixture.date},sources)).status,status,label);
+    assert.equal(JSON.stringify(fixture),original,'verification must not rewrite source evidence');
+  }
+});
+
+test('the final physical fiscal receipt remains authoritative while 1C shift metadata lags', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  for(const mode of ['unavailable','previous-shift','unordered','foreign-check']){
+    const {fixture,sources,db}=reopenedCreditScenario();
+    if(mode==='unavailable')sources.getCashShifts=async()=>({ok:false,shifts:[]});
+    if(mode==='previous-shift')fixture.shifts=fixture.shifts.slice(1);
+    if(mode==='unordered'){fixture.checks.reverse();fixture.shifts.reverse();fixture.reports.reverse();}
+    if(mode==='foreign-check')fixture.checks.push({...fixture.checks.at(-1),kktRegistrationNumber:'foreign-kkt',fiscalDateTime:'2026-10-27T18:00:00Z'});
+    const result=await verifyEmployeeKkmShiftClose({db,userId:4,date:fixture.date},sources);
+    assert.equal(result.status,'confirmed',mode);assert.equal(result.fiscalShiftNumber,'343',mode);
+  }
+});
+
+test('an empty reopened shift preserves both OFD closings without inventing another receipt', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  const {fixture,sources,db}=reopenedCreditScenario();fixture.checks.pop();
+  const result=await verifyEmployeeKkmShiftClose({db,userId:4,date:fixture.date},sources);
+  assert.equal(result.status,'confirmed');assert.equal(result.fiscalShiftNumber,'343');
+  assert.equal(result.lastFiscalCheck?.sourceType,'sale_check');
+  assert.deepEqual(result.ofdClosures?.map(row=>row.shiftNumber),['342','343']);
+});
 
 test('accepts only a known and dated KKM close simulation', () => {
   assert.deepEqual(readKkmShiftCloseSimulation({ scenario: 'ofd_missing', activatedAt }), { scenario: 'ofd_missing', activatedAt });
@@ -180,7 +251,19 @@ test('reopened shift closes by fiscal check time even when the 1C document clock
  shifts={ok:false,shifts:[]};check.fiscalDateTime='';assert.equal((await verify()).status,'unavailable');
  });
 
-import { createKkmCloseConfirmation, kkmCloseConfirmation } from '../lib/kkm-close-confirmation';
+import { confirmedKkmClosures, createKkmCloseConfirmation, kkmCloseConfirmation } from '../lib/kkm-close-confirmation';
+test('ADMIN shows a repeated closure only from an ordered, confirmed OFD sequence', async()=>{
+ const {verifyEmployeeKkmShiftClose}=await import('../lib/kkm-shift-close-control');
+ const {fixture,sources,db}=reopenedCreditScenario();const evidence=await verifyEmployeeKkmShiftClose({db,userId:4,date:fixture.date},sources);
+ const data={kkmCloseCheck:{status:'confirmed',evidence}};
+ assert.deepEqual(confirmedKkmClosures(data).map(row=>row.shiftNumber),['342','343']);
+ for(const invalid of [
+  {...data,kkmCloseCheck:{status:'unavailable',evidence}},
+  {...data,kkmCloseCheck:{status:'confirmed',evidence:{...evidence,ofdClosedAt:'invalid'}}},
+  {...data,kkmCloseCheck:{status:'confirmed',evidence:{...evidence,ofdClosures:[...evidence.ofdClosures!].reverse()}}},
+  {...data,kkmCloseCheck:{status:'confirmed',evidence:{...evidence,ofdClosures:[evidence.ofdClosures![0],evidence.ofdClosures![0]]}}},
+ ])assert.deepEqual(confirmedKkmClosures(invalid),[]);
+});
 test('photo confirmation requires the actual uploaded image of this task and cannot reuse another task photo',()=>{
  const data={photos:{zReport:{storagePath:'uploads/shift-control/117/508/z-report-demo.jpg',mimeType:'image/jpeg',sizeBytes:100}}};
  const confirmed=createKkmCloseConfirmation(data,4,117,508,new Date('2026-10-26T18:00:00Z'))!;

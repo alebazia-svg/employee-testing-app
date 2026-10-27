@@ -1,6 +1,40 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createKkmCloseConfirmation } from '../lib/kkm-close-confirmation';
+
+test('the reopened credit scenario retires its owner question automatically and preserves counted cash, reserve, photo and history', {skip:process.env.KKM_CONFIRMATION_INTEGRATION!=='1'},async()=>{
+ assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55479/kkm_close_test','isolated test database only');
+ const {prisma:db}=await import('../lib/prisma'),{recheckOpenKkmShiftCloseIssues:recheck}=await import('../lib/kkm-shift-close-control');
+ const fixture=JSON.parse(readFileSync(new URL('./fixtures/kkm-reopened-credit-close.normalized.json',import.meta.url),'utf8'));
+ const now=new Date('2026-10-27T17:17:00Z'),endedAt=new Date('2026-10-27T17:12:48Z');
+ const user=await db.user.create({data:{login:`kkm-reopened-credit-${Date.now()}`,name:'Учебный сотрудник',passwordHash:'disabled',role:'EMPLOYEE',department:'retail'}});
+ const day=await db.workDayEntry.create({data:{userId:user.id,date:fixture.date,department:'retail',shiftCode:'11_20',shiftLabel:'11–20',status:'completed',endedAt}});
+ const run=await db.shiftControlRun.create({data:{userId:user.id,workDayEntryId:day.id,date:day.date,department:'retail',status:'completed',completedAt:endedAt}});
+ const task=await db.shiftControlTask.create({data:{runId:run.id,title:'Сдать смену',category:'handover',sortOrder:3,status:'done',completedAt:endedAt}});
+ await db.userOneCCashboxMapping.create({data:{userId:user.id,oneCCashboxRef:'cash',oneCCashboxName:'Учебная касса',oneCCashierRef:fixture.cashierRef}});
+ const original={personalCash:{cashBalance:750},reserveCash:{cashBalance:60000},oneCAudit:{capturedAt:'2026-10-27T17:09:38Z',personalCash:{status:'captured',balance:750},reserveCash:{status:'captured',balance:35000}},photos:{zReport:{storagePath:`uploads/shift-control/${run.id}/${task.id}/z-report-demo.jpg`,mimeType:'image/jpeg',sizeBytes:100}},cashRecountInputHistory:[{kind:'initial',value:750,enteredAt:'2026-10-27T17:09:38Z'}]};
+ const confirmation=createKkmCloseConfirmation(original,user.id,run.id,task.id,endedAt)!;
+ await db.shiftControlTask.update({where:{id:task.id},data:{handoverData:{...original,kkmCloseConfirmation:confirmation,kkmCloseCheck:{status:'unavailable'}}}});
+ const issue=await db.workdayControlIssue.create({data:{userId:user.id,taskId:task.id,fingerprint:`kkm-shift-close:${day.id}`,ruleKey:'kkm_shift_not_closed',status:'open',severity:'warning',title:'Сверяем ОФД',detail:'Учебный сценарий',employeeActionRequired:false,originDate:day.date}});
+ await db.workdayNotification.create({data:{userId:user.id,taskId:task.id,issueId:issue.id,fingerprint:`kkm-reopened-credit:${task.id}`,kind:'issue_reminder',title:'Учебное напоминание',body:'Учебный сценарий',scheduledAt:now}});
+ let reports=fixture.reports.slice(0,1);
+ const sources:any={loadOneCKkmChecks:async()=>({complete:true,data:fixture.checks}),getCashShifts:async()=>({ok:true,shifts:fixture.shifts}),loadPlatformaOfdZReports:async()=>({complete:true,data:reports})};
+ try{
+  assert.equal((await recheck(now,sources)).resolved,0,'an old closing report cannot clear the later credit receipt');
+  reports=fixture.reports;
+  assert.equal((await recheck(now,sources)).resolved,1);
+  assert.equal((await recheck(now,sources)).resolved,0,'the completed incident must not be reopened or duplicated');
+  const saved=await db.shiftControlTask.findUniqueOrThrow({where:{id:task.id}}),data=saved.handoverData as any;
+  for(const key of Object.keys(original))assert.deepEqual(data[key],original[key as keyof typeof original]);
+  assert.deepEqual(data.kkmCloseConfirmation,confirmation);
+  assert.equal(data.kkmCloseCheck.status,'confirmed');assert.equal(data.kkmCloseCheck.evidence.fiscalShiftNumber,'343');
+  assert.deepEqual(data.kkmCloseCheck.evidence.ofdClosures.map((row:any)=>row.shiftNumber),['342','343']);
+  assert.equal((await db.workdayControlIssue.findUniqueOrThrow({where:{id:issue.id}})).status,'resolved');
+  assert.equal(await db.workdayNotification.count({where:{issueId:issue.id,status:'pending'}}),0);
+  assert.equal((await db.workDayEntry.findUniqueOrThrow({where:{id:day.id}})).endedAt?.toISOString(),endedAt.toISOString());
+ }finally{await db.adminInboxEvent.deleteMany({where:{sourceType:'workday_control_issue',sourceId:String(issue.id)}});await db.user.delete({where:{id:user.id}});await db.$disconnect();}
+});
 test('saved employee confirmations stay ADMIN-only through outages and resolve automatically without rewriting cash', {skip:process.env.KKM_CONFIRMATION_INTEGRATION!=='1'},async()=>{
  assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55479/kkm_close_test','isolated test database only');
  const {prisma:db}=await import('../lib/prisma');const {recheckOpenKkmShiftCloseIssues:recheck}=await import('../lib/kkm-shift-close-control');

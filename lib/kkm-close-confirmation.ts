@@ -30,3 +30,19 @@ export function hasConfirmedKkmCloseEvidence(data:unknown, issues:ReadonlyArray<
  if(record(record(data).kkmCloseCheck).status==='confirmed')return true;
  return issues.some(issue=>issue.taskId===identity.taskId && issue.userId===identity.userId && issue.originDate===identity.date && issue.ruleKey==='kkm_shift_not_closed' && issue.status==='resolved' && record(issue.sourceData).status==='confirmed');
 }
+
+/** Physical KKT history, not an attribution of each opening to the employee. */
+export function confirmedKkmClosures(data: unknown): Array<{shiftNumber:string;openedAt:string;closedAt:string}> {
+ const check=record(record(data).kkmCloseCheck),evidence=record(check.evidence);
+ if(check.status!=='confirmed'||evidence.status!=='confirmed'||!Array.isArray(evidence.ofdClosures))return [];
+ const rows=evidence.ofdClosures.map(record);
+ if(rows.length<2||rows.some(row=>typeof row.shiftNumber!=='string'||!/^\d+$/.test(row.shiftNumber)
+   ||typeof row.openedAt!=='string'||typeof row.closedAt!=='string'
+   ||!Number.isFinite(Date.parse(row.openedAt))||!Number.isFinite(Date.parse(row.closedAt))
+   ||Date.parse(row.openedAt)>Date.parse(row.closedAt)))return [];
+ const closures=rows.map(row=>({shiftNumber:row.shiftNumber as string,openedAt:row.openedAt as string,closedAt:row.closedAt as string}));
+ if(new Set(closures.map(row=>row.shiftNumber)).size!==closures.length
+   ||closures.some((row,index)=>index>0&&Date.parse(closures[index-1].closedAt)>Date.parse(row.openedAt)))return [];
+ const last=closures.at(-1)!;
+ return last.shiftNumber===evidence.fiscalShiftNumber&&last.closedAt===evidence.ofdClosedAt?closures:[];
+}
