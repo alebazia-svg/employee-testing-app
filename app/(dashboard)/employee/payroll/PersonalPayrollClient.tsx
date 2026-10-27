@@ -88,7 +88,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
           <section className='salary-hero pwa-review-task' aria-label='Начисленная зарплата'>
             <p>Начислено за месяц</p><div className='salary-total'>{salary.state === 'confirmed' ? money(salary.accrued!) : `≈ ${money(salary.estimatedAccrued!)}`} <span>₽</span></div>
             <div className='salary-status'><span>{salary.state === 'current_estimate' ? 'Предварительный расчёт' : salary.sourceFallback ? 'Последняя проверенная сумма' : 'Подтверждённая сумма'}{updating && <span className='text-slate-500'> · Обновляется…</span>}</span>
-              {salary.verifiedThrough && <p className='salary-through'>{salary.sourceFallback ? 'Проверенные продажи по ' : 'Продажи учтены по '}{new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${salary.verifiedThrough}T12:00:00Z`))}</p>}
+              {salary.verifiedThrough && <p className='salary-through'>Продажи по {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${salary.verifiedThrough}T12:00:00Z`))}</p>}
               {salary.sourceFallback && salary.checkedAt && <p className='salary-through'>Выплаты проверены {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(salary.checkedAt))}</p>}
             </div>
           </section>
