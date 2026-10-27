@@ -1203,3 +1203,53 @@ release on 2026-10-27, including guarded minute rechecks. Released and verified 
 minute ticks and the ordinary full cycle succeeded; physical push delivery for a
 new real help request remains unverified. Full evidence and unit rollback files:
 `fiscal-help-preview-20261026.md`.
+
+## 2026-10-27 - PWA salary composition and checked-source continuity (released 1.18.19)
+
+Owner approved combining retail ordinary and credit remuneration into one
+employee-facing “Телефоны и техника” row. Keep exits, accessories and film/services
+separate; retain wholesale's existing composition. This changes presentation,
+not formulas, ADMIN detail, 1C records or the agreed exclusion of discipline and
+one-time bonuses from the preliminary employee display.
+
+Before release, owner explicitly chose to hide unconfirmed advances entirely
+in the employee application: no error, placeholder or retry caused only by an
+unknown advance. A verified positive advance remains visible, verified zero
+remains hidden. Unknown still stays null in the private API, never a fabricated
+zero or a change to ADMIN verification requirements.
+
+Owner also approved repairing current/September availability without changing
+workday, schedule or notifications. The released reader uses the newest
+contiguous, fully validated closed-day source prefix when newer sales are blocked;
+it discloses the sales cutoff and never skips a disputed day within that prefix.
+This reconstructs a preliminary view from stored sources, not an immutable past
+payroll snapshot. Current identity, draft and attendance checks still apply.
+
+Private historical reads share at most the two rolling source months in server
+memory, with coalescing, bounded retries and a checked timestamp on stale fallback.
+This cache is not durable across a server restart; a cold failed source read
+remains unavailable rather than inventing payments. No salary/browser persistence,
+schema change or financial-data writes were introduced.
+
+Owner explicitly approved production release. Runtime 1.18.19 / 1400ed980d71e471cc2ffb9535456960569c57fe
+preserves workday 1.18.18 / 842b9cf. Build: 2026-10-27T15:52:32.809Z (18:52 Moscow).
+Checks passed: 46 personal-payroll, 78 payroll, 222 workday, 5 release-version tests,
+real PostgreSQL isolation/FINAL checks, TypeScript and production build. Five
+profiles/two months were checked on the isolated working-data replay. The seven
+failures in old visual-source tests also reproduce on the untouched base.
+
+The first attempt automatically restored 1.18.18 during post-start verification;
+the operator script's mount comparison was then made order-independent without
+weakening the actual mount/config checks. The same application release was retried
+successfully (exit 0). Server commit, public metadata/health and authenticated
+visible version were independently verified. Real retail October/September,
+schedule defaults and returning to the cached salary were checked read-only.
+Uploads/mounts and server.env were unchanged; no pending migrations existed.
+
+Verified previous image: sha256:ad6c5e11d410bdded6b39baea750ca894c9ad9d35411cbc6f925955796ac0db1.
+Replacement image: sha256:68c863083e954c7c860ecbb07ed0e1d0e9b036c8315598e956bea2ab9d5b052a.
+The verified-image registry was updated after UI verification with the deploy lock
+released. All protected images exist; post-release free space is 19.28 GiB.
+Physical-iPhone verification and the unrelated newer sales classification remain
+outside this release. Source metadata still reports revision=null; SSH verifies
+the runtime commit independently.
