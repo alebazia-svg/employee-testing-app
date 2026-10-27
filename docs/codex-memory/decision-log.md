@@ -1253,3 +1253,33 @@ released. All protected images exist; post-release free space is 19.28 GiB.
 Physical-iPhone verification and the unrelated newer sales classification remain
 outside this release. Source metadata still reports revision=null; SSH verifies
 the runtime commit independently.
+
+## 2026-10-27 - Neutral employee sales cutoff caption (released 1.18.21)
+
+Owner approved only replacing the employee cutoff caption with “Продажи по …”,
+without emphasizing source verification. Runtime d2f57f05fd67230df1b845bcba3a07b734762412
+changes one line in PersonalPayrollClient plus the mandatory package/lock versions;
+the existing 1.18.20 functionality is preserved. No formulas, financial data,
+notifications, schedule, schema or server.env changes were included.
+
+Released/verified 1.18.21, built 2026-10-27T16:27:17.777Z (19:27 Moscow).
+78 payroll checks, five release-version checks, TypeScript and build passed.
+Server commit/public health/metadata and authenticated visible version/caption
+were independently checked. The initial SSH transport closed while awaiting UI
+verification; a separate no-restart finalization returned 0 and registered the
+verified image. Current plus two prior protected images exist; free space 16.55 GiB.
+Previous image: sha256:e732b0898c41ed30dfc010bf61bdfbc06cc9841ed1922c10a8b17c33449da08c.
+Replacement: sha256:5bee8bdf895e94fae9ca5c7639e0d20a8502983f8bd99ea9ead3ee72962f7c9f.
+
+Do not claim completely unattended/reliable payroll based on this copy release:
+one first current-payroll opening after restart showed a generic refresh error;
+retry succeeded with the expected amount and the confirmed advance. Root cause
+was not established and no functional fix was authorized in this caption-only
+release. Physical iPhone behavior remains unverified.
+
+Read-only preflight on 2026-10-27 found October OPEN with a persisted draft, but
+no November PayrollPeriod or PayrollDraftRevision. Source sync requires both an
+eligible open period and a draft (payroll-source-sync-store.ts); it does not
+initialize a new month automatically. Preparing the next period and resolving
+sales newer than the displayed cutoff remain separate operational work. No new
+period/draft was created here. Owner was informed of these limits.
