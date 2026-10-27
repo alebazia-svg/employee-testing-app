@@ -42,6 +42,8 @@ function normalizeItems(value: unknown): MatchingItem[] {
       quantity: decimal(item.quantity),
       priceKopecks: integer(item.priceKopecks),
       sumKopecks: integer(item.sumKopecks),
+      ...(item.paymentType !== undefined ? { paymentType: integer(item.paymentType) } : {}),
+      ...(item.productType !== undefined ? { productType: integer(item.productType) } : {}),
     }];
   });
 }
