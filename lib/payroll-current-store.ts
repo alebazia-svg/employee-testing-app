@@ -1,10 +1,16 @@
 import 'server-only';
 import { prisma } from './prisma';
 import type { PrismaClient } from '@prisma/client';
-import { calculatePersonalCurrentPayroll } from './payroll-current-read';
+import { calculateLastVerifiedPersonalPayroll, calculatePersonalCurrentPayroll } from './payroll-current-read';
 import type { PayrollSalesClassificationRule } from './payroll-sales-classification';
 import { readPersonalPayrollAdvances } from './payroll-settlement-source';
 import type { PayrollAdvanceRead } from './payroll-one-c-advances';
+import { createHash } from 'node:crypto';
+import type { PersonalPayrollSourceMemo } from './payroll-current-read';
+import { employeePayrollMonthAt, employeePayrollMonths } from './employee-payroll-view';
+
+const memoHost = globalThis as typeof globalThis & { __moboPersonalSalesMemoV1?: Map<string, { fingerprint: string; value: PersonalPayrollSourceMemo }> };
+const sourceMemos = memoHost.__moboPersonalSalesMemoV1 ??= new Map();
 
 // Calculation uses a consistent stored snapshot. The approved advance refresh
 // reads 1C without writing snapshots, drafts, runs or salary documents.
@@ -29,10 +35,20 @@ export async function readStoredPersonalCurrentPayroll(periodKey: string, userId
       classificationRules: classificationRules as unknown as PayrollSalesClassificationRule[], supplierRules };
   }, { isolationLevel: 'RepeatableRead' });
   if (!evidence) return null;
-  const calculation = calculatePersonalCurrentPayroll(periodKey, userId, evidence);
+  const visible = employeePayrollMonths(employeePayrollMonthAt());
+  for (const key of sourceMemos.keys()) if (!visible.includes(key)) sourceMemos.delete(key);
+  const fingerprint = createHash('sha256').update(JSON.stringify([evidence.slices, evidence.classificationRules])).digest('hex');
+  let memo = sourceMemos.get(periodKey);
+  if (!memo || memo.fingerprint !== fingerprint) {
+    memo = { fingerprint, value: new Map() };
+    if (visible.includes(periodKey)) sourceMemos.set(periodKey, memo);
+  }
+  const calculation = calculateLastVerifiedPersonalPayroll(periodKey, userId, evidence, new Date(), memo.value);
   // No external read for unknown/unbound employees or blocked calculations.
   if (!calculation) return null;
   let advances: PayrollAdvanceRead | null;
   try { advances = await readAdvances(periodKey); } catch { advances = null; }
-  return calculatePersonalCurrentPayroll(periodKey, userId, { ...evidence, advances });
+  const slices = evidence.slices.filter(row => row.dateTo <= calculation.verifiedThrough);
+  const refreshed = calculatePersonalCurrentPayroll(periodKey, userId, { ...evidence, slices, advances }, new Date(), memo.value);
+  return refreshed ? { ...refreshed, ...(calculation.sourceFallback ? { sourceFallback: true } : {}) } : null;
 }

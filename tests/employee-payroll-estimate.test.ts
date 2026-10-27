@@ -4,15 +4,15 @@ import { roundEmployeeEarnings, type EmployeeEarning } from '../lib/employee-pay
 
 test('retail rounding preserves approved component labels and the rounded total without changing accounting inputs', () => {
   const parts: EmployeeEarning[] = [
-    { label: 'Выходы', amount: 7200 }, { label: 'Смартфоны и техника', amount: 2678.532 },
-    { label: 'В кредит', amount: 30140.31839 }, { label: 'Аксессуары', amount: 8318.65 },
+    { label: 'Выходы', amount: 7200 }, { label: 'Телефоны и техника', amount: 2678.532 + 30140.31839 },
+    { label: 'Аксессуары', amount: 8318.65 },
     { label: 'Поклейка и услуги', amount: 5140 },
   ];
   const before = JSON.stringify(parts);
   const result = roundEmployeeEarnings(parts)!;
   assert.equal(result.estimatedAccrued, 53500);
   assert.equal(result.earnings.reduce((sum, row) => sum + row.amount, 0), result.estimatedAccrued);
-  assert.deepEqual(result.earnings.map(row => row.amount), [7200, 2700, 30200, 8300, 5100]);
+  assert.deepEqual(result.earnings.map(row => row.amount), [7200, 32800, 8300, 5200]);
   assert.equal(JSON.stringify(parts), before);
 });
 test('wholesale includes only day pay and wholesale sales; zeros hide, missing inputs do not become zero', () => {
@@ -26,7 +26,7 @@ test('wholesale includes only day pay and wholesale sales; zeros hide, missing i
 });
 test('rounding handles signed sales returns and preserves sums across many component combinations', () => {
   for (let n = -1000; n < 1000; n += 7) {
-    const parts: EmployeeEarning[] = [{ label: 'Выходы', amount: 6000 }, { label: 'В кредит', amount: n / 7 },
+    const parts: EmployeeEarning[] = [{ label: 'Выходы', amount: 6000 }, { label: 'Телефоны и техника', amount: n / 7 },
       { label: 'Аксессуары', amount: 534.8 }];
     const result = roundEmployeeEarnings(parts)!;
     assert.equal(result.earnings.reduce((sum, row) => sum + row.amount, 0), result.estimatedAccrued);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calculatePersonalCurrentPayroll, getPrivatePayrollBinding, type CurrentPayrollEvidence } from '../lib/payroll-current-read';
+import { calculateLastVerifiedPersonalPayroll, calculatePersonalCurrentPayroll, getPrivatePayrollBinding, type CurrentPayrollEvidence, type PersonalPayrollSourceMemo } from '../lib/payroll-current-read';
 import type { PayrollOneCControlSlice } from '../lib/payroll-one-c-control-snapshots';
 import { prepareDailyPayrollInputs } from '../lib/payroll-daily-calculation';
 import { buildDailyPayrollBase } from '../lib/payroll-daily-calculation';
@@ -72,6 +72,50 @@ test('cost-dependent credit remuneration remains blocked until cost is calculate
     quantity: 1, revenue: 120000, cost: 100000, grossProfit: 20000, sourceRows: 1, costReviewRows: 0, costCalculationPendingRows: 1 }];
   sales.summary.costCalculationPendingRows = 1;
   assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input), null);
+});
+test('the last checked cutoff is contiguous: never omit a disputed day and include later sales', () => {
+  const input = evidence();
+  const day = (date: string) => {
+    const row = structuredClone(input.slices[0]);
+    row.dateFrom = row.dateTo = date;
+    Object.assign(row.payload as object, { dateFrom: date, dateTo: date });
+    return row;
+  };
+  const disputed = day('2026-10-02');
+  (disputed.payload as PayrollOneCControlSlice).sales.rows = [{ manager: 'Абшаева Зухра', managerRef: 'manager', client: 'Кредит/Рассрочка', clientRef: 'client',
+    category: 'Смартфоны (хар-ки)', categoryRef: 'category', item: 'iPhone 17', productRef: 'product', article: '',
+    quantity: 1, revenue: 120000, cost: 100000, grossProfit: 20000, sourceRows: 1, costReviewRows: 0, costCalculationPendingRows: 1 }];
+  input.slices.push(disputed, day('2026-10-03'));
+  const before = JSON.stringify(input);
+  assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input), null);
+  const memo: PersonalPayrollSourceMemo = new Map();
+  const previous = calculateLastVerifiedPersonalPayroll('2026-10', 7, input, new Date(), memo);
+  assert.equal(previous?.sourceFallback, true);
+  assert.equal(previous?.verifiedThrough, '2026-10-01');
+  assert.equal(previous?.advance, null, 'fallback does not invent a verified advance');
+  assert.deepEqual(calculateLastVerifiedPersonalPayroll('2026-10', 7, input, new Date(), memo), previous);
+  assert.equal(JSON.stringify(input), before);
+  input.users[0].payrollName = null;
+  assert.equal(calculateLastVerifiedPersonalPayroll('2026-10', 7, input, new Date(), memo), null, 'memo cannot grant an obsolete identity access');
+});
+test('fallback cannot repair missing, duplicate or malformed source days', () => {
+  for (const mutate of [
+    (input: CurrentPayrollEvidence) => { input.slices.push(structuredClone(input.slices[0])); },
+    (input: CurrentPayrollEvidence) => { input.attendance = null; },
+  ]) { const input = evidence(); mutate(input); assert.equal(calculateLastVerifiedPersonalPayroll('2026-10', 7, input), null); }
+  const mismatch = evidence(); mismatch.slices[0].dateTo = '2026-10-03';
+  assert.throws(() => calculateLastVerifiedPersonalPayroll('2026-10', 7, mismatch), /Source date mismatch/);
+});
+test('missing personal day inputs do not trigger pointless historical source recalculations', () => {
+  const input = evidence();
+  (input.draft!.payload as any).manual = {};
+  const second = structuredClone(input.slices[0]);
+  second.dateFrom = second.dateTo = '2026-10-02';
+  Object.assign(second.payload as object, { dateFrom: second.dateFrom, dateTo: second.dateTo });
+  input.slices.push(second);
+  const memo: PersonalPayrollSourceMemo = new Map();
+  assert.equal(calculateLastVerifiedPersonalPayroll('2026-10', 7, input, new Date(), memo), null);
+  assert.equal(memo.size, 1);
 });
 test('automatic preparation does not mutate input even when attendance is missing', () => {
   const manual = { 'Кумыков Мухаммед': { workedDays: '', lateCount: '', advance: '', comment: '' } };

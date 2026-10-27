@@ -2,14 +2,26 @@ import 'server-only';
 import { payrollSettlementWindow } from './payroll-settlement-window';
 import { getPayrollOneCBalances, getPayrollOneCCashPayments, getPayrollOneCLedger, getPayrollOneCAdvances } from './payroll-one-c-control-source';
 import { createPayrollAdvanceCache } from './payroll-advance-cache';
+import { createPersonalPayrollSourceCache } from './payroll-personal-source-cache';
 
 // Next may load this service through separate route bundles (and reload it in
 // development). Keep the bounded cache once per server process, not per bundle.
 const processCache = globalThis as typeof globalThis & {
   __moboPayrollAdvanceReadV1?: ReturnType<typeof createPayrollAdvanceCache>;
+  __moboPersonalPayrollSourceV1?: ReturnType<typeof createPersonalPayrollSourceCache>;
 };
 export const readPersonalPayrollAdvances = processCache.__moboPayrollAdvanceReadV1
   ??= createPayrollAdvanceCache(getPayrollOneCAdvances);
+
+// A dedicated private reader leaves ADMIN's refresh/error semantics unchanged.
+export const readPersonalPayrollSettlementSource = processCache.__moboPersonalPayrollSourceV1
+  ??= createPersonalPayrollSourceCache(async (period, today) => {
+    const [cash, ledger] = await Promise.all([
+      getPayrollOneCCashPayments(`${period}-01`, today),
+      getPayrollOneCLedger(`${period}-01`, today),
+    ]);
+    return { cash, ledger };
+  });
 
 type Result = { balance: Awaited<ReturnType<typeof getPayrollOneCBalances>> | null; cash: Awaited<ReturnType<typeof getPayrollOneCCashPayments>>; ledger: Awaited<ReturnType<typeof getPayrollOneCLedger>>; periodKey: string };
 const cache = new Map<string, { at: number; value: Result }>();

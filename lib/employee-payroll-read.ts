@@ -53,6 +53,7 @@ export async function readEmployeePayroll(
       return { status: 200, body: { month: period, state: 'current_estimate' as const,
         ...estimate,
         verifiedThrough: daily.verifiedThrough,
+        ...(daily.sourceFallback ? { sourceFallback: true } : {}),
         // No zero or browser-local advance can masquerade as a verified payment.
         savedAdvance: daily.advance !== undefined && daily.advance !== null && Number.isFinite(daily.advance) && daily.advance >= 0 ? daily.advance : null,
       } };
@@ -76,6 +77,7 @@ export async function readEmployeePayroll(
       paid: verifiedPayments ? settlement.paid : null,
       remaining: verifiedPayments ? settlement.remaining : null,
       ...(verifiedPayments && settlement.creditedFromEarlier ? { creditedFromEarlier: settlement.creditedFromEarlier } : {}),
+      ...(settlement.sourceFallback ? { sourceFallback: true, checkedAt: settlement.checkedAt } : {}),
     } };
   } catch {
     return { status: 503, body: { error: 'Расчёт временно недоступен. Попробуйте позже.' } };

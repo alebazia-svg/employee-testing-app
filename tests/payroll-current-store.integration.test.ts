@@ -7,7 +7,8 @@ import type { PayrollOneCControlSlice } from '../lib/payroll-one-c-control-snaps
 
 test('real PostgreSQL current read uses persisted drafts, hides foreign rows and respects FINAL', { skip: !process.env.PAYROLL_DRAFT_TEST_DATABASE_URL }, async () => {
   const url = new URL(process.env.PAYROLL_DRAFT_TEST_DATABASE_URL!);
-  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname === '/payroll_owner_preview_20261021');
+  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname)
+    && ['/payroll_owner_preview_20261021', '/payroll_pwa_repair_20261027'].includes(url.pathname));
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const periodKey = '2097-12';
   const date = `${periodKey}-01`;

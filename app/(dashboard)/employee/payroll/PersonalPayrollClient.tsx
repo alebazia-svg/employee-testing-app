@@ -29,7 +29,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const needsRetry = !updating && (!!error || salary?.state === 'unavailable'
-    || (salary?.state === 'current_estimate' && salary.savedAdvance == null)
+    || salary?.sourceFallback
     || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null)));
   useEffect(() => {
     const controller = new AbortController();
@@ -40,7 +40,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     const load = async () => {
       // First visit gets the existing stored projection; revisits reuse the
       // account-scoped result immediately. Neither path waits for 1C to open a tab.
-      if (embedded && month === activeMonth && !salary) {
+      if (!salary) {
         const response = await request(`/api/employee/payroll?month=${encodeURIComponent(month)}&snapshot=stored`, { cache: 'no-store', signal: controller.signal });
         if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
         if (response.ok && !controller.signal.aborted) {
@@ -87,8 +87,9 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
         : <>
           <section className='salary-hero pwa-review-task' aria-label='Начисленная зарплата'>
             <p>Начислено за месяц</p><div className='salary-total'>{salary.state === 'confirmed' ? money(salary.accrued!) : `≈ ${money(salary.estimatedAccrued!)}`} <span>₽</span></div>
-            <div className='salary-status'><span>{salary.state === 'current_estimate' ? 'Предварительный расчёт' : 'Подтверждённая сумма'}{updating && <span className='text-slate-500'> · Обновляется…</span>}</span>
-              {salary.verifiedThrough && <p className='salary-through'>Продажи учтены по {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${salary.verifiedThrough}T12:00:00Z`))}</p>}
+            <div className='salary-status'><span>{salary.state === 'current_estimate' ? 'Предварительный расчёт' : salary.sourceFallback ? 'Последняя проверенная сумма' : 'Подтверждённая сумма'}{updating && <span className='text-slate-500'> · Обновляется…</span>}</span>
+              {salary.verifiedThrough && <p className='salary-through'>{salary.sourceFallback ? 'Проверенные продажи по ' : 'Продажи учтены по '}{new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${salary.verifiedThrough}T12:00:00Z`))}</p>}
+              {salary.sourceFallback && salary.checkedAt && <p className='salary-through'>Выплаты проверены {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(salary.checkedAt))}</p>}
             </div>
           </section>
           {salary.state === 'current_estimate' && !!salary.earnings?.length && <section className='salary-breakdown' aria-label='Состав зарплаты'>
@@ -103,8 +104,6 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
           </section> : salary.savedAdvance != null && salary.savedAdvance > 0 ? <section className='salary-advance'><span className='salary-wallet'><PremiumCardIcon color='var(--portal-brand-strong)' size={28} /></span><div>Получено авансом</div>
             <strong>{money(salary.savedAdvance)} ₽</strong>
           </section> : null}
-          {salary.state === 'current_estimate' && salary.savedAdvance == null && !updating
-            && <p role='status' className='mt-2 text-base text-slate-600'>Не удалось проверить авансы. Попробуйте позже.</p>}
         </>}
     </div>
     {needsRetry && <button type='button' onClick={() => setRefresh(value => value + 1)} className='mt-4 min-h-11 rounded-xl border border-[#e5e2da] px-5 text-base font-semibold'>Повторить</button>}

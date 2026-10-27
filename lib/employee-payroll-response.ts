@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { readEmployeePayroll } from '@/lib/employee-payroll-read';
 import { readStoredPersonalCurrentPayroll } from '@/lib/payroll-current-store';
 import { bindPersonalPayrollHistory, projectPersonalSettlement } from '@/lib/employee-payroll-history';
-import { readPayrollSettlementSource } from '@/lib/payroll-settlement-source';
+import { readPersonalPayrollSettlementSource } from '@/lib/payroll-settlement-source';
 import { getPrivatePayrollBinding } from '@/lib/payroll-current-read';
 import { payrollFeatureState } from '@/lib/payroll-features';
 
@@ -31,13 +31,14 @@ export async function employeePayrollResponse(viewer: PayrollViewer | null, quer
     findCurrent: storedOnly ? (period, userId) => readStoredPersonalCurrentPayroll(period, userId, prisma, async () => null) : readStoredPersonalCurrentPayroll,
     findSettlement: async (period, userId) => {
       // First paint must not wait for 1C. No invented historical paid/accrued sum.
-      if (storedOnly) return null;
       const users = await prisma.user.findMany({ select: directorySelect });
       const name = getPrivatePayrollBinding(users, userId);
       if (!name || name !== historicalName) return null;
       const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date());
-      const source = await readPayrollSettlementSource(period, today, false, false);
-      return projectPersonalSettlement(period, name, source.cash, source.ledger);
+      const snapshot = await readPersonalPayrollSettlementSource(period, today, storedOnly);
+      if (!snapshot) return null;
+      const result = projectPersonalSettlement(period, name, snapshot.source.cash, snapshot.source.ledger);
+      return result ? { ...result, ...(snapshot.sourceFallback ? { sourceFallback: true, checkedAt: snapshot.checkedAt } : {}) } : null;
     },
     findFinal: async (periodKey, userId) => {
       const runs = await prisma.payrollRun.findMany({

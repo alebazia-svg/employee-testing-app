@@ -61,7 +61,7 @@ function earlierPayrollCreditMinor(period: string, name: string, ref: string, ca
   return Math.max(0, credit);
 }
 
-export type PersonalSettlement = { accrued: number; paid: number | null; remaining: number | null; creditedFromEarlier?: number };
+export type PersonalSettlement = { accrued: number; paid: number | null; remaining: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
 export function projectPersonalSettlement(period: string, name: string, cash: PayrollCashRead, ledger: PayrollLedgerRead): PersonalSettlement | null {
   if (cash.dateFrom > `${period}-01` || ledger.dateFrom > `${period}-01` || cash.dateTo !== ledger.dateTo) return null;
   // Strict personal identity, not the ADMIN's broader reviewed alias resolver.
