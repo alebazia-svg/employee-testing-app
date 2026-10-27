@@ -156,18 +156,18 @@ def build(department, department_label, theme='light', destination=OUT):
     qr = draw_qr(c, matrix_for(department))
     for index, (top, lines) in enumerate([
         (84, ('Открой', 'приложение')),
-        (110, ('Нажми', '«Открыть камеру»')),
-        (142, ('Выбери', 'свою смену')),
+        (113 if department == 'procurement' else 110, ('Нажми', '«Открыть камеру»')),
+        (142, ('Сканируй', 'QR-код') if department == 'procurement' else ('Выбери', 'свою смену')),
     ]):
         label(c, f'{index+1:02}', 90, top+4.5, 9.5, bold=True, color='#975B36')
         for offset, line in enumerate(lines):
             label(c, line, 90, top+11+offset*5.8, 14, bold=True, max_width=47)
-        if index == 1:
+        if index == 1 and department != 'procurement':
             label(c, 'Сканируй QR', 90, 134.5, 11.5, bold=True, color='#975B36', max_width=47)
         if index < 2:
             c.setStrokeColor(HexColor('#D4D1C8'))
             c.setLineWidth(.25*mm)
-            separator = 106.5 if index == 0 else 139
+            separator = (110 if department == 'procurement' else 106.5) if index == 0 else 139
             c.line(90*mm, HEIGHT-separator*mm, 137*mm, HEIGHT-separator*mm)
 
     rounded(c, 10, 164.5, 128, 11, 5.5, '#EED1B7')
@@ -197,12 +197,16 @@ if __name__ == '__main__':
     import shutil
     parser = argparse.ArgumentParser()
     parser.add_argument('--output-dir', type=Path, default=OUT)
+    parser.add_argument('--department', action='append', choices=['retail', 'wholesale', 'procurement'],
+                        help='Generate only selected departments; repeat for multiple posters')
     parser.add_argument('--activate', action='store_true', help='Update local portal PDF/PNG assets')
     args = parser.parse_args()
     destination = args.output_dir
     destination.mkdir(parents=True, exist_ok=True)
     posters = []
-    for department, title in [('retail', 'Розница'), ('wholesale', 'Опт')]:
+    for department, title in [('retail', 'Розница'), ('wholesale', 'Опт'), ('procurement', 'Закупки')]:
+        if args.department and department not in args.department:
+            continue
         result = build(department, title, 'graphite', destination)
         pdf = destination / result['pdf']
         subprocess.run(['pdftoppm', '-f', '1', '-singlefile', '-r', '300', '-png',

@@ -162,6 +162,40 @@ export function WorkdayQrCodes() {
                   </div>
                 );
               })}
+              <div className='rounded-xl border border-slate-200 bg-slate-50 p-4'>
+                <p className='text-base font-extrabold text-slate-950'>Закупки</p>
+                <p className='mt-1 text-sm font-semibold text-[#975B36]'>Подключение в разработке</p>
+                <p className='mt-2 text-sm font-medium text-slate-500'>QR подготовлен. Отметка начала рабочего дня пока недоступна.</p>
+                <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-start'>
+                  <a href='/print/portal-workday-procurement-a5.png' target='_blank' rel='noreferrer'
+                    aria-label='Открыть макет Закупки'
+                    className='block aspect-[1480/2100] w-full shrink-0 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200 sm:w-40'>
+                    <img src='/print/portal-workday-procurement-a5.png' alt='Менюхолдер A5 — Закупки' className='h-full w-full object-contain' />
+                  </a>
+                  <div className='grid flex-1 gap-2'>
+                    <a href='/print/portal-workday-procurement-a5.png' target='_blank' rel='noreferrer'
+                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'>
+                      <Maximize2 className='h-4 w-4' />Посмотреть макет
+                    </a>
+                    <a href='/print/portal-workday-procurement-a5.png' download='portal-workday-procurement-a5.png'
+                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'>
+                      <Download className='h-4 w-4' />Скачать PNG
+                    </a>
+                    <a href='/print/portal-workday-procurement-qr.png' download='portal-workday-procurement-qr.png'
+                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'>
+                      <Download className='h-4 w-4' />Скачать только QR
+                    </a>
+                    <a href='/print/portal-workday-procurement-qr.svg' download='portal-workday-procurement-qr.svg'
+                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'>
+                      <Download className='h-4 w-4' />Скачать SVG
+                    </a>
+                    <a href='/print/portal-workday-procurement-a5.pdf' target='_blank' rel='noreferrer'
+                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#263b5c] px-3 text-sm font-extrabold text-white hover:bg-[#1d304e]'>
+                      <Printer className='h-4 w-4' />Печать A5 / PDF
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

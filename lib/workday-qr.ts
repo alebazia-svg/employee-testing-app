@@ -1,4 +1,7 @@
 export const WORKDAY_QR_PREFIX = 'offonika-workday-start:';
+// Reserved for the procurement PWA being developed separately. Publishing this
+// QR does not enable it in parseWorkdayQrDepartment or the start-intent API.
+export const PROCUREMENT_WORKDAY_QR_PAYLOAD = `${WORKDAY_QR_PREFIX}procurement`;
 export const WORKDAY_START_INTENT_TTL_MS = 15 * 60 * 1000;
 
 export type WorkdayQrDepartment = 'retail' | 'wholesale';
