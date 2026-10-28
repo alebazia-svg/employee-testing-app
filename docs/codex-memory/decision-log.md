@@ -1283,3 +1283,40 @@ eligible open period and a draft (payroll-source-sync-store.ts); it does not
 initialize a new month automatically. Preparing the next period and resolving
 sales newer than the displayed cutoff remain separate operational work. No new
 period/draft was created here. Owner was informed of these limits.
+
+## 2026-10-28 — Fiscal report manager attribution (released 1.18.25)
+
+Owner approved filling the report's manager from the existing dated KKM / physical
+workstation / active-shift responsibility when a linked 1C document has no cashier.
+Reuse fiscalProposedRecipients, including its conservative ambiguity guards; do not
+invent an employee from an OFD operator, customer-order author or terminal label.
+A cashier's 1C reference confirms the shift attribution only when the mapped user
+identities agree. Show the source beneath the manager and keep actual 1C cashiers
+when the two sources conflict. Reassign all three linked report movements together;
+financial matching, source sums, native fiscal sums and settlement remain unchanged.
+
+Missing/ambiguous responsibility and conflicting 1C identity create a separate
+ADMIN-only fiscal_manager_attribution inbox lifecycle after a 30-minute quiet
+period and complete source reads. One event per payment is updated/resolved/reopened;
+reading it does not close the question, and incomplete polls do not retire it.
+No schema changes. The existing fiscal scheduler runs the diagnostic; daily report
+loading is read-only. The report cache schema changes to fiscal-daily-v2.
+
+Owner explicitly clarified that personal manager notifications in the app must
+remain as configured. Their recipients, scheduling, employee review rules and
+financial resolution are unchanged. ADMIN diagnostic failures are isolated from
+that delivery path. Released and independently verified as 1.18.25, runtime
+`a566baa549ed5b8f2125539b75a68a50ef70c3a7`, built
+2026-10-28T12:40:55.564Z (15:40 Moscow). Both 72,900 and 92,500 show Milana
+with shift attribution in authenticated production; native checks show 1C
+confirmation. Daily totals remain 75,300 / 96,000 RUB with zero differences.
+277 fiscal checks, 38 surrounding checks and five release checks passed; one
+external fixture was skipped. TypeScript and production builds passed locally
+and on the server. No new employee requests or attribution questions were
+created for the valid observed cases. Physical-device push for the new ADMIN
+question and mobile viewport remain unverified.
+
+Verified image `sha256:e7a4516a315df87770ab2e69ba3ff419946eb232b38f3da95651165bf8462af2`
+registered after server/public/UI checks; current plus two previous verified
+images exist, approximately 19 GiB free. Deployment and registration exited 0.
+No schema changes or manual production DB writes.
