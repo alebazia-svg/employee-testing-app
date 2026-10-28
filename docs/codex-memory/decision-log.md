@@ -1320,3 +1320,58 @@ Verified image `sha256:e7a4516a315df87770ab2e69ba3ff419946eb232b38f3da95651165bf
 registered after server/public/UI checks; current plus two previous verified
 images exist, approximately 19 GiB free. Deployment and registration exited 0.
 No schema changes or manual production DB writes.
+
+
+## 2026-10-28 - Employee payroll cold-load repair and quiet refresh (released 1.18.26)
+
+Owner approved diagnosing/fixing repeat payroll loading failures, then approved
+suppressing technical refresh warnings when a valid dated salary is already
+shown and explicitly authorized production release. Runtime
+331c2630122a0e99ebc0663af44f341aa6733ece preserves the parallel 1.18.25
+fiscal-manager release; only nine payroll/test/version files differ from that
+runtime base. No formulas, financial writes, attendance/calendar/notification
+workflow changes, schema changes or 1C writes were included.
+
+Read-only production profiling isolated cold preparation: 30,821 ms total with
+161 ms of SQL and no external read, versus 390 ms warm. Repeated text
+normalization in sales classification dominated CPU. Exact-string normalization
+now has a bounded 4096-entry memo, accepting strings at most 256 characters;
+classification decisions/rules/amounts are not cached there. Same-server isolated
+candidate: 4938 ms cold, 684 ms warm; five simultaneous cold employee reads all
+succeeded in 6858–7495 ms. Five employees and all four source-cutoff summaries
+match the old calculation exactly on captured source data.
+
+The client previously shared 15 seconds across stored and refreshed reads. Each
+read now has its own deadline (stored 15s, refresh 25s), with cleanup/cancellation
+and no late previous-month publication. Existing account/access validation,
+FINAL/CLOSED rules, two rolling months, unknown-advance hiding, and invalidation
+of genuinely unavailable evidence remain intact. A refresh failure keeps the
+already loaded valid amount without the employee's technical warning; absent
+amounts show “Расчёт временно недоступен.” Access loss still clears data and asks
+for sign-in. The existing employee operation audit still records refresh failures
+for ADMIN; no new employee warning, job, persistent browser cache or audit channel
+was introduced. Cold startup still derives the personal view from persisted
+sources; no new durable immutable personal-payroll snapshot is claimed.
+
+Validation: 78 standard payroll checks; 84 focused loading/identity/history/cache/
+classification/ADMIN-process/fiscal-base checks; 227 workday checks; five metadata
+checks; isolated PostgreSQL FINAL/CLOSED/privacy integration; TypeScript and final
+production build passed. Local real-data replay covered five employees, both
+months, delayed reads, outage retention/recovery and account override rejection.
+Final quiet-error state was checked live locally against a deliberate source
+outage. Production authenticated inspection verified Milana's first October load
+without retry, positive advance, September confirmed amounts/zero remaining,
+schedule/workday return to the cached salary and 390px rendering. Public health,
+401 without auth, server commit, public metadata and visible ADMIN version label
+were independently verified. Physical iPhone testing remains unperformed.
+
+Built 2026-10-28T12:50:14.281Z (15:50 Moscow), release script exit 0, phase complete.
+Previous image: sha256:e7a4516a315df87770ab2e69ba3ff419946eb232b38f3da95651165bf8462af2.
+Replacement: sha256:d1b6036dea129e422f56fbfbed0a4e93cde4521379efdd66f861b2f3d0f65e6d.
+Mounts and server.env hash unchanged; no pending migration was applied. Image
+registration completed only after independent UI/SSH verification. Existing
+owner-approved maintenance removed eligible unused old portal rollback images
+and unused build cache; current plus two verified reserves exist, free 22.8 GiB.
+No volumes/uploads/backups were pruned. Primary checkout WIP remained untouched.
+Newer sales classification beyond the displayed cutoff and November preparation
+remain separate work; this release does not claim to resolve those items.
