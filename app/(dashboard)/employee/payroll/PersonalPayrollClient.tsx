@@ -3,7 +3,8 @@ import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { useEffect, useRef, useState } from 'react';
 import { PremiumCardIcon } from '@/components/PwaPreviewIcons';
-import { employeePayrollMonths, validEmployeePayrollView, type EmployeePayrollView as Salary } from '@/lib/employee-payroll-view';
+import { employeePayrollMonths, type EmployeePayrollView as Salary } from '@/lib/employee-payroll-view';
+import { EmployeePayrollAccessError, loadEmployeePayroll } from '@/lib/employee-payroll-load';
 import { useEmployeePayrollMonth } from '@/components/useEmployeePayrollMonth';
 import { useEmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 import { EmployeeActionReminder } from '@/components/workday/EmployeeActionReminder';
@@ -36,31 +37,20 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     const finishAudit = beginEmployeeOperation('payroll_load', {disabled:!!preview,period:month});
     lastStarted.current = Date.now();
     setUpdating(true); setError('');
-    const timer = window.setTimeout(() => controller.abort('timeout'), 15000);
-    const load = async () => {
-      // First visit gets the existing stored projection; revisits reuse the
-      // account-scoped result immediately. Neither path waits for 1C to open a tab.
-      if (!salary) {
-        const response = await request(`/api/employee/payroll?month=${encodeURIComponent(month)}&snapshot=stored`, { cache: 'no-store', signal: controller.signal });
-        if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
-        if (response.ok && !controller.signal.aborted) {
-          const result: unknown = await response.json();
-          if (validEmployeePayrollView(result, month) && result.state !== 'unavailable') { setSalary(result); remember?.(result, months); }
-        }
-      }
-      return request(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal });
-    };
-    void load()
-      .then(async response => {
+    void loadEmployeePayroll({ month, request, signal: controller.signal, hasSaved: !!salary,
+      onStored: result => { setSalary(result); remember?.(result, months); },
+    })
+      .then(result => {
         if (controller.signal.aborted) return;
-        if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
-        if (!response.ok) throw Error('Не удалось обновить расчёт. Попробуйте ещё раз.');
-        const result: unknown = await response.json();
-        if (!validEmployeePayrollView(result, month)) throw Error('Расчёт пока недоступен.');
-        if (!controller.signal.aborted) { setSalary(result); remember?.(result, months); finishAudit(result.state === 'unavailable' ? 'failed' : 'completed', result.state === 'unavailable' ? 'unavailable' : undefined); }
-      }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') { finishAudit('failed', navigator.onLine ? 'request' : 'network'); setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); } })
-      .finally(() => { window.clearTimeout(timer); if (!controller.signal.aborted || controller.signal.reason === 'timeout') setUpdating(false); });
-    return () => { window.clearTimeout(timer); controller.abort(); };
+        setSalary(result); remember?.(result, months);
+        finishAudit(result.state === 'unavailable' ? 'failed' : 'completed', result.state === 'unavailable' ? 'unavailable' : undefined);
+      }).catch(cause => { if (!controller.signal.aborted) {
+        if (cause instanceof EmployeePayrollAccessError) { clear?.(); setSalary(null); }
+        finishAudit('failed', navigator.onLine ? 'request' : 'network');
+        setError(cause instanceof Error ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.');
+      } })
+      .finally(() => { if (!controller.signal.aborted) setUpdating(false); });
+    return () => controller.abort();
   }, [month, refresh, request, remember, clear, activeMonth, embedded]);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastStarted.current >= 30000) setRefresh(value => value + 1); };

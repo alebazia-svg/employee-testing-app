@@ -58,8 +58,20 @@ export type PayrollSalesClassificationResult = {
 };
 type ClassificationResult = PayrollSalesClassificationResult;
 
+// Exact-string memo only: no classification decisions, employee amounts or
+// rule results are cached here. Repeated product/rule tokens dominate cold
+// month preparation. Bound both entry count and string length in every process.
+const normalizedTextMemo = new Map<string, string>();
 function normalizeText(value: CellValue) {
-  return String(value ?? '').toLowerCase().replaceAll('ё', 'е').replace(/\s+/g, ' ').trim();
+  const text = String(value ?? '');
+  const saved = normalizedTextMemo.get(text);
+  if (saved !== undefined) return saved;
+  const normalized = text.toLowerCase().replaceAll('ё', 'е').replace(/\s+/g, ' ').trim();
+  if (text.length <= 256) {
+    if (normalizedTextMemo.size >= 4096) normalizedTextMemo.delete(normalizedTextMemo.keys().next().value!);
+    normalizedTextMemo.set(text, normalized);
+  }
+  return normalized;
 }
 const asadManagerName = 'Икаев Асад';
 const retailTraineePayrollName = 'Костеренко Магомед';
