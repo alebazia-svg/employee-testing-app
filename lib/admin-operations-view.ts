@@ -104,6 +104,7 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
 };
 
 export function adminInboxEventMeta(type: string): AdminInboxEventMeta {
+  if(type.startsWith('fiscal_manager.'))return {category:'requests',typeLabel:'Ответственный за оплату',actionLabel:'Открыть сверку'};
   return eventMeta[type] ?? {
     category: 'system',
     typeLabel: 'Системное событие',

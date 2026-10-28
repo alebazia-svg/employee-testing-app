@@ -1,3 +1,6 @@
+import {applyFiscalManagers, type FiscalManager} from './terminal-fiscal-manager';
+import {loadFiscalManager} from './terminal-fiscal-manager-loader';
+import {bankOperationKey} from './terminal-fiscal-matching';
 import 'server-only';
 import {loadFiscalSettlementSource} from './terminal-fiscal-settlement-loader';
 import {compareFiscalSettlement} from './terminal-fiscal-settlement';
@@ -23,6 +26,18 @@ export async function loadDailyFiscalReport(day:string) {
     return {bankOperations:[],oneCChecks:[],ofdReceipts:[],records:[],complete:{bank:false,oneC:false,ofd:false}} satisfies DailyFiscalEvidence;
   }));
   const report=buildDailyFiscalReport({from,to,parts:results});
+  const managers=new Map<string,FiscalManager>();
+  for(const transaction of report.transactions){
+    // Resolve at each payment's actual instant. Grouped payments must agree.
+    if(!transaction.bank.length)continue;
+    const contexts=await Promise.all(transaction.bank.map(async bank=>{
+      const mappingIds=[...new Set(results.flatMap((part,index)=>part.bankOperations.some(b=>bankOperationKey(b)===bank.key)?[mappings[index].id]:[]))];
+      return loadFiscalManager(prisma,{at:new Date(bank.at),mappingId:mappingIds.length===1?mappingIds[0]:null,cashiers:transaction.oneC.flatMap(cell=>results.flatMap(p=>p.oneCChecks).filter(c=>c.sourceRef===cell.key).map(c=>c.cashier))});
+    }));
+    const unique=new Set(contexts.map(c=>`${c.key}|${c.state}|${c.note}`));
+    managers.set(transaction.key,unique.size===1?contexts[0]:{name:transaction.manager,key:'unassigned',state:'conflict' as const,note:'В группе оплат разные ответственные. Проверьте назначения на момент каждой оплаты.'});
+  }
+  applyFiscalManagers(report,managers);
   const configurationComplete=workstations.every(w=>mappings.filter(m=>m.workstationId===w.id).length===1);
   if(!configurationComplete){report.complete.bank=false;report.complete.oneC=false;report.complete.ofd=false;report.status='incomplete';}
   const reviews=await prisma.terminalFiscalEmployeeReview.findMany({where:{bankOperationAt:{gte:from,lt:to},status:{in:['admin_review','open']}},select:{id:true,matchingHash:true}});

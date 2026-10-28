@@ -1,3 +1,4 @@
+import {syncFiscalManagerAlert} from './terminal-fiscal-manager-alert';
 import {applyFiscalAmountCoverage} from './terminal-fiscal-amount-coverage';
 import { loadHistoricalCabinetEvidence } from '@/lib/tbank-cabinet-snapshot';
 import 'server-only';
@@ -225,6 +226,13 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
             mode: employeeReviewMode,
           });
         }
+      }
+    }
+    // ADMIN attribution diagnostics must never block established employee delivery.
+    if (lease && input.syncWorkdayControl === true) {
+      for (const record of output.records) {
+        try { await syncFiscalManagerAlert(prisma,record,periodOneCChecks.filter(c=>c.sourceRef===record.oneCCheckKey||record.evidence.amountCoverage?.oneCRefs.includes(c.sourceRef)).map(c=>c.cashier)); }
+        catch { console.warn('FISCAL_MANAGER_ALERT_SYNC_FAILED'); }
       }
     }
     const summary = summarizeTerminalFiscalOutput(output);

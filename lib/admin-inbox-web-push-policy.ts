@@ -4,6 +4,7 @@ export const RECEIPT_PUSH_TYPE = 'procurement.receipt_added';
 export const ADMIN_INBOX_TECHNICAL_DEDUPE_MS = 2 * 60 * 60 * 1000;
 
 const STANDARD_HOURS_EVENT_TYPES = [
+  'fiscal_manager.attention',
   'terminal_fiscal_review.help_requested',
   'procurement.delivery_requested',
   'expense_request.created',
