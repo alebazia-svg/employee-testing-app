@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { employeePayrollMonthAt, employeePayrollMonthDelay, employeePayrollMonths, rememberEmployeePayroll, validEmployeePayrollView, type EmployeePayrollView } from '../lib/employee-payroll-view';
+import { employeePayrollErrorNotice, employeePayrollMonthAt, employeePayrollMonthDelay, employeePayrollMonths, rememberEmployeePayroll, validEmployeePayrollView, type EmployeePayrollView } from '../lib/employee-payroll-view';
 const periods = ['2026-10', '2026-09'];
 const value = (month = '2026-10'): EmployeePayrollView => ({ month, state: 'current_estimate', estimatedAccrued: 30000, earnings: [{ label: 'Выходы', amount: 30000 }], savedAdvance: 0 });
+test('employee refresh failures are quiet with a saved amount; missing amounts and lost access remain clear', () => {
+  const error = 'Не удалось обновить расчёт. Попробуйте ещё раз.';
+  assert.equal(employeePayrollErrorNotice(value(), error), null);
+  assert.equal(employeePayrollErrorNotice({month:'2026-09',state:'confirmed',accrued:30000,paid:30000,remaining:0}, error), null);
+  assert.equal(employeePayrollErrorNotice(null, error), 'Расчёт временно недоступен.');
+  assert.equal(employeePayrollErrorNotice({month:'2026-10',state:'unavailable'}, error), 'Расчёт временно недоступен.');
+  assert.equal(employeePayrollErrorNotice(null, 'Войдите в приложение заново.'), 'Войдите в приложение заново.');
+  assert.equal(employeePayrollErrorNotice(null, ''), null);
+});
 test('only the selected month and consistent validated sums can be displayed', () => {
   assert.equal(validEmployeePayrollView(value(), periods[0]), true);
   for (const patch of [{ month: '2026-09' }, { estimatedAccrued: NaN }, { estimatedAccrued: 1 }, { savedAdvance: -1 }, { earnings: [{ label: 'Выходы', amount: Infinity }] }]) assert.equal(validEmployeePayrollView({ ...value(), ...patch }, periods[0]), false);

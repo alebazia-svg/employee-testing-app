@@ -3,7 +3,7 @@ import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { useEffect, useRef, useState } from 'react';
 import { PremiumCardIcon } from '@/components/PwaPreviewIcons';
-import { employeePayrollMonths, type EmployeePayrollView as Salary } from '@/lib/employee-payroll-view';
+import { employeePayrollErrorNotice, employeePayrollMonths, type EmployeePayrollView as Salary } from '@/lib/employee-payroll-view';
 import { EmployeePayrollAccessError, loadEmployeePayroll } from '@/lib/employee-payroll-load';
 import { useEmployeePayrollMonth } from '@/components/useEmployeePayrollMonth';
 import { useEmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
@@ -28,6 +28,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
   const [updating, setUpdating] = useState(true);
   const lastStarted = useRef(0);
   const [error, setError] = useState('');
+  const errorNotice = employeePayrollErrorNotice(salary, error);
   const [refresh, setRefresh] = useState(0);
   const needsRetry = !updating && (!!error || salary?.state === 'unavailable'
     || salary?.sourceFallback
@@ -71,9 +72,9 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
       </select>
     </label></div>
     <div aria-live='polite' aria-busy={updating}>
-      {error && <p role='alert' className='mb-3 text-sm text-amber-900'>{salary && salary.state !== 'unavailable' ? 'Показан последний загруженный расчёт. ' : ''}{error}</p>}
+      {errorNotice && <p role='alert' className='mb-3 text-sm text-amber-900'>{errorNotice}</p>}
       {!salary ? !error && <p className='py-8 text-base'>Обновляем расчёт…</p>
-        : salary.state === 'unavailable' ? <div className='salary-hero pwa-review-task'><p>Расчёт пока недоступен</p><p className='mt-3 text-base'>Он появится после проверки данных.</p></div>
+        : salary.state === 'unavailable' ? !errorNotice && <div className='salary-hero pwa-review-task'><p>Расчёт временно недоступен.</p></div>
         : <>
           <section className='salary-hero pwa-review-task' aria-label='Начисленная зарплата'>
             <p>Начислено за месяц</p><div className='salary-total'>{salary.state === 'confirmed' ? money(salary.accrued!) : `≈ ${money(salary.estimatedAccrued!)}`} <span>₽</span></div>

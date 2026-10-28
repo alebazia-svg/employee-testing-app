@@ -2,6 +2,13 @@ import type { EmployeeEarning } from './employee-payroll-estimate';
 
 export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
 
+// A refresh failure belongs in the existing ADMIN operation audit. It must
+// not alarm an employee who already has a usable, dated salary projection.
+export function employeePayrollErrorNotice(value: EmployeePayrollView | null, error: string) {
+  if (!error || value && value.state !== 'unavailable') return null;
+  return error === 'Войдите в приложение заново.' ? error : 'Расчёт временно недоступен.';
+}
+
 export function validEmployeePayrollView(value: unknown, month: string): value is EmployeePayrollView {
   if (!value || typeof value !== 'object') return false;
   const row = value as EmployeePayrollView;
