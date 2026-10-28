@@ -1,8 +1,9 @@
 import {AMOUNT_COVERED_REASON,fiscalAmountCoverageEligible} from './terminal-fiscal-coverage-policy';
 import {bankOperationKey,canonicalFiscalKey,type BankOperation,type OneCCheck,type OfdReceipt,type MatchingAuditRecord} from './terminal-fiscal-matching';
+import type {FiscalManager} from './terminal-fiscal-manager';
 import type {DailyFiscalEvidence} from './terminal-fiscal-daily-report';
 export type FiscalReportCell={key:string;at:string;amountKopecks:number;label:string;cashier?:string;orderNumber?:string;items?:Array<{name:string;quantity:number;sumKopecks:number}>};
-export type FiscalTransactionRow={key:string;at:string;manager:string;bank:FiscalReportCell[];oneC:FiscalReportCell[];ofd:FiscalReportCell[];status:'matched'|'covered'|'review'|'incomplete';message:string;reviewHref?:string;chain:boolean;complete:{bank:boolean;oneC:boolean;ofd:boolean};timeNote?:string};
+export type FiscalTransactionRow={key:string;at:string;manager:string;managerAttribution?:FiscalManager;bank:FiscalReportCell[];oneC:FiscalReportCell[];ofd:FiscalReportCell[];status:'matched'|'covered'|'review'|'incomplete';message:string;reviewHref?:string;chain:boolean;complete:{bank:boolean;oneC:boolean;ofd:boolean};timeNote?:string};
 const receiptKey=(r:OfdReceipt)=>`${r.kktRegistrationNumber}|${canonicalFiscalKey(r)??`${r.receiptAt}|${r.operationType}|${r.totalKopecks}`}`;
 export function buildFiscalTransactions(input:{from:Date;to:Date;parts:DailyFiscalEvidence[]}):FiscalTransactionRow[]{
  const inside=(s:string)=>Date.parse(s)>=+input.from&&Date.parse(s)<+input.to;

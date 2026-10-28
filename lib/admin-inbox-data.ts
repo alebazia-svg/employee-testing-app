@@ -260,6 +260,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     if (isAdminInboxTechnicalEvent(row.event.type) && latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(row.event)) !== row.event.id) {
       sourceState.active = false; sourceState.label = 'В истории'; sourceState.tone = 'history';
     }
+    if(sourceType==='fiscal_manager_attribution'){sourceState.active=row.event.type==='fiscal_manager.attention';sourceState.label=sourceState.active?'Проверить ответственного':'Ответственный определён';sourceState.tone=sourceState.active?'attention':'resolved';}
     if(correctedReceipt){sourceState.active=false;sourceState.label='Назначение файла изменено';sourceState.tone='history';}
     const item: AdminInboxViewItem = {
       id: row.id,
