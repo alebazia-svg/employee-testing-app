@@ -104,6 +104,36 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         tbank.errorCode = 'HISTORICAL_BANK_COVERAGE_INCOMPLETE';
       }
     }
+    // Both physical aQsi devices can share one 1C acquiring terminal. Read
+    // competing workplaces before widening an order match to the whole day;
+    // otherwise two independent mapping runs could confirm the same order.
+    const matchingMappings = [mapping];
+    const matchingBankOperations = [...tbank.data];
+    const matchingOfdReceipts = [...ofd.data];
+    const orderCompetition = { bankComplete: true, ofdComplete: true };
+    if (oneC.data.some(c => c.acquiringOrderState === 'complete'
+      && c.cardPayments.some(p => p.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef))) {
+      let peers: Array<NonNullable<typeof mappingRow>> = [];
+      try { peers = await prisma.terminalFiscalMapping.findMany({ where: {
+        isActive: true, id: { not: mapping.id }, oneCAcquiringTerminalRef: mapping.oneCAcquiringTerminalRef,
+        effectiveFrom: { lt: lateMatchTo }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.periodFrom } }],
+      } }); } catch {
+        orderCompetition.bankComplete = false; orderCompetition.ofdComplete = false;
+      }
+      for (const peer of peers) {
+        matchingMappings.push({ id: peer.id, terminalKey: peer.terminalKey,
+          oneCAcquiringTerminalRef: peer.oneCAcquiringTerminalRef, oneCCashRegisterRef: peer.oneCCashRegisterRef,
+          kktRegistrationNumber: peer.kktRegistrationNumber, activeFrom: peer.effectiveFrom.toISOString(), activeTo: peer.effectiveTo?.toISOString() });
+        const [bank, receipts] = await Promise.allSettled([
+          (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: peer.terminalKey, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
+          (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: peer.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
+        ]);
+        if (bank.status === 'fulfilled') matchingBankOperations.push(...bank.value.data);
+        if (receipts.status === 'fulfilled') matchingOfdReceipts.push(...receipts.value.data);
+        if (bank.status === 'rejected' || !bank.value.complete) orderCompetition.bankComplete = false;
+        if (receipts.status === 'rejected' || !receipts.value.complete) orderCompetition.ofdComplete = false;
+      }
+    }
     const now = new Date().toISOString();
     const periodOneCChecks = oneC.data.filter((check) => {
       const at = new Date(check.dateTime).getTime();
@@ -115,18 +145,21 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       periodFrom: input.periodFrom,
       sourceCheckedAt: new Date(Math.min(Date.parse(oneC.checkedAt), input.periodTo.getTime() - 1)).toISOString(),
     });
-    const strictOutput = reconcileTerminalFiscalMvp({
+    const workplaceOutput = reconcileTerminalFiscalMvp({
       now,
       sources: {
         tbank: { complete: tbank.complete, checkedAt: tbank.checkedAt, error: tbank.errorCode },
         oneC: { complete: oneC.complete, checkedAt: oneC.checkedAt, error: oneC.errorCode },
         ofd: { complete: ofd.complete, checkedAt: ofd.checkedAt, error: ofd.errorCode },
       },
-      mappings: [mapping],
-      bankOperations: tbank.data,
+      orderCompetition,
+      mappings: matchingMappings,
+      bankOperations: matchingBankOperations,
       oneCChecks: periodOneCChecks,
-      ofdReceipts: ofd.data,
+      ofdReceipts: matchingOfdReceipts,
     });
+    const ownBankKeys = new Set(tbank.data.map(bankOperationKey));
+    const strictOutput = { ...workplaceOutput, records: workplaceOutput.records.filter(r => ownBankKeys.has(r.bankOperationKey)) };
     const coveredOutput=applyFiscalAmountCoverage({output:strictOutput,mapping,bankOperations:tbank.data,oneCChecks:periodOneCChecks,ofdReceipts:ofd.data,from:input.periodFrom,to:input.periodTo,complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete}});
     const periodOutput = { ...coveredOutput, records: coveredOutput.records.filter(record => {
       const at = Date.parse(record.evidence.bankTransactionDate);
@@ -138,9 +171,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       oneCChecks: employeeReviewOneCChecks,
     });
     const sourceIdentityHashes = [
-      ...tbank.data.map((value) => technicalHash(bankOperationKey(value))),
+      ...matchingBankOperations.map((value) => technicalHash(bankOperationKey(value))),
       ...periodOneCChecks.map((value) => technicalHash(value.sourceRef)),
-      ...ofd.data.map((value) => technicalHash(canonicalFiscalKey(value) ?? 'incomplete')),
+      ...matchingOfdReceipts.map((value) => technicalHash(canonicalFiscalKey(value) ?? 'incomplete')),
     ];
     if (lease) {
       const cycleKey = terminalFiscalCycleKey({

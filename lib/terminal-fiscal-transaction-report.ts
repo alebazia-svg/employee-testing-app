@@ -2,7 +2,7 @@ import {AMOUNT_COVERED_REASON,fiscalAmountCoverageEligible} from './terminal-fis
 import {bankOperationKey,canonicalFiscalKey,type BankOperation,type OneCCheck,type OfdReceipt,type MatchingAuditRecord} from './terminal-fiscal-matching';
 import type {DailyFiscalEvidence} from './terminal-fiscal-daily-report';
 export type FiscalReportCell={key:string;at:string;amountKopecks:number;label:string;cashier?:string;orderNumber?:string;items?:Array<{name:string;quantity:number;sumKopecks:number}>};
-export type FiscalTransactionRow={key:string;at:string;manager:string;bank:FiscalReportCell[];oneC:FiscalReportCell[];ofd:FiscalReportCell[];status:'matched'|'covered'|'review'|'incomplete';message:string;reviewHref?:string;chain:boolean;complete:{bank:boolean;oneC:boolean;ofd:boolean}};
+export type FiscalTransactionRow={key:string;at:string;manager:string;bank:FiscalReportCell[];oneC:FiscalReportCell[];ofd:FiscalReportCell[];status:'matched'|'covered'|'review'|'incomplete';message:string;reviewHref?:string;chain:boolean;complete:{bank:boolean;oneC:boolean;ofd:boolean};timeNote?:string};
 const receiptKey=(r:OfdReceipt)=>`${r.kktRegistrationNumber}|${canonicalFiscalKey(r)??`${r.receiptAt}|${r.operationType}|${r.totalKopecks}`}`;
 export function buildFiscalTransactions(input:{from:Date;to:Date;parts:DailyFiscalEvidence[]}):FiscalTransactionRow[]{
  const inside=(s:string)=>Date.parse(s)>=+input.from&&Date.parse(s)<+input.to;
@@ -27,16 +27,22 @@ export function buildFiscalTransactions(input:{from:Date;to:Date;parts:DailyFisc
    if(found.length===1&&owners.length===1&&!usedOfd.has(receiptKey(found[0]))){linked.push(found[0]);usedOfd.add(receiptKey(found[0]));}
   }
   const parts=bs.length?bs.flatMap(b=>bankPart(bankOperationKey(b))):input.parts.filter(p=>p.oneCChecks.some(c=>cs.some(v=>v.sourceRef===c.sourceRef)));
-  const complete=completeFor(parts),allComplete=Object.values(complete).every(Boolean);
+  const sourceComplete=completeFor(parts);
+  const complete={bank:sourceComplete.bank&&rs.every(r=>r.sourceCompleteness?.tbank!==false),oneC:sourceComplete.oneC&&rs.every(r=>r.sourceCompleteness?.oneC!==false),ofd:sourceComplete.ofd&&rs.every(r=>r.sourceCompleteness?.ofd!==false)};
+  const allComplete=Object.values(complete).every(Boolean);
   const matched=!chain&&bs.length>0&&rs.length===bs.length&&rs.every(r=>r.status==='confirmed')&&cs.length>0&&linked.length===cs.length;
   const sumBank=bs.reduce((n,b)=>n+(b.type==='Credit'?-1:1)*b.amountKopecks,0),sumChecks=cs.reduce((n,c)=>n+(c.operationType==='refund'?-1:1)*c.electronicKopecks,0);
   const covered=chain&&allComplete&&bs.length>0&&cs.length>0&&linked.length===cs.length&&sumBank===sumChecks;
   const names=[...new Set(cs.map(c=>c.cashier?.name).filter(Boolean))];
-  const alternatives=rs.some(r=>(r.evidence?.chain?.alternatives??0)>1);
-  const message=!allComplete?'Неполные данные':covered?'Сумма покрыта':chain?'Возможная связь':matched?(cs[0]?.acquiringOrder&&linked[0]?.items.every(i=>i.paymentType===1)?'Предоплата подтверждена':'Совпало'):alternatives?'Несколько вариантов':rs.some(r=>r.reasonCode==='OFD_CANDIDATE_REQUIRES_LINK')?'Проверить связь с ОФД':!cs.length?'Нет связи с 1С':cs.every(c=>c.sourceType==='acquiring_operation')?(cs.some(c=>c.acquiringOrder)?'Предоплата не подтверждена':'Нет фискального чека'):!linked.length?'Нет связи с ОФД':!bs.length?'Нет связи с оплатой':'Нужна проверка';
+  const alternatives=rs.some(r=>(r.evidence?.chain?.alternatives??0)>1||r.reasonCode==='ONE_C_MULTIPLE_CANDIDATES'||r.reasonCode==='OFD_RECEIPT_DUPLICATE');
+  const reused=rs.some(r=>r.reasonCode==='ONE_C_CHECK_REUSED');
+  const message=!allComplete?'Неполные данные':covered?'Сумма покрыта':chain?'Возможная связь':matched?(cs[0]?.acquiringOrder&&linked[0]?.items.every(i=>i.paymentType===1)?'Предоплата подтверждена':'Совпало'):reused?'Связь неоднозначна':alternatives?'Несколько вариантов':rs.some(r=>r.reasonCode==='OFD_CANDIDATE_REQUIRES_LINK')?'Проверить связь с ОФД':!cs.length?'Нет связи с 1С':cs.every(c=>c.sourceType==='acquiring_operation')?(cs.some(c=>c.acquiringOrder)?'Предоплата не подтверждена':'Нет фискального чека'):!linked.length?'Нет связи с ОФД':!bs.length?'Нет связи с оплатой':'Нужна проверка';
   const times=[...bs.map(b=>b.transactionDate),...cs.map(c=>c.dateTime)].sort((a,b)=>Date.parse(a)-Date.parse(b));
   for(const b of bs)usedBank.add(bankOperationKey(b));for(const c of cs)usedCheck.add(c.sourceRef);
-  result.push({key,at:times[0],manager:names.join(', ')||'Не определён',chain,complete,status:!allComplete?'incomplete':matched?'matched':covered?'covered':'review',message,
+  const clockDifference=matched&&rs.length===1?rs[0].evidence?.orderReceiptTimeDifferenceSeconds:undefined;
+  const timeNote=clockDifference!==undefined&&Math.abs(clockDifference)>300
+   ? `Время кассы ${clockDifference<0?'раньше':'позже'} оплаты на ${Math.floor(Math.abs(clockDifference)/60)} мин ${Math.abs(clockDifference)%60} с. Связь подтверждена по заказу и товарам.`:undefined;
+  result.push({key,timeNote,at:times[0],manager:names.join(', ')||'Не определён',chain,complete,status:!allComplete?'incomplete':matched?'matched':covered?'covered':'review',message,
    bank:bs.map(b=>({key:bankOperationKey(b),at:b.transactionDate,amountKopecks:(b.type==='Credit'?-1:1)*b.amountKopecks,label:b.type==='Credit'?'Возврат':'Оплата'})),
    oneC:cs.map(c=>({key:c.sourceRef,at:c.dateTime,amountKopecks:(c.operationType==='refund'?-1:1)*c.electronicKopecks,cashier:c.cashier?.name,orderNumber:c.acquiringOrder?.number,items:c.acquiringOrder?.items,label:c.sourceType==='acquiring_operation'?`Эквайринг ${c.sourceRef.match(/Эквайринговая операция\s+([^\s|]+)/u)?.[1]??''}`.trim():`${c.operationType==='refund'?'Возврат':'Чек'} № ${c.fiscalDocumentNumber??'—'}`})),
    ofd:linked.map(f=>({key:receiptKey(f),at:f.receiptAt,amountKopecks:(f.operationType===2?-1:1)*f.electronicKopecks,items:cs.some(c=>c.acquiringOrder)?f.items:undefined,label:`${f.operationType===2?'Возврат':'Чек'} № ${f.fiscalDocumentNumber}${f.items.length&&f.items.every(i=>i.paymentType===1)?' · Предоплата 100%':''}`}))});

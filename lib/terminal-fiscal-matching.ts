@@ -1,6 +1,6 @@
 import type { AcquiringOrder } from './terminal-fiscal-acquiring-order';
 import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.9';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.10';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -202,6 +202,7 @@ export type MatchingAuditRecord = {
   candidateCount: number;
   evidence: {
     acquiringOrder?: AcquiringOrder;
+    orderReceiptTimeDifferenceSeconds?: number;
     chain?: FiscalChainEvidence;
     amountCoverage?: {bankKeys:string[];oneCRefs:string[]};
     bankTransactionDate: string;
@@ -240,6 +241,8 @@ export type TerminalFiscalMatchingInput = {
   oneCChecks: OneCCheck[];
   ofdReceipts: OfdReceipt[];
   previous?: MatchingAuditRecord[];
+  // Peer device availability is required only for order-based assignments.
+  orderCompetition?: { bankComplete: boolean; ofdComplete: boolean };
 };
 
 export type TerminalFiscalMatchingOutput = {
@@ -360,6 +363,11 @@ export function canonicalFiscalKey(value: {
   return parts.every(Boolean) ? parts.map((part) => `${part.length}:${part}`).join('|') : null;
 }
 
+function hasAcquiringOrderProof(check: OneCCheck) {
+  return isAcquiringOperation(check) && check.acquiringOrderState === 'complete'
+    && Boolean(check.acquiringOrder?.ref && check.acquiringOrder.number && check.acquiringOrder.items.length);
+}
+
 export function isOrderPrepaymentReceipt(check: OneCCheck, receipt: OfdReceipt, operation: BankOperation, mapping: TerminalMapping) {
   const order = check.acquiringOrder;
   const bankAt = timestamp(operation.transactionDate), receiptAt = timestamp(receipt.receiptAt);
@@ -367,9 +375,10 @@ export function isOrderPrepaymentReceipt(check: OneCCheck, receipt: OfdReceipt, 
     name: normalizeMatchingItemName(item.name.replace(/\s*\(шт\.?\)\s*$/iu, '')).replace(/[()]/g, '').replace(/\s+/g, ' ').trim(),
     quantity: item.quantity, priceKopecks: item.priceKopecks, sumKopecks: item.sumKopecks,
   });
-  return check.acquiringOrderState === 'complete' && Boolean(order?.items.length) && check.operationType === 'sale'
+  return hasAcquiringOrderProof(check) && check.operationType === 'sale'
     && operation.type === 'Debit' && bankAt !== null && receiptAt !== null
-    && receiptAt >= bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
+    // Equipment clocks are not a fiscal identity. The operational day bounds
+    // this search; item/order proof and one-to-one ownership decide the match.
     && moscowDay(receipt.receiptAt) === moscowDay(operation.transactionDate)
     && Boolean(canonicalFiscalKey(receipt)) && receipt.kktRegistrationNumber === mapping.kktRegistrationNumber
     && receipt.operationType === 1 && receipt.totalKopecks === operation.amountKopecks
@@ -490,7 +499,9 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       if (!isAcquiringOperation(check) && check.cashRegisterRef !== mapping.oneCCashRegisterRef) return [];
       if (payment.acquiringTerminalRef !== mapping.oneCAcquiringTerminalRef) return [];
       if (payment.amountKopecks !== operation.amountKopecks) return [];
-      if (checkAt < bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
+      if (hasAcquiringOrderProof(check)) {
+        if (checkAt > now || moscowDay(check.dateTime) !== moscowDay(operation.transactionDate)) return [];
+      } else if (checkAt < bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
         || checkAt - bankAt > TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS) return [];
       return [{ check, difference: Math.abs(checkAt - bankAt) }];
     });
@@ -499,7 +510,12 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     // never reported as two equal 1C candidates.
     const kkmCandidates = allDayCandidates.filter(({ check }) => !isAcquiringOperation(check));
     const dayCandidates = kkmCandidates.length > 0 ? kkmCandidates : allDayCandidates;
-    const candidates = dayCandidates.filter((candidate) => candidate.difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
+    // Never let proximity choose between order-backed documents of the same
+    // amount. Include all same-day competitors, even if one timestamp is closer.
+    const orderBacked = dayCandidates.some(({ check }) => hasAcquiringOrderProof(check));
+    const candidates = dayCandidates.filter(({ check, difference }) => orderBacked
+      ? moscowDay(check.dateTime) === moscowDay(operation.transactionDate)
+      : difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
     return { operation, operationType: type, mapping, mappingsCount: mappings.length,
       candidates, strictCandidateCount: candidates.length, dayCandidates };
   });
@@ -715,16 +731,21 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     let ofdReceipt: OfdReceipt | undefined;
     let timeDifferenceSeconds: number | undefined;
 
-    if (globalSourceFailure) {
+    const orderCandidate = context.candidates.some(({ check }) => hasAcquiringOrderProof(check));
+    const competitionFailure: MatchingReasonCode | null = !orderCandidate ? null
+      : input.orderCompetition?.bankComplete === false ? 'SOURCE_TBANK_INCOMPLETE'
+      : input.orderCompetition?.ofdComplete === false ? 'SOURCE_OFD_INCOMPLETE' : null;
+    const recordSourceFailure = globalSourceFailure ?? competitionFailure;
+    if (recordSourceFailure) {
       status = 'unavailable';
-      reasonCode = globalSourceFailure;
+      reasonCode = recordSourceFailure;
       // A temporarily incomplete OFD read must not keep an employee's
       // "check missing in 1C" task open when the complete T-Bank and 1C reads
       // already provide one safe, non-reused check for this operation. The
       // financial three-source match stays unavailable until OFD is complete;
       // only the narrower fact that the 1C check now exists is exposed here.
       if (
-        globalSourceFailure === 'SOURCE_OFD_INCOMPLETE'
+        recordSourceFailure === 'SOURCE_OFD_INCOMPLETE'
         && !duplicateBankKeys.has(bankOperationKey(operation))
         && operationAt !== null
         && Number.isInteger(operation.amountKopecks)
@@ -873,6 +894,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         bankOperationRawType: operation.rawType,
         terminalReceiptNumber: operation.terminalReceiptNumber,
         acquiringOrder: oneCCheck?.acquiringOrder,
+        orderReceiptTimeDifferenceSeconds: oneCCheck?.acquiringOrder && ofdReceipt
+          ? Math.round((Date.parse(ofdReceipt.receiptAt) - Date.parse(operation.transactionDate)) / 1000) : undefined,
         oneCDateTime: oneCCheck?.dateTime,
         oneCFiscalDateTime: oneCCheck?.fiscalDateTime,
         oneCTotalKopecks: oneCCheck?.totalKopecks,
@@ -887,9 +910,9 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         ofd: input.sources.ofd.checkedAt,
       },
       sourceCompleteness: {
-        tbank: input.sources.tbank.complete,
+        tbank: input.sources.tbank.complete && (!orderCandidate || input.orderCompetition?.bankComplete !== false),
         oneC: input.sources.oneC.complete,
-        ofd: input.sources.ofd.complete,
+        ofd: input.sources.ofd.complete && (!orderCandidate || input.orderCompetition?.ofdComplete !== false),
       },
     }, previous);
   });

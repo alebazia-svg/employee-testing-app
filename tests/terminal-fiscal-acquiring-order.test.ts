@@ -87,3 +87,61 @@ test('settlement pagination reads every page before claiming complete evidence',
   calls++;return calls===1?{...f.settlement,events:[],has_more:true,next_cursor:'page2'}:f.settlement;
  });assert.equal(calls,2);assert.equal(e.complete,true);assert.equal(e.data[0].acquiringOrder?.ref,'order');
 });
+
+function case72900() {
+ const f=fixture();
+ f.check.sourceRef='acquiring-operation:Эквайринговая операция 00OF-000085 от 28.10.2026 12:22:55|2026-10-28T09:22:55.000Z|terminal|7290000';
+ f.check.dateTime='2026-10-28T09:22:55.000Z';f.check.totalKopecks=7290000;f.check.electronicKopecks=7290000;f.check.cardPayments[0].amountKopecks=7290000;
+ Object.assign(f.event,{number:'00OF-000085',date:'28.10.2026 12:22:55',amount:72900});f.event.settlement_evidence.payment_details[0].amount=72900;
+ Object.assign(f.order.header,{order_number:'00OF-000075',order_date:'2026-10-28T12:22:30+03:00',amount:72900});
+ Object.assign(f.order.lines[0],{product_name:'Смартфон Samsung Galaxy S26',characteristic:'12/256 Gb Black',price:72900,amount:72900});
+ Object.assign(f.bank,{rrn:'72900',transactionDate:'2026-10-28T12:20:53+03:00',amountKopecks:7290000});
+ Object.assign(f.receipt,{receiptAt:'2026-10-28T09:14:00Z',fiscalDocumentNumber:'638',totalKopecks:7290000,electronicKopecks:7290000});
+ Object.assign(f.receipt.items[0],{name:'Смартфон Samsung Galaxy S26 (12/256 Gb Black)',priceKopecks:7290000,sumKopecks:7290000});
+ return f;
+}
+function reconcileLater(f:ReturnType<typeof fixture>,checks:OneCCheck[],receipts=[f.receipt],banks=[f.bank]){
+ return reconcileTerminalFiscalMvp({now:'2026-10-28T18:00:00Z',sources,mappings:[f.mapping],bankOperations:banks,oneCChecks:checks,ofdReceipts:receipts});
+}
+test('72,900: 6m53s earlier KKT timestamp does not veto a unique order/item proof',async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],{fromDate:'2026-10-28',toDate:'2026-10-29'},f.read);
+ const r=reconcileLater(f,e.data);assert.equal(r.records[0].status,'confirmed');assert.equal(r.records[0].evidence.orderReceiptTimeDifferenceSeconds,-413);
+ const report=buildDailyFiscalReport({from:new Date('2026-10-28T00:00:00+03:00'),to:new Date('2026-10-29T00:00:00+03:00'),parts:[{mapping:f.mapping,bankOperations:[f.bank],oneCChecks:e.data,ofdReceipts:[f.receipt],records:r.records,complete:{bank:true,oneC:true,ofd:true}}]});
+ assert.equal(report.transactions.length,1);assert.equal(report.transactions[0].status,'matched');assert.equal(report.transactions[0].message,'Предоплата подтверждена');assert.match(report.transactions[0].timeNote??'',/раньше оплаты на 6 мин 53 с/);assert.equal(report.total.bankDifferenceKopecks,0);assert.equal(report.total.fiscalDifferenceKopecks,0);
+});
+for(const at of ['2026-10-28T03:00:00Z','2026-10-28T15:00:00Z'])test(`same-day order proof survives several hours of KKT time difference: ${at}`,async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],period,f.read);f.receipt.receiptAt=at;assert.equal(reconcileLater(f,e.data).records[0].status,'confirmed');
+});
+test('a posted acquiring document dated hours before payment can match by unique order evidence',async()=>{
+ const f=case72900();f.check.dateTime='2026-10-28T05:00:00.000Z';f.event.date='28.10.2026 8:00:00';
+ const e=await enrichAcquiringOrders([f.check],period,f.read);assert.equal(e.complete,true);assert.equal(reconcileLater(f,e.data).records[0].status,'confirmed');
+});
+test('a closer timestamp cannot select one of two same-amount order documents',async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ const far={...e.data[0],sourceRef:'other-order-payment',dateTime:'2026-10-28T16:00:00Z',acquiringOrder:{...e.data[0].acquiringOrder!,ref:'other-order'}};
+ for(const checks of [[e.data[0],far],[far,e.data[0]]]){
+  const r=reconcileLater(f,checks);assert.equal(r.records[0].status,'needs_review');assert.equal(r.records[0].reasonCode,'ONE_C_MULTIPLE_CANDIDATES');
+ }
+});
+test('a close payment and a distant equal payment cannot reuse one order',async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ const banks=[f.bank,{...f.bank,rrn:'second',transactionDate:'2026-10-28T17:00:00Z'}];
+ assert.ok(reconcileLater(f,e.data,[f.receipt],banks).records.every(r=>r.status!=='confirmed'));
+});
+test('equal two-by-two order payments are not paired chronologically',async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ const other={...e.data[0],sourceRef:'other-order-payment',dateTime:'2026-10-28T16:00:00Z',acquiringOrder:{...e.data[0].acquiringOrder!,ref:'other'}};
+ const banks=[f.bank,{...f.bank,rrn:'second',transactionDate:'2026-10-28T15:00:00Z'}];
+ const receipts=[f.receipt,{...f.receipt,fiscalDocumentNumber:'639',receiptAt:'2026-10-28T15:10:00Z'}];
+ for(const checks of [[e.data[0],other],[other,e.data[0]]])for(const bs of [banks,[...banks].reverse()]){
+  assert.ok(reconcileLater(f,checks,receipts,bs).records.every(r=>r.status!=='confirmed'));
+ }
+});
+test('same-amount native fiscal proof takes precedence over an order without reusing its receipt',async()=>{
+ const f=case72900(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ const native:OneCCheck={...e.data[0],sourceRef:'native-sale',sourceType:'sale_check',dateTime:f.bank.transactionDate,cashRegisterRef:'kkm',kktRegistrationNumber:'kkt',fiscalState:'confirmed',fiscalDriveNumber:'fn',fiscalDocumentNumber:'638',fiscalSign:'1199568598',acquiringOrder:undefined,acquiringOrderState:undefined,items:f.receipt.items};
+ const r=reconcileLater(f,[...e.data,native]);assert.equal(r.records[0].status,'confirmed');assert.equal(r.records[0].oneCCheckKey,'native-sale');
+});
+test('an orderless document never acquires the wider item-based matching window',()=>{
+ const f=case72900();f.check.acquiringOrderState='unlinked';assert.notEqual(reconcileLater(f,[f.check]).records[0].status,'confirmed');
+});
