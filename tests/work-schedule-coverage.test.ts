@@ -40,6 +40,10 @@ test('employee schedule uses first names while preserving a safe fallback', () =
   assert.equal(schedulePersonName('Магомед'), 'Магомед');
   assert.equal(schedulePersonLabel('Чеченова Милана', ['Чеченова Милана', 'Алиева Милана']), 'Милана Ч.');
   assert.equal(schedulePersonLabel('Абшаева Зухра', ['Абшаева Зухра', 'Костеренко Магомед']), 'Зухра');
+  assert.equal(schedulePersonName('Астемир Тохов'), 'Астемир');
+  assert.equal(schedulePersonName('Тохов Астемир'), 'Астемир');
+  assert.equal(schedulePersonLabel('Астемир Тохов', ['Астемир Тохов', 'Алиев Астемир']), 'Астемир Т.');
+  assert.equal(schedulePersonName('Кумыков Мухамед'), 'Мухамед');
 });
 
 test('wholesale one or two employees is normal; empty department still needs cover',()=>{

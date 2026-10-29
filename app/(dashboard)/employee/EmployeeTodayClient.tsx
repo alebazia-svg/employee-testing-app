@@ -11,6 +11,7 @@ import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employe
 import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
+import { useProcurementMobileNavigation } from '@/components/ProcurementMobileNavigation';
 import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { initialEmployeeSection } from '@/lib/employee-navigation';
 import { PersonalPayrollClient } from './payroll/PersonalPayrollClient';
@@ -69,7 +70,8 @@ import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-emplo
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
-import { colleaguePresence } from '@/lib/workday-presence';
+import { canEditDianaPastSchedule } from '@/lib/diana-october-schedule';
+import { actualColleagueWorkday, colleaguePresence } from '@/lib/workday-presence';
 import { expectedColleagueShiftCode, hasColleagueShiftConflict } from '@/lib/workday-colleague-shift';
 import { formatDurationWithSeconds } from '@/lib/workday-duration';
 import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
@@ -1275,8 +1277,16 @@ export function EmployeeTodayClient({
     'mobo-type': 'portal-palette-mobo portal-typography-refined',
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
-  const [activeTab, setActiveTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
-  useEmployeeActivityVisit(activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
+  const mobileNavigation = useProcurementMobileNavigation();
+  const [localTab, setLocalTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
+  const activeTab: Tab = mobileNavigation && mobileNavigation.active !== 'procurement' ? mobileNavigation.active : localTab;
+  const selectMobile = mobileNavigation?.select;
+  const setActiveTab = useCallback((tab: Tab) => {
+    setLocalTab(tab);
+    if (tab === 'day' || tab === 'schedule') selectMobile?.(tab, true);
+  }, [selectMobile]);
+  const workdayVisible = !mobileNavigation || mobileNavigation.active !== 'procurement';
+  useEmployeeActivityVisit(!workdayVisible ? null : activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1334,7 +1344,7 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
-  useEmployeePeriodView('schedule_view', scheduleMode === 'month' ? calendarMonth : selectedScheduleDate, activeTab === 'schedule');
+  useEmployeePeriodView('schedule_view', scheduleMode === 'month' ? calendarMonth : selectedScheduleDate, workdayVisible && activeTab === 'schedule');
   const scheduleAuditSeen = useRef('');
   useEffect(() => { if (activeTab !== 'schedule') scheduleAuditSeen.current = ''; }, [activeTab]);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
@@ -1574,6 +1584,7 @@ export function EmployeeTodayClient({
   const openedScheduleQuery = useRef<string | null>(null);
   useEffect(() => {
     if (searchParams.get('tab') !== 'schedule') { openedScheduleQuery.current = null; return; }
+    if (mobileNavigation && !searchParams.has('date') && !searchParams.has('edit')) return;
     const key = searchParams.toString();
     if (openedScheduleQuery.current === key) return;
     openedScheduleQuery.current = key;
@@ -1972,11 +1983,12 @@ export function EmployeeTodayClient({
     });
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
+  const canEditOwnScheduleDate = (date: string) => date >= today || canEditDianaPastSchedule(user, date, today);
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
   const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
   const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
   const incompleteScheduleDates = calendarDays.filter((cell) => (
-    cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
+    cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
   ));
   const upcomingOwnVacation = ownVacationsState
     .filter((vacation) => vacation.status === 'active' && vacation.dateTo >= today)
@@ -2021,6 +2033,7 @@ export function EmployeeTodayClient({
 
   function colleagueDetail(person: UserSummary) {
     const workday = todayWorkdayByUser.get(person.id);
+    if (workday && needsWorkdayEndReminder(person)) return actualColleagueWorkday(workday);
     if (workday?.shiftCode) return `Смена ${shiftLabel(workday.shiftCode)}`;
     if (todayPresence(person) === 'scheduled') {
       const shiftContext = {
@@ -2094,7 +2107,7 @@ export function EmployeeTodayClient({
     const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working' && !departmentVacationForDate(date, entry.userId)).length;
     const coverage = scheduleCoverage(user.department, workingCount);
     const replacementRequested = date >= today && !ownVacation && coverage.needsReplacement && replacementRequestDates.has(date) && ownEntry?.status !== 'working';
-    const canEdit = date >= today;
+    const canEdit = canEditOwnScheduleDate(date);
     const workingNames = scheduleNames(selectedWorkingRows);
     const unfilledNames = scheduleNames(colleagueRows.filter(({ person, entry }) => !entry && !departmentVacationForDate(date, person.id)));
     const colleaguesUnfilled = Boolean(unfilledNames);
@@ -2182,6 +2195,12 @@ export function EmployeeTodayClient({
       </div>
     );
   }
+
+  const setMobileNavigationHidden = mobileNavigation?.setNavigationHidden;
+  useEffect(() => {
+    setMobileNavigationHidden?.(Boolean(bulkScheduleMode || bulkScheduleConfirmOpen || bulkScheduleExitConfirmOpen || editingScheduleDate || pendingScheduleChange || vacationEditorOpen));
+    return () => setMobileNavigationHidden?.(false);
+  }, [setMobileNavigationHidden, bulkScheduleMode, bulkScheduleConfirmOpen, bulkScheduleExitConfirmOpen, editingScheduleDate, pendingScheduleChange, vacationEditorOpen]);
 
   function openVacationEditor(vacation?: EmployeeVacation | null) {
     const initialDate = selectedScheduleDate >= today ? selectedScheduleDate : today;
@@ -2306,7 +2325,7 @@ export function EmployeeTodayClient({
     if (!scheduleMonthLoaded) return;
     setError(''); setMessage('');
     const original = Object.fromEntries(calendarDays
-      .filter(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date))
+      .filter(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date))
       .map(cell => [cell.date, ownScheduleByDate.get(cell.date)?.status ?? null])) as Record<string, BulkScheduleStatus | null>;
     setBulkOriginalStatuses(original);
     setBulkWorkingDates(new Set(Object.entries(original).filter(([,status]) => status === 'working').map(([date]) => date)));
@@ -4185,8 +4204,9 @@ export function EmployeeTodayClient({
     );
   }
 
+  const WorkdayRoot = mobileNavigation ? 'div' : 'main';
   return (
-    <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass, activeTab === 'payroll' && 'payroll-phone')}>
+    <WorkdayRoot className={cn(mobileNavigation ? 'portal-neutral-design employee-material-ui procurement-embedded-workday' : 'portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass, activeTab === 'payroll' && 'payroll-phone')}>
       <EmployeeCloseBlockedSheet
         open={closeBlockedSheetOpen}
         items={attentionItems}
@@ -4485,8 +4505,8 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
-      <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
-        <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
+      <div className={mobileNavigation ? 'flex min-w-0 flex-col' : 'employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'}>
+        {!mobileNavigation && <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />}
 
         <div className={cn(
           activeTab === 'payroll' ? 'flex-1' : 'flex-1 px-4',
@@ -5253,7 +5273,7 @@ export function EmployeeTodayClient({
                 </div>
                 {workingColleagues.length > 0 && <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
-                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title={needsWorkdayEndReminder(user) ? 'Ещё не начали день' : 'Ещё не начали смену'} people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
                   const vacation = departmentVacationForDate(today, person.id);
                   return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
@@ -5298,7 +5318,7 @@ export function EmployeeTodayClient({
 
               {scheduleMode === 'list' && (
                 <div className='grid gap-2.5'>
-                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
+                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
                       <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
@@ -5358,7 +5378,7 @@ export function EmployeeTodayClient({
                     </button>
                   </div>}
 
-                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
+                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
                       <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
@@ -5392,7 +5412,7 @@ export function EmployeeTodayClient({
                       const isToday = cell.date === today;
                       const isPast = cell.date < today;
                       const isOutsideMonth = !cell.inMonth;
-                      const isLockedMissing = !ownEntry && isPast;
+                      const isLockedMissing = !ownEntry && isPast && !canEditDianaPastSchedule(user, cell.date, today);
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
@@ -5543,7 +5563,7 @@ export function EmployeeTodayClient({
         </div>
       </div>
 
-        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation procurementEnabled={user.portalArea === 'PROCUREMENT'} active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
+        {!mobileNavigation && !bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation procurementEnabled={user.portalArea === 'PROCUREMENT'} active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
           if (section === 'schedule' && activeTab !== 'schedule') {
             setCalendarMonth(monthKeyFromDate(today));
             setSelectedScheduleDate(today);
@@ -5551,6 +5571,6 @@ export function EmployeeTodayClient({
           setActiveTab(section);
           return true;
         }} />}
-    </main>
+    </WorkdayRoot>
   );
 }

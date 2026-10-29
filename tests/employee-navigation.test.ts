@@ -33,3 +33,18 @@ test('all tabs share the existing native shell and retain feature gating', () =>
   assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?month=2026-10&snapshot=stored'), '/api/admin/employees/preview/visit?resource=payroll&month=2026-10&snapshot=stored');
   assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?snapshot=stored&snapshot=wrong'), '/api/admin/employees/preview/visit?resource=payroll&snapshot=stored&snapshot=wrong');
 });
+
+test('procurement inspection keeps all three tabs inside its actor-bound device frame', () => {
+  for (const frame of ['phone', 'desktop'] as const) {
+    for (const [href, tab] of [['/employee', 'day'], ['/employee?tab=schedule', 'schedule'], ['/procurement', 'procurement']]) {
+      const url = new URL(employeePreviewHref('visit/encoded', href, { procurement: true, frame }), 'https://portal.example');
+      assert.equal(url.pathname, '/admin/employees/preview/visit%2Fencoded');
+      assert.equal(url.searchParams.get('tab'), tab);
+      assert.equal(url.searchParams.get('frame'), frame);
+    }
+    for (const href of ['/admin', '/procurement?userId=9', 'https://other.example/procurement']) {
+      assert.throws(() => employeePreviewHref('visit', href, { procurement: true, frame }));
+    }
+  }
+  assert.throws(() => employeePreviewHref('visit', '/procurement'));
+});

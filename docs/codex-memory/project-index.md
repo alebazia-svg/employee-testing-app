@@ -388,6 +388,43 @@ Released code `2c1d4961` over production 1.19.2. See
 identity, approved reserve recovery and final storage checks (18.25 GiB free).
 `procurement-final-candidate-20261029.md` preserves local/TEST acceptance evidence.
 Desktop financial APIs/sources and 1C configuration unchanged; experimental HTTP
-retry excluded. Account records were not changed: Astemir remains Operations,
-Diana disabled in Retail, Muhamed not created. Account activation is still separate.
+retry excluded. Subsequent owner-approved account activation is recorded in
+`procurement-employee-activation-20261029.md`: Astemir now Procurement with his
+existing finance access; Muhamed created as WORKDAY-only and linked to canonical
+payroll Кумыков Мухаммед. Diana subsequently enabled in Retail by separate explicit owner approval.
 Physical camera/push/device acceptance remains unverified.
+
+## Employee inspection Phone/Computer — local candidate, 2026-10-29
+
+`employee-preview-devices-candidate-20261029.md`: owner-approved device selector
+for Astemir, real actor-bound mobile/desktop frames and three-tab routing,
+PWA stylesheet first-paint / cross-route prefetch, selected Procurement icon,
+colleague first names and factual no-shift times. Local only; 25 tests, typecheck,
+production build, HTTP read-only and four representative cabinet checks pass.
+No release authorized for this new candidate. Diana's actual salary preview is
+currently unavailable; bonus display remains a separate unapproved proposal.
+
+- Diana day-source local candidate: `diana-days-candidate-20261030.md` — actual
+  app start, otherwise Google schedule working day; no duplicate date, formula
+  or bonus changes. PWA plan remains separate; October past-date permission is
+  Diana-only. No release performed.
+
+## Employee cabinet and Diana day sources — production 1.19.7
+
+Released/verified 2026-10-30, runtime `b9666b9`: see
+`../ops/employee-cabinet-release-20261030.md`. Supersedes the local-only status
+above for the Phone/Computer selector, PWA navigation/icon/colleague corrections,
+Diana past October schedule access and app-start/Google-schedule day sourcing.
+Formulas, bonuses, other employees and 1C unchanged. No special salary UI.
+Reserve 1.19.3 restored from exact source and tested in isolation; current plus
+two verified rollback images registered, final free space24.37 GiB.
+
+## Unified Procurement mobile navigation — local candidate, 2026-10-30
+
+`procurement-mounted-mobile-candidate-20261030.md`: owner-approved local correction
+to1.19.7 route-switch pauses/bell remount. Reuses existing screens in one mounted
+mobile cabinet, preserves desktop calendar/financial APIs/1C. Completed issue
+caption removed by owner instruction; collection action remains. Build, typecheck,
+227 workday tests, six delivery UI tests, targeted checks and real local UI/HTTP
+boundaries pass. Not committed or released; physical-phone/financial-write limits
+are explicit in the note.

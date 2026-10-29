@@ -1,4 +1,9 @@
 .procurement-pwa-header, .procurement-pwa-navigation { display: none; }
+/* SSR uses the desktop tree until matchMedia resolves. Never paint it on a phone. */
+@media (max-width: 767px) {
+  .procurement-shell[data-viewport-pending] { background: #f7f6f2; }
+  .procurement-shell[data-viewport-pending] > .admin-workspace { visibility: hidden; }
+}
 @media (max-width: 767px) {
   .procurement-responsive-shell .procurement-mobile-content { padding-inline: 16px; }
   .procurement-responsive-shell { max-width: 520px; margin-inline: auto; background: #f7faf8; }
@@ -391,4 +396,17 @@
  .procurement-source-status li+li{margin-top:10px}
  .procurement-source-status li strong{font-size:12px;font-weight:600}
  .procurement-source-status li p{margin:3px 0 0;font-size:12px;line-height:1.5;color:#756f66}
+}
+
+/* Mounted mobile views share one header/navigation. Hidden views must stay hidden
+   even when their ordinary layout uses flex/grid. Desktop tree is untouched. */
+.procurement-responsive-shell [data-mobile-pane][hidden] { display: none !important; }
+.procurement-responsive-shell .employee-material-ui.procurement-embedded-workday {
+  min-height: 0 !important; padding: 0 !important; background: transparent !important;
+}
+.procurement-responsive-shell.employee-material-ui .procurement-mobile-cabinet > .employee-material-header {
+  padding: 22px 18px 44px !important;
+}
+.procurement-responsive-shell .procurement-mobile-pages:has(> [data-mobile-pane='workday']:not([hidden]))::after {
+  height: 0 !important;
 }

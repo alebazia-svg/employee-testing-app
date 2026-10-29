@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { useProcurementMobileNavigation } from './ProcurementMobileNavigation';
 import { useEmployeePreview } from './EmployeePreviewProvider';
 import { activityRoute, type ActivitySection, type ActivityInput } from '@/lib/employee-activity-policy';
 
@@ -46,7 +47,8 @@ export function useEmployeeActivityVisit(section: ActivitySection | null, disabl
   }, [section, disabled, preview]);
 }
 export function EmployeeActivityTracker() {
+  const mobile = useProcurementMobileNavigation();
   const section=activityRoute(usePathname());
-  useEmployeeActivityVisit(section==='payroll'?null:section); // Payroll records a period-aware view itself.
+  useEmployeeActivityVisit(mobile || section==='payroll'?null:section); // Payroll records a period-aware view itself.
   return null;
 }

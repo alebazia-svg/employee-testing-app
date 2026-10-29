@@ -7,14 +7,16 @@ import { ProcurementNotificationsButton } from '@/components/ProcurementNotifica
 import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
 import { EmployeeInterfaceStyle } from './EmployeeInterfaceStyle';
 import { EmployeeNavigation } from './EmployeeNavigation';
+import { ProcurementMobileCabinet } from './ProcurementMobileCabinet';
 import './procurement-mobile-shell.css';
 import { ReleaseLabel } from '@/components/ReleaseLabel';
 
-export function ProcurementShell({ userName, children, workdayEnabled = false }: { userName: string; children: React.ReactNode; workdayEnabled?: boolean }) {
+export function ProcurementShell({ userName, children, workdayEnabled = false, workdayContent }: { userName: string; children: React.ReactNode; workdayEnabled?: boolean; workdayContent?: React.ReactNode }) {
   const [mobile, setMobile] = useState(false);
+  const [viewportReady, setViewportReady] = useState(false);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 767px)');
-    const update = () => setMobile(query.matches);
+    const update = () => { setMobile(query.matches); setViewportReady(true); };
     update();
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
@@ -22,13 +24,15 @@ export function ProcurementShell({ userName, children, workdayEnabled = false }:
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   if (mobile) return <main className='portal-neutral-design employee-material-ui procurement-shell procurement-responsive-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
     <EmployeeInterfaceStyle copper />
+    {workdayEnabled && workdayContent ? <ProcurementMobileCabinet name={userName} workday={workdayContent}>{children}</ProcurementMobileCabinet> : <>
     <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'>
       <EmployeePortalHeader name={userName} meta='Закупки' procurement />
       <div className='flex-1 procurement-mobile-content min-w-0 px-4'>{children}</div>
     </div>
     <EmployeeNavigation active='procurement' payrollEnabled={false} procurementEnabled />
+    </>}
   </main>;
-  return <main className='portal-neutral-design procurement-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
+  return <main data-viewport-pending={!viewportReady || undefined} className='portal-neutral-design procurement-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
     <section className='admin-workspace min-h-[100dvh] min-w-0 px-3 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-6'>
       <div className='mx-auto w-full max-w-[1320px]'>
         <header className='procurement-shell-header mb-3 flex items-center justify-between gap-3 lg:rounded-2xl lg:border lg:border-slate-200/80 lg:bg-white/75 lg:px-5 lg:py-3 lg:shadow-[0_12px_32px_rgba(15,23,42,0.05)]'>

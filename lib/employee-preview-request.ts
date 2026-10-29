@@ -29,3 +29,11 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (resource === 'schedule' && url.searchParams.has('week')) params.set('week', url.searchParams.get('week')!);
   return `/api/admin/employees/preview/${encodeURIComponent(visitId)}?${params}`;
 }
+
+/** Match existing employee read permissions without admitting payroll for Procurement. */
+export function employeePreviewResources(user: { portalArea: string; department: string }) {
+  const workday = ['today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
+  return user.portalArea === 'PROCUREMENT'
+    ? ['notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery', ...(user.department === 'procurement' ? workday : [])]
+    : ['notifications', ...workday, 'payroll'];
+}

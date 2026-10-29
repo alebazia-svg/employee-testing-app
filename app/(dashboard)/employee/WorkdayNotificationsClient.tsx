@@ -1,4 +1,5 @@
 'use client';
+import { useProcurementMobileNavigation } from '@/components/ProcurementMobileNavigation';
 import { SCHEDULE_NEAR_KIND } from '@/lib/schedule-near-reminder';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
 import { sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
@@ -31,6 +32,7 @@ function urlBase64ToUint8Array(value: string) {
 
 export function WorkdayNotificationsClient({ procurement = false }: { procurement?: boolean } = {}) {
   const preview = useEmployeePreview();
+  const mobileNavigation = useProcurementMobileNavigation();
   const audit = useInteractionAudit();
   const requestRead = preview?.request ?? fetch;
   const router = useRouter();
@@ -139,16 +141,18 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
       setOpen(false); void dismiss(notification);
       const kind = notification.kind === EMPLOYEE_EXPENSE_KIND ? 'cash' : notification.attentionKind ?? 'receipt';
       const id = notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : 'expense:payable';
-      if (window.location.pathname === '/employee') requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind, id } })));
+      if (mobileNavigation) { mobileNavigation.select('day'); requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind, id } }))); }
+      else if (window.location.pathname === '/employee') requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind, id } })));
       else router.push(`/employee?attention=${kind}&item=${encodeURIComponent(id)}`);
       return;
     }
     if (preview) { setOpen(false); setSelected({ ...notification, audience: "employee" }); return; }
-    if (notification.kind === SCHEDULE_NEAR_KIND && window.location.pathname === '/employee') {
+    if (notification.kind === SCHEDULE_NEAR_KIND && (mobileNavigation || window.location.pathname === '/employee')) {
       const target = new URL(safeNotificationHref(notification.href, '/employee'), window.location.origin);
       const date = target.searchParams.get('date');
       if (date) {
         setOpen(false); void dismiss(notification);
+        mobileNavigation?.select('schedule');
         requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:schedule-open', { detail: { date, edit: target.searchParams.get('edit') === '1' } })));
         return;
       }
@@ -159,6 +163,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
     }
     setOpen(false);
     if(employeeNotificationOpening(notification)!=='page'){setSelected({...notification,audience:'employee'});return;}
+    if (mobileNavigation && notification.kind === 'procurement_delivery_ready') { mobileNavigation.select('procurement'); requestAnimationFrame(() => window.dispatchEvent(new Event('mobo:procurement-accountable'))); void dismiss(notification); return; }
     if(notification.kind==='procurement_delivery_ready' && window.location.pathname==='/procurement')window.dispatchEvent(new Event('mobo:procurement-accountable'));
     router.push(safeNotificationHref(notification.href,'/employee'));
     if (notification.kind !== CASH_ISSUE_KIND) void dismiss(notification);

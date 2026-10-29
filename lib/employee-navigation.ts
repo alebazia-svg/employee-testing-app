@@ -13,9 +13,13 @@ export function initialEmployeeSection(tab: string | null, payrollEnabled: boole
 export function employeeNavigation(payrollEnabled: boolean) {
   return employeeSections.filter(section => section.id !== 'payroll' || payrollEnabled);
 }
-export function employeePreviewHref(visitId: string, href: string) {
-  const section = employeeSections.find(section => section.href === href);
+export function employeePreviewHref(visitId: string, href: string, options: { procurement?: boolean; frame?: 'phone' | 'desktop' } = {}) {
+  const section = employeeSections.find(section => section.href === href)
+    ?? (options.procurement && href === '/procurement' ? { id: 'procurement' } : null);
   if (!section) throw new Error('Раздел недоступен в режиме проверки.');
   const base = `/admin/employees/preview/${encodeURIComponent(visitId)}`;
-  return section.id === 'day' ? base : `${base}?tab=${section.id}`;
+  const query = new URLSearchParams();
+  if (section.id !== 'day' || options.procurement) query.set('tab', section.id);
+  if (options.frame) query.set('frame', options.frame);
+  return query.size ? `${base}?${query}` : base;
 }

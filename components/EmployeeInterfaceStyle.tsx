@@ -31,8 +31,8 @@ export function EmployeeInterfaceStyle({ studio = true, copper = false }: { stud
   const styleVersion = encodeURIComponent(getReleaseInfo().version);
   return <>
     <span hidden id='pwa-visual-proposal' />
-    <link rel='stylesheet' href={`/pwa-visual-proposal.css?v=${styleVersion}`} />
-    {studio && <><span hidden id='pwa-design-studio' /><link rel='stylesheet' href={`/pwa-design-studio.css?v=${styleVersion}`} /></>}
-    {copper && <><span hidden id='pwa-copper-theme' /><link rel='stylesheet' href={`/pwa-copper.css?v=${styleVersion}`} /></>}
+    <link rel='stylesheet' precedence='pwa-base' href={`/pwa-visual-proposal.css?v=${styleVersion}`} />
+    {studio && <><span hidden id='pwa-design-studio' /><link rel='stylesheet' precedence='pwa-studio' href={`/pwa-design-studio.css?v=${styleVersion}`} /></>}
+    {copper && <><span hidden id='pwa-copper-theme' /><link rel='stylesheet' precedence='pwa-copper' href={`/pwa-copper.css?v=${styleVersion}`} /></>}
   </>;
 }

@@ -6,6 +6,7 @@ import { isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-
 import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 import { activeScheduleNotices } from '@/lib/work-schedule-notifications';
+import { canEditDianaPastSchedule } from '@/lib/diana-october-schedule';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
   if (!declining && !scheduleStatuses.includes(status)) {
     return Response.json({ error: 'Некорректный статус графика' }, { status: 400, headers: noStoreHeaders });
   }
-  if (date < getMoscowDateKey()) {
+  const today = getMoscowDateKey();
+  if (date < today && !canEditDianaPastSchedule(user, date, today)) {
     return Response.json({ error: 'Прошедший день нельзя изменить самостоятельно. Обратитесь к администратору.' }, { status: 409, headers: noStoreHeaders });
   }
   if (noticeId !== undefined && (!Number.isSafeInteger(noticeId) || noticeId <= 0 || (expectedStatus !== null && expectedStatus !== 'off'))) {
@@ -64,10 +66,10 @@ export async function POST(req: Request) {
       previousStatus: currentEntry?.status, nextStatus: declining ? 'off' : status,
     }));
     if (!declining && currentEntry?.status !== status) {
-      if (shouldRequestScheduleReplacement({ previousStatus: currentEntry?.status, nextStatus: status, coverage }) && confirmCoverageImpact !== true) {
+      if (date >= today && shouldRequestScheduleReplacement({ previousStatus: currentEntry?.status, nextStatus: status, coverage }) && confirmCoverageImpact !== true) {
         return { error: 'Подтвердите изменение графика', code: 'SCHEDULE_COVERAGE_CONFIRMATION_REQUIRED', coverage, copy: scheduleCoverageCopy(coverage) };
       }
-      await persistEmployeeScheduleChange(tx, { user, date, status, previousStatus: currentEntry?.status, departmentEntries: effectiveEntries, source: 'employee' });
+      await persistEmployeeScheduleChange(tx, { user, date, status, previousStatus: currentEntry?.status, departmentEntries: effectiveEntries, source: 'employee', notifyCoverage: date >= today });
     }
     if (answeredNotice) {
       // A legacy monthly notice can contain several dates: resolve only this date.

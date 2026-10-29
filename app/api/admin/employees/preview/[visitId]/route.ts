@@ -1,3 +1,4 @@
+import { employeePreviewResources } from '@/lib/employee-preview-request';
 import { employeePayrollResponse } from '@/lib/employee-payroll-response';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { employeePreviewHeaders as headers, readEmployeePreview } from '@/lib/employee-preview';
@@ -22,7 +23,7 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
   if (!preview) return Response.json({ error: 'Просмотр завершён. Откройте сотрудника заново.' }, { status: 410, headers });
   const url = new URL(req.url), user = preview.employee;
   const resource = url.searchParams.get('resource');
-  const allowed = user.portalArea === 'PROCUREMENT' ? ['notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery'] : ['notifications', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift', 'payroll'];
+  const allowed = employeePreviewResources(user);
   if (!resource || !allowed.includes(resource)) return Response.json({ error: 'Недоступно в режиме просмотра' }, { status: 400, headers });
   switch (resource) {
     case 'payroll': {
