@@ -380,3 +380,14 @@ Physical iPhone capture is not yet verified.
   start. Direct posted RKO closes only the corresponding part; read is not done.
 - No migration or 1C writes. Combined release tests and authenticated ADMIN
   verified; physical push for a naturally occurring new request remains pending.
+
+## Procurement mobile release 1.19.3, 2026-10-29
+
+Released code `2c1d4961` over production 1.19.2. See
+`../ops/procurement-mobile-release-20261029.md` for verified server/image/public/UI
+identity, approved reserve recovery and final storage checks (18.25 GiB free).
+`procurement-final-candidate-20261029.md` preserves local/TEST acceptance evidence.
+Desktop financial APIs/sources and 1C configuration unchanged; experimental HTTP
+retry excluded. Account records were not changed: Astemir remains Operations,
+Diana disabled in Retail, Muhamed not created. Account activation is still separate.
+Physical camera/push/device acceptance remains unverified.
