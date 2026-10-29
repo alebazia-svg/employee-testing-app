@@ -418,3 +418,13 @@ Diana past October schedule access and app-start/Google-schedule day sourcing.
 Formulas, bonuses, other employees and 1C unchanged. No special salary UI.
 Reserve 1.19.3 restored from exact source and tested in isolation; current plus
 two verified rollback images registered, final free space24.37 GiB.
+
+## Unified Procurement mobile navigation — local candidate, 2026-10-30
+
+`procurement-mounted-mobile-candidate-20261030.md`: owner-approved local correction
+to1.19.7 route-switch pauses/bell remount. Reuses existing screens in one mounted
+mobile cabinet, preserves desktop calendar/financial APIs/1C. Completed issue
+caption removed by owner instruction; collection action remains. Build, typecheck,
+227 workday tests, six delivery UI tests, targeted checks and real local UI/HTTP
+boundaries pass. Not committed or released; physical-phone/financial-write limits
+are explicit in the note.
