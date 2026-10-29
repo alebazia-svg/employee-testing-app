@@ -1,3 +1,8 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { attachFnsBankCandidates, parseFnsBankReview } from '@/lib/ausn-fns-bank-review';
+import type { FnsGaps } from '@/lib/ausn-fns-gaps';
 import { notFound } from 'next/navigation';
 import { AdminIdentityProvider } from '@/components/AdminIdentityProvider';
 import { AdminShell } from '@/components/AdminShell';
@@ -32,18 +37,26 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   if (process.env.NODE_ENV !== 'development') notFound();
   const query = (await props.searchParams) || {};
   const tab: TaxTab = taxTabs.some(([key]) => key === query.tab) ? query.tab as TaxTab : 'overview';
-  const scenario = query.scenario === 'today' || query.scenario === 'broken' ? query.scenario : 'fresh';
+  const scenario = query.scenario === 'today' || query.scenario === 'broken' || query.scenario === 'audit' ? query.scenario : 'fresh';
   const now = scenario === 'fresh' ? new Date('2026-10-25T13:00:00+03:00') : new Date();
   // The archive's latest ENS upload (26.10) covers August, so the shown run is the one after it.
-  const full = parsePortalReport(scenario === 'broken' ? ownerFullReportAfterEns.replace('полнота: да', 'полнота: нет') : ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md');
+  let full = parsePortalReport(scenario === 'broken' ? ownerFullReportAfterEns.replace('полнота: да', 'полнота: нет') : ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md');
   const documents = archive.map(([documentType, coverageFrom, coverageTo, status, originalName, createdAt], index) => ({ id: `preview-${index}`, documentType, coverageFrom, coverageTo, periodKey: coverageTo, status: scenario === 'broken' && index === 0 ? 'PROCESSING_FAILED' : status, originalName, createdAt: new Date(createdAt), uploadedBy: 'Кештова Бэла' }));
-  const data = buildTaxWorkspace({ reports: [full], documents, now });
+  let gaps: FnsGaps | undefined;
+  if (scenario === 'audit' && process.env.AUSN_PREVIEW_REPORT_PATH && process.env.AUSN_PREVIEW_GAPS_PATH && process.env.AUSN_PREVIEW_FNS_PATH) {
+    const [reportText, gapText, bytes] = await Promise.all([readFile(process.env.AUSN_PREVIEW_REPORT_PATH, 'utf8'), readFile(process.env.AUSN_PREVIEW_GAPS_PATH, 'utf8'), readFile(process.env.AUSN_PREVIEW_FNS_PATH)]);
+    full = parsePortalReport(reportText, path.basename(process.env.AUSN_PREVIEW_REPORT_PATH));
+    const bankReview = parseFnsBankReview(bytes, { documentId: '', sourceName: path.basename(process.env.AUSN_PREVIEW_FNS_PATH), sha256: createHash('sha256').update(bytes).digest('hex') });
+    const original = JSON.parse(gapText) as FnsGaps;
+    gaps = bankReview ? attachFnsBankCandidates(original, bankReview) : undefined;
+  }
+  const data = buildTaxWorkspace({ reports: [full], documents, now, gaps });
   const changes = reportChanges(parsePortalReport(ownerFullReport, 'ausn-executive-full-20261025T074847.md'), parsePortalReport(ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md'));
   const latestDuePeriod = data.plan.at(-1)?.periodKey || '2026-09';
   const demoUpload = (documentType: string, periodKey: string, fixed = true) => <fieldset disabled><TaxDocumentUpload fixedType={fixed ? documentType as never : undefined} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} /><p className='mt-2 text-xs font-semibold text-[#866014]'>В демонстрации загрузка выключена.</p></fieldset>;
   const scenarios: Array<[string, string]> = [['fresh', 'свежие данные'], ['today', 'как сейчас'], ['broken', 'поломка']];
   const notice = <div className='tax-callout' data-tone='warn'>
-    <strong>Просмотр, ничего не записывается.</strong> Часть цифр — пример. <span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link' style={scenario === key ? { textDecoration: 'underline' } : undefined}>{label}</a>)}</span>
+    <strong>Просмотр, ничего не записывается.</strong> {scenario === 'audit' ? 'Сохранённый расчёт и дополнительная проверка исходной выгрузки. Это не новый расчёт налога.' : 'Часть цифр — пример.'} <span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link' style={scenario === key ? { textDecoration: 'underline' } : undefined}>{label}</a>)}</span>
   </div>;
   return <AdminIdentityProvider name='Кештова Бэла'><AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>
     <TaxesWorkspace

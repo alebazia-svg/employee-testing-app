@@ -69,3 +69,12 @@ test('damaged numbers never become zero and candidate lists are not silently tru
   large.months['2026-08'].missing_in_fns_total = 501;
   assert.equal(parseFnsGaps(JSON.stringify(large), 'x')?.months['2026-08'].missingInFns.length, 501);
 });
+
+test('a non-tax bank candidate requires fiscal follow-up rather than an instruction to add income', () => {
+  const gaps = parseFnsGaps(raw, 'ausn-fns-gaps-20261025T074847.json')!;
+  gaps.months['2026-08'].missingInFns[0].bankCandidate = { date:'2026-08-03',amount:12000,taxBase:0,markup:'Неналоговая база = 12000,00',row:7,documentId:'doc',sourceName:'full.xlsx' };
+  const issue = reviewIssues({report,months,gaps}).find((i)=>i.kind==='fns' && i.periodKey==='2026-08')!;
+  assert.match(issue.text,/неналоговой разметкой и нулевой базой — 1/);
+  assert.match(issue.action || '',/чек последующей оплаты/);
+  assert.doesNotMatch(issue.text,/налоговая не видит|в кабинете АУСН их нет/i);
+});

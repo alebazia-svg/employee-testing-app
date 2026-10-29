@@ -1,9 +1,10 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { FnsBankCandidate } from './ausn-fns-bank-review';
 
 // Operation-level comparison with the tax office export, written by the AUSN
 // runner next to each full report (ausn-fns-gaps-<stamp>.json). Read-only.
-export type FnsGapOperation = { date: string; amount: number; kind?: string; payer?: string; account?: string; purpose?: string; operation?: string };
+export type FnsGapOperation = { date: string; amount: number; kind?: string; payer?: string; account?: string; purpose?: string; operation?: string; bankCandidate?: FnsBankCandidate };
 export type FnsCashDay = { date: string; ours: number; fns: number };
 export type FnsMonthGaps = { missingInFns: FnsGapOperation[]; missingInOurs: FnsGapOperation[]; cashDays: FnsCashDay[]; missingInFnsTotal: number; missingInOursTotal: number; cashDifference: number };
 export type FnsGaps = { sourceFile: string; lkFrom?: string; lkTo?: string; months: Record<string, FnsMonthGaps> };

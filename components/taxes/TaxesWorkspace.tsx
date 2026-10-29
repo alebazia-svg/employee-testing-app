@@ -222,9 +222,9 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
     {groups.map((group) => <section key={group.title} className='tax-panel tax-queue' data-tone={group.tone}><header><h2>{group.title}</h2><span>{group.items.length}</span></header>{group.items.map((issue, index) => <div key={index} className='tax-item flex flex-wrap items-center justify-between gap-x-4 gap-y-1'><b>{issue.title}</b>{issue.uploadHint ? <Link href={`${withTab(base)}documents`} className='tax-link'>Загрузить <ArrowRight /></Link> : issue.operations ? null : <More label='что делать'><p>{issue.text}</p>{issue.action && <p className='mt-1.5'>{issue.action}</p>}</More>}{issue.operations && <GapDetails issue={issue} />}</div>)}</section>)}
     {!groups.length && full?.available && <div className='tax-callout' data-tone='info'><strong>{months.length > 0 && months.every((month) => month.state === 'ok') ? 'В выполненных проверках расхождений не выявлено.' : 'Подтверждённых результатов недостаточно для завершения сверки.'}</strong></div>}
     {months.length > 0 && <section className='tax-panel' aria-label='Сверка по месяцам'>
-      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>По месяцам<More><p>Сравниваем наш учёт (1С, банк, касса) с данными налоговой.</p><p className='mt-1.5'>«Налоговая учла» — личный кабинет → АУСН → Доходы. «Налоговая начислила» — единый налоговый счёт. «Оплачено» — платёж из банка.</p><p className='mt-1.5'>Часы — срок ещё не наступил.</p></More></h2></div></div>
+      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>По месяцам<More><p>Сравниваем наш учёт (1С, банк, касса) с данными налоговой.</p><p className='mt-1.5'>«Налоговая учла» — личный кабинет → АУСН → Доходы. «Налоговая начислила» — единый налоговый счёт. «Платёж из банка» — найденный ЕНП. Это не подтверждение зачёта или отсутствия долга по ЕНС.</p><p className='mt-1.5'>Часы — срок ещё не наступил.</p></More></h2></div></div>
       <div className='tax-table-wrap'><table className='tax-table'>
-        <thead><tr><th>Месяц</th><th className='num'>Наш доход</th><th><T title='Личный кабинет налоговой → АУСН → Доходы'>Налоговая учла</T></th><th className='num'>Наш налог</th><th><T title='Единый налоговый счёт (ЕНС): начисление налога'>Налоговая начислила</T></th><th><T title='Единый налоговый платёж (ЕНП) по выписке банка'>Оплачено</T></th></tr></thead>
+        <thead><tr><th>Месяц</th><th className='num'>Наш доход</th><th><T title='Личный кабинет налоговой → АУСН → Доходы'>Налоговая учла</T></th><th className='num'>Наш налог</th><th><T title='Единый налоговый счёт (ЕНС): начисление налога'>Налоговая начислила</T></th><th><T title='Единый налоговый платёж (ЕНП) по выписке банка'>Платёж из банка</T></th></tr></thead>
         <tbody>{[...months].reverse().map((month) => { const [fns, ens, payment] = month.checks; return <tr key={month.periodKey} data-tone={month.state === 'attention' ? 'error' : undefined}>
           <td className='font-semibold'><span className='capitalize'>{monthName(month.periodKey)}</span>{month.partial && <small>неполный период</small>}</td>
           <td className='num'>{rub(month.detail?.base)}</td>
@@ -241,12 +241,16 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
 function GapDetails({ issue }: { issue: TaxesWorkspaceProps['issues'][number] }) {
   const gaps = issue.operations!;
   const date = (value: string) => value.split('-').reverse().slice(0, 2).join('.');
+  const candidates = gaps.missingInFns.filter((item) => item.bankCandidate);
+  const nonTax = candidates.filter((item) => item.bankCandidate!.taxBase === 0 && /^Неналоговая база/.test(item.bankCandidate!.markup));
   return <div className='min-w-0 basis-full'>
-    <p className='tax-small mt-1 leading-relaxed text-[#5f564e]'>{issue.text}</p>
-    {issue.action && <p className='tax-small mt-1 font-semibold leading-relaxed text-[#4c443c]'>{issue.action}</p>}
+    <p className='tax-small mt-1 leading-relaxed text-[#5f564e]'>{candidates.length ? `В архивной выгрузке есть ${plural(candidates.length, 'совпадение', 'совпадения', 'совпадений')} по сумме и дате; с неналоговой разметкой и нулевой базой — ${nonTax.length}. Учёт дохода через ККТ требует проверки.` : 'Разница требует проверки по операциям. Пропуск дохода не подтверждён.'}</p>
     <details className='tax-details group mt-2'>
-      <summary className='tax-link text-[13px]'>Показать операции</summary>
-      {gaps.missingInFns.length > 0 && <><p className='tax-small mt-2 font-semibold'>Поступления без найденной пары в выгрузке ФНС — {rub(gaps.missingInFnsTotal)}</p><ul className='tax-ops'>{gaps.missingInFns.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)} · {item.kind}{item.account ? ` · ${item.account}` : ''}</span></span>{item.payer && item.payer !== item.kind && <span>{item.payer}</span>}{item.purpose && <small>{item.purpose}</small>}</li>)}</ul></>}
+      <summary className='tax-link text-[13px]'>Показать операции и порядок проверки</summary>
+      <p className='tax-small mt-2 leading-relaxed'>{issue.text}</p>
+      {issue.action && <p className='tax-small mt-2 leading-relaxed'>{issue.action}</p>}
+      {candidates.length > 0 && <p className='tax-small mt-2'>Дополнительная проверка по отдельному архивному файлу не заменяет расчёт выше. Подбор по сумме и дате, включая следующий день, не подтверждает счёт и связь с продажей. Нулевая база банковской строки не доказывает пропуск дохода через ККТ.</p>}
+      {gaps.missingInFns.length > 0 && <><p className='tax-small mt-2 font-semibold'>Поступления, требующие проверки по выгрузке ФНС — {rub(gaps.missingInFnsTotal)}</p><ul className='tax-ops'>{gaps.missingInFns.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)} · {item.kind}{item.account ? ` · ${item.account}` : ''}</span></span>{item.payer && item.payer !== item.kind && <span>{item.payer}</span>}{item.purpose && <small>{item.purpose}</small>}{item.bankCandidate && <small className='tax-bank-candidate'><b>Есть кандидат в полной выгрузке ФНС:</b> {date(item.bankCandidate.date)} · {item.bankCandidate.markup} · база {rub(item.bankCandidate.taxBase)}. {item.bankCandidate.documentId ? <Link className='tax-link' href={`/api/admin/taxes/documents/${encodeURIComponent(item.bankCandidate.documentId)}`}>{item.bankCandidate.sourceName}</Link> : item.bankCandidate.sourceName}, строка {item.bankCandidate.row}.</small>}</li>)}</ul></>}
       {gaps.missingInOurs.length > 0 && <><p className='tax-small mt-3 font-semibold'>Строки ФНС без найденной пары в нашем учёте — {rub(gaps.missingInOursTotal)}</p><ul className='tax-ops'>{gaps.missingInOurs.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)}</span></span>{item.operation && <small>{item.operation}</small>}</li>)}</ul></>}
       {gaps.cashDays.length > 0 && <><p className='tax-small mt-3 font-semibold'>Касса по дням: чеки у нас / у налоговой</p><ul className='tax-ops'>{gaps.cashDays.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{date(item.date)}</b><span>{rub(item.ours)} / {rub(item.fns)}</span></span></li>)}</ul></>}
     </details>
@@ -273,7 +277,7 @@ function Documents({ missingTypes, documents, upload, generalUpload, plan, after
 
     <details className='tax-panel tax-details group'>
       <summary className='tax-panel-head' style={{ borderBottom: 0 }}><div><h2>Загрузить другой документ</h2><p>Касса, возвраты, повторная загрузка</p></div><AdminDisclosureAction /></summary>
-      <div className='tax-body' style={{ borderTop: '1px solid #eee7df' }}>{generalUpload}</div>
+      <div className='tax-body' style={{ borderTop: '1px solid #eee7df' }}><p className='tax-small mb-3'>Полный «Отчет по операциям» ФНС можно приложить как «Корректировки и возвраты» для дополнительной проверки банковской разметки. Этот способ не пересчитывает налог и не меняет общий отчёт.</p>{generalUpload}</div>
     </details>
 
     <section className='tax-panel' aria-label='Постоянные документы'>
