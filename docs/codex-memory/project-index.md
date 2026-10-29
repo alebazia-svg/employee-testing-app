@@ -428,3 +428,14 @@ caption removed by owner instruction; collection action remains. Build, typechec
 227 workday tests, six delivery UI tests, targeted checks and real local UI/HTTP
 boundaries pass. Not committed or released; physical-phone/financial-write limits
 are explicit in the note.
+
+## Unified Procurement mobile cabinet — production1.19.8
+
+Released/verified 2026-10-30, source `bbbbce2`; see
+`../ops/unified-mobile-release-20261030.md`. Supersedes the local-only status
+above: three mounted mobile views, one persistent bell/header and preserved
+state; legacy Procurement workday push/bookmark entries join the same cabinet.
+Desktop calendar, financial APIs, payroll formulas/bonuses and1C unchanged.
+Completed-issue caption removed, collection action retained. Production Astemir,
+Zukhra and Diana checks passed; device/financial-write limits are explicit.
+Current plus two verified images registered; final healthhealthy, free26.53GiB.
