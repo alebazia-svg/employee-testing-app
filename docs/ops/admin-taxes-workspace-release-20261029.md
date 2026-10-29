@@ -22,8 +22,12 @@ canonical runner report; no tax total is recalculated in the portal.
   (production showed September ENS as present while the archive ends in August).
   Visible effect: one new «Нужны документы ФНС за 2026-09» reminder.
 - Upload: period is not asked for income XLSX / ENS ZIP; result shows what changed.
-- «Обновить цифры сейчас» (`POST /api/admin/taxes/refresh`) and daily refresh
-  `ops/systemd/offonika-ausn-refresh.{service,timer}` at 07:40 MSK.
+- «Обновить цифры сейчас» (`POST /api/admin/taxes/refresh`) and
+  `ops/systemd/offonika-ausn-refresh.{service,timer}`: hourly 08:10–21:10 MSK,
+  refreshes only when the newest report is older than 20 h. Reason: the existing
+  `ausn-report-cache-refresh` (07:30/12:30) failed every run since 26.10 with OFD
+  HTTP 503 — Platforma OFD is read through the owner's Mac tunnel, which is
+  intermittently down; hourly retries recover as soon as it is back.
 - Bridge waits for its own result when the runner is busy (retry loop).
 - New inbox events `tax.figures_stale`, `tax.limit_decision`: receipts only for
   logins in `TAX_CONTROL_ALERT_LOGINS`; web push 09:00–22:00; never Telegram.

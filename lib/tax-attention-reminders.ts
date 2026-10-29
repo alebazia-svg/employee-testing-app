@@ -20,7 +20,7 @@ export function taxFreshnessReminder(reports: PortalReport[], now: Date): TaxRem
     return { eventKey: `tax_figures_unavailable:${newest?.sourceFile || moscowDay(now)}`, type: 'tax.figures_stale', sourceType: 'tax_freshness', title: 'Расчёт по налогам недоступен', body: `${plainReportReason(newest?.reason)} Откройте раздел «Налоги» и нажмите «Обновить цифры сейчас». Если не поможет — сообщите разработчику.` };
   }
   if (now.getTime() - Date.parse(latest.runTimeUtc!) <= staleHours * 3_600_000) return undefined;
-  return { eventKey: `tax_figures_stale:${latest.sourceFile}`, type: 'tax.figures_stale', sourceType: 'tax_freshness', title: 'Цифры по налогам не обновились', body: `Последние данные — по ${ruDate(latest.dataCutoff)}. Утренний пересчёт не сработал, лимит может быть ближе, чем показано. Откройте «Налоги» и нажмите «Обновить цифры сейчас»; если не поможет — сообщите разработчику.` };
+  return { eventKey: `tax_figures_stale:${latest.sourceFile}`, type: 'tax.figures_stale', sourceType: 'tax_freshness', title: 'Цифры по налогам не обновились', body: `Последние данные — по ${ruDate(latest.dataCutoff)}, пересчёт не проходит. Проверьте, что Mac (через него приходят чеки Платформы ОФД) включён и в сети, затем в «Налогах» нажмите «Обновить цифры сейчас». Если не поможет — сообщите разработчику.` };
 }
 
 export function taxDecisionReminder(full: PortalReport | undefined, now: Date, leadDays = 14): TaxReminder | undefined {

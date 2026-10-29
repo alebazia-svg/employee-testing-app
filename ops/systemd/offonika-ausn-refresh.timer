@@ -1,9 +1,9 @@
 [Unit]
-Description=Refresh AUSN figures for the taxes page every morning
+Description=Keep AUSN figures fresh: hourly retry 08:10-21:10 MSK, refreshes only when older than 20 hours
 
 [Timer]
-OnCalendar=*-*-* 07:40:00 Europe/Moscow
-Persistent=true
+OnCalendar=*-*-* 08..21:10:00 Europe/Moscow
+Persistent=false
 AccuracySec=1min
 Unit=offonika-ausn-refresh.service
 
