@@ -5,6 +5,7 @@ import { loadPortalReports } from '@/lib/ausn-portal-view';
 import { getCurrentAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildTaxWorkspace } from '@/lib/tax-workspace-data';
+import { attachFnsBankCandidates, loadLatestFnsBankReview } from '@/lib/ausn-fns-bank-review';
 import { loadFnsGaps } from '@/lib/ausn-fns-gaps';
 import { TaxDocumentUpload, TaxUploadStatus } from './TaxDocumentUpload';
 import { RefreshFigures } from '@/components/taxes/RefreshFigures';
@@ -22,7 +23,8 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
     prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }),
   ]);
   const now = new Date();
-  const gaps = await loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile);
+  const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), loadLatestFnsBankReview(documents)]);
+  const gaps = originalGaps && bankReview ? attachFnsBankCandidates(originalGaps, bankReview) : originalGaps;
   const data = buildTaxWorkspace({ reports, documents, now, gaps });
   const latestDuePeriod = data.plan.at(-1)?.periodKey || now.toISOString().slice(0, 7);
   return <AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>

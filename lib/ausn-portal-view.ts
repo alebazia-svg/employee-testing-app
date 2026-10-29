@@ -154,7 +154,7 @@ export function parsePortalReport(text: string, sourceFile = 'report.md'): Porta
       ensAssessed: ensLoaded ? number('Начислено в ЕНС за доступные периоды', 'Начислено в ЕНС за период') : undefined, ensDifference: ensLoaded ? number('Разница: наш расчёт - ЕНС') : undefined,
       fnsIncome: fnsLoaded ? number('База по выгрузке ЛК ФНС') : undefined, fnsDifference: fnsLoaded ? number('Разница: наш расчёт - ЛК ФНС') : undefined, fnsRows: fnsLoaded ? number('Строк в выгрузке ЛК ФНС') : undefined,
       controlCoverage: sourceCompleteness['ЛК ФНС']?.match(/покрытие (.+)$/)?.[1],
-      monthlyIncome, monthDetails, fnsCoverage: fnsLoaded && coverageMatch ? { from: coverageMatch[1], to: coverageMatch[2] } : undefined, incomeStructure: Object.values(structure).some((value) => value !== undefined) ? structure : undefined,
+      monthlyIncome, monthDetails: monthDetails.map((detail) => ({ ...detail, ...(!fnsLoaded ? { fnsAccepted: undefined, fnsDifference: undefined, fnsStatus: undefined } : {}), ...(!ensLoaded ? { fnsAssessed: undefined, fnsAssessedState: 'not_loaded' as const } : {}) })), fnsCoverage: fnsLoaded && coverageMatch ? { from: coverageMatch[1], to: coverageMatch[2] } : undefined, incomeStructure: Object.values(structure).some((value) => value !== undefined) ? structure : undefined,
     } : { monthlyIncome: [], monthDetails: [] }),
     attention: available ? bullets(section(normalized, 'Что требует внимания')) : [],
     missingData: bullets(section(normalized, 'Каких данных не хватает')),

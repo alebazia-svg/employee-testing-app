@@ -1,9 +1,10 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { FnsBankCandidate } from './ausn-fns-bank-review';
 
 // Operation-level comparison with the tax office export, written by the AUSN
 // runner next to each full report (ausn-fns-gaps-<stamp>.json). Read-only.
-export type FnsGapOperation = { date: string; amount: number; kind?: string; payer?: string; account?: string; purpose?: string; operation?: string };
+export type FnsGapOperation = { date: string; amount: number; kind?: string; payer?: string; account?: string; purpose?: string; operation?: string; bankCandidate?: FnsBankCandidate };
 export type FnsCashDay = { date: string; ours: number; fns: number };
 export type FnsMonthGaps = { missingInFns: FnsGapOperation[]; missingInOurs: FnsGapOperation[]; cashDays: FnsCashDay[]; missingInFnsTotal: number; missingInOursTotal: number; cashDifference: number };
 export type FnsGaps = { sourceFile: string; lkFrom?: string; lkTo?: string; months: Record<string, FnsMonthGaps> };
@@ -11,12 +12,13 @@ export type FnsGaps = { sourceFile: string; lkFrom?: string; lkTo?: string; mont
 const maxBytes = 2 * 1024 * 1024;
 const text = (value: unknown, limit = 200) => typeof value === 'string' ? value.slice(0, limit) : undefined;
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
-const list = (value: unknown) => Array.isArray(value) ? value.slice(0, 500) : [];
+const list = (value: unknown) => Array.isArray(value) ? value : [];
+const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
 const operation = (value: unknown): FnsGapOperation | null => {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const date = text(item.date, 10);
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !finite(item.amount)) return null;
   return { date, amount: number(item.amount), kind: text(item.kind, 40), payer: text(item.payer, 120), account: text(item.account, 60), purpose: text(item.purpose), operation: text(item.operation) };
 };
 
@@ -28,6 +30,15 @@ export function parseFnsGaps(raw: string, sourceFile: string): FnsGaps | undefin
     for (const [key, value] of Object.entries(payload.months as Record<string, unknown>)) {
       if (!/^20\d{2}-\d{2}$/.test(key) || !value || typeof value !== 'object') continue;
       const month = value as Record<string, unknown>;
+      // Never attach full totals to a truncated or damaged candidate list.
+      if (![month.missing_in_fns_total, month.missing_in_ours_total, month.cash_difference].every(finite) ||
+          ![month.missing_in_fns, month.missing_in_ours, month.cash_days].every(Array.isArray) ||
+          [...list(month.missing_in_fns), ...list(month.missing_in_ours)].some((item) => !operation(item)) ||
+          list(month.cash_days).some((item) => !item || typeof item !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !finite(item.ours) || !finite(item.fns))) continue;
+      const total = (items: unknown[]) => items.reduce<number>((sum, item) => sum + (item as { amount: number }).amount, 0);
+      if (Math.abs(total(list(month.missing_in_fns)) - number(month.missing_in_fns_total)) > 0.02 ||
+          Math.abs(total(list(month.missing_in_ours)) - number(month.missing_in_ours_total)) > 0.02 ||
+          Math.abs(list(month.cash_days).reduce((sum, day) => sum + day.ours - day.fns, 0) - number(month.cash_difference)) > 0.02) continue;
       months[key] = {
         missingInFns: list(month.missing_in_fns).map(operation).filter((item): item is FnsGapOperation => item !== null),
         missingInOurs: list(month.missing_in_ours).map(operation).filter((item): item is FnsGapOperation => item !== null),
