@@ -404,9 +404,6 @@
 .procurement-responsive-shell .employee-material-ui.procurement-embedded-workday {
   min-height: 0 !important; padding: 0 !important; background: transparent !important;
 }
-.procurement-responsive-shell.employee-material-ui .procurement-mobile-cabinet > .employee-material-header {
-  padding: 22px 18px 44px !important;
-}
 .procurement-responsive-shell .procurement-mobile-pages:has(> [data-mobile-pane='workday']:not([hidden]))::after {
   height: 0 !important;
 }

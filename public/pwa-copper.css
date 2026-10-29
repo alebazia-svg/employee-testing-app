@@ -510,9 +510,9 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-ui .employee-material-calendar-card > div:first-child { width:100%; max-width:364px; margin-inline:auto !important; }
 }
 
-/* Compact schedule spacing without shrinking calendar cells or touch targets. */
+/* Compact shared header; preserve calendar cells and all touch targets. */
 body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
-  .employee-material-ui:has(.pwa-schedule-view) .employee-material-header { padding-top:14px !important; padding-bottom:36px !important; }
+  .employee-material-ui .employee-material-header { padding-top:14px !important; padding-bottom:36px !important; }
   .employee-material-header + div:has(> .pwa-schedule-view) { padding-top:8px !important; }
   .employee-material-ui .pwa-schedule-view .employee-material-calendar-card { margin-top:4px !important; }
   .employee-material-ui .employee-material-calendar-card:not([data-editing]) > :is(.schedule-plan-entry,.pwa-calendar-weekdays,.pwa-calendar-grid,.pwa-calendar-legend) { margin-top:4px !important; }
@@ -559,4 +559,11 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-attention-request-facts { column-gap:16px; row-gap:12px; margin:16px 0; }
   .employee-attention-request-facts dt { color:var(--pwa-ink); overflow-wrap:anywhere; }
   .employee-attention-request-facts dd { white-space:nowrap; align-self:start; }
+}
+
+/* Reserve classic-scrollbar space only in the employee PWA. Overlay scrollbars
+   keep their native zero-width gutter; desktop Procurement has no theme marker. */
+html:has(#pwa-copper-theme) { scrollbar-gutter:stable; }
+@supports not (scrollbar-gutter:stable) {
+  html:has(#pwa-copper-theme) { overflow-y:scroll; }
 }
