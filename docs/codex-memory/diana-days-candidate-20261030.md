@@ -1,5 +1,9 @@
 # Diana workday sources — local candidate, 2026-10-30
 
+**Released and verified 2026-10-30 as 1.19.7, runtime `b9666b9`.**
+The preparation notes below are historical; release evidence and verification
+limits: `../ops/employee-cabinet-release-20261030.md`.
+
 Owner-approved scope: for Кумахова Диана (Retail), a real app workday start
 wins for that date; otherwise a working day in the Google **schedule** supplies
 the day. Google arrival-form marks are not her reserve source. One date counts

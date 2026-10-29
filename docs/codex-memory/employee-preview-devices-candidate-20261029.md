@@ -1,5 +1,9 @@
 # Employee preview devices / PWA polish — local candidate 2026-10-29
 
+**Released and verified 2026-10-30 as 1.19.7, runtime `b9666b9`.**
+The preparation notes below are historical; release evidence and verification
+limits: `../ops/employee-cabinet-release-20261030.md`.
+
 Owner explicitly approved a Phone/Computer selector in Astemir's ADMIN employee
 inspection. Subsequent approved corrections: copper-filled selected Procurement
 icon / outline inactive icon, remove old-design flashes and improve tab response,

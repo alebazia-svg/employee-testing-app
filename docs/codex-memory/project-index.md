@@ -408,3 +408,13 @@ currently unavailable; bonus display remains a separate unapproved proposal.
   app start, otherwise Google schedule working day; no duplicate date, formula
   or bonus changes. PWA plan remains separate; October past-date permission is
   Diana-only. No release performed.
+
+## Employee cabinet and Diana day sources — production 1.19.7
+
+Released/verified 2026-10-30, runtime `b9666b9`: see
+`../ops/employee-cabinet-release-20261030.md`. Supersedes the local-only status
+above for the Phone/Computer selector, PWA navigation/icon/colleague corrections,
+Diana past October schedule access and app-start/Google-schedule day sourcing.
+Formulas, bonuses, other employees and 1C unchanged. No special salary UI.
+Reserve 1.19.3 restored from exact source and tested in isolation; current plus
+two verified rollback images registered, final free space24.37 GiB.
