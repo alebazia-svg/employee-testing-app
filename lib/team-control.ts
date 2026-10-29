@@ -1,10 +1,33 @@
 import { attendanceEmployeeKey } from '@/lib/attendance-identity';
 
-// Schedule/check policy: Google remains active; Liana uses the app schedule.
-// Attendance marks have a separate all-staff cutover in team-attendance.ts.
-// Never infer a schedule or rewrite saved records from a mark's source.
-export function usesAppSchedule(name: string) {
-  return attendanceEmployeeKey(name) === attendanceEmployeeKey('Хурзокова Лиана');
+// A saved app plan wins for every employee and selected date. Keep the original
+// pilot's missing-plan policy; Google remains a fallback for other empty dates.
+// Attendance marks never fabricate or overwrite a plan.
+export function usesAppSchedule(name: string, status?: string | null) {
+  return status === 'working' || status === 'off'
+    || attendanceEmployeeKey(name) === attendanceEmployeeKey('Хурзокова Лиана');
+}
+
+export function resolveTeamSchedule(input: {
+  name: string;
+  appStatus?: string | null;
+  googlePlan: 'working' | 'off' | null;
+  googleAvailable: boolean;
+  vacation: boolean;
+}) {
+  const app = usesAppSchedule(input.name, input.appStatus);
+  const state = input.vacation ? 'vacation'
+    : app ? input.appStatus === 'working' || input.appStatus === 'off' ? input.appStatus : 'unknown'
+    : input.googleAvailable ? input.googlePlan ?? 'unknown' : 'unavailable';
+  return {
+    app,
+    state,
+    status: state === 'vacation' ? 'off' : state === 'working' || state === 'off' ? state : undefined,
+    source: input.vacation || app ? 'Приложение' : 'Google',
+    label: state === 'vacation' ? 'Отпуск' : state === 'working' ? 'Рабочий день'
+      : state === 'off' ? 'Выходной' : state === 'unavailable' ? 'Источник недоступен'
+      : app ? 'Нет записи графика приложения' : 'Нет записи графика Google',
+  } as const;
 }
 export function dateKeyFromGoogle(value: string) {
   const ru = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);

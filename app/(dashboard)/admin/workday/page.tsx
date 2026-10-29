@@ -9,7 +9,7 @@ import { WorkdayIssueDialog } from './WorkdayIssueDialog';
 import { cashEncashmentReasonLabel, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 import { TeamDailyControl, type TeamDayRow } from '@/components/admin/TeamDailyControl';
 import { getTeamGoogleSnapshot } from '@/lib/team-control-source';
-import { googleDay, usesAppSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel, teamShiftState } from '@/lib/team-control';
+import { googleDay, resolveTeamSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel, teamShiftState } from '@/lib/team-control';
 import { resolveTeamAttendance, usesAppAttendance } from '@/lib/team-attendance';
 import Link from 'next/link';
 import { completedWithoutEncashment, handoverClosedByAdmin, hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
@@ -1508,11 +1508,12 @@ export default async function AdminWorkdayPage(
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
       const vacation = vacationByUser.get(employee.id) ?? null;
-      const effectiveScheduleStatus = vacation ? 'off' : schedule?.status;
       const workDay = workDayByUser.get(employee.id);
       const run = shiftControlRunByUser.get(employee.id);
       const googleControl = googleDay(employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
-      const planState = vacation ? 'vacation' : usesAppSchedule(employee.name) ? schedule?.status ?? 'unknown' : googleSnapshot.planAvailable ? googleControl.plan ?? 'unknown' : 'unavailable';
+      const plan = resolveTeamSchedule({ name: employee.name, appStatus: schedule?.status, googlePlan: googleControl.plan, googleAvailable: googleSnapshot.planAvailable, vacation: Boolean(vacation) });
+      const planState = plan.state;
+      const effectiveScheduleStatus = plan.status;
       const attendance = usesAppAttendance(selectedDate) ? resolveTeamAttendance({
         date: selectedDate, today, workDay, google: googleControl,
         googleAvailable: googleSnapshot.marksAvailable,
@@ -1540,7 +1541,8 @@ export default async function AdminWorkdayPage(
         todayDateKey: today,
         nowMinutes,
         department: employee.department,
-        scheduleStatus: effectiveScheduleStatus,
+        // App timing policy stays separate from the Google display fallback.
+        scheduleStatus: vacation ? 'off' : schedule?.status,
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
@@ -1559,7 +1561,7 @@ export default async function AdminWorkdayPage(
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
       const businessAttentionReasons = [
-        usesAppSchedule(employee.name) && !schedule && !vacation ? 'Нет записи графика приложения' : null,
+        plan.app && !schedule && !vacation ? 'Нет записи графика приложения' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
         missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
         mismatchCount > 0
@@ -1647,6 +1649,7 @@ export default async function AdminWorkdayPage(
         schedule,
         vacation,
         effectiveScheduleStatus,
+        plan,
         workDay,
         run,
         autoChecks,
@@ -1763,10 +1766,10 @@ export default async function AdminWorkdayPage(
 
         <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : searchParams?.view === 'audit' ? 'audit' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
-            const app = usesAppSchedule(row.employee.name);
+            const app = row.plan.app;
             const hasAppControl = Boolean(row.workDay || row.run) || app;
             const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
-            const planState = row.vacation ? 'vacation' : app ? row.schedule?.status ?? 'unknown' : googleSnapshot.planAvailable ? google.plan ?? 'unknown' : 'unavailable';
+            const planState = row.plan.state;
             const start = row.attendance?.start ?? (app ? row.workDay ? formatTime(row.workDay.startedAt) : '—' : clockLabel(google.arrival));
             const end = row.attendance?.end ?? (app ? row.workDay?.endedAt ? formatTime(row.workDay.endedAt) : '—' : clockLabel(google.departure));
             const shift = row.attendance?.shift ?? (app ? row.workDay?.shiftLabel ?? '' : google.shift);
@@ -1855,8 +1858,8 @@ export default async function AdminWorkdayPage(
                           department={row.employee.department}
                           departmentName={departmentLabel(row.employee.department)}
                           attendance={row.attendance ?? undefined}
-                          attendanceNote={row.attendance ? undefined : !usesAppSchedule(row.employee.name) ? `Google: начало ${clockLabel(googleControl.arrival)}, завершение ${clockLabel(googleControl.departure)}. Отметки приложения показаны отдельно.` : undefined}
-                          scheduleLabel={!usesAppSchedule(row.employee.name) ? googleControl.plan === 'working' ? 'Рабочий день · Google' : googleControl.plan === 'off' ? 'Выходной · Google' : 'Нет записи графика Google' : row.vacation ? `Отпуск · ${formatDateLabel(row.vacation.dateFrom)} — ${formatDateLabel(row.vacation.dateTo)}` : scheduleStatusLabel(row.effectiveScheduleStatus)}
+                          attendanceNote={row.attendance ? undefined : !row.plan.app ? `Google: начало ${clockLabel(googleControl.arrival)}, завершение ${clockLabel(googleControl.departure)}. Отметки приложения показаны отдельно.` : undefined}
+                          scheduleLabel={row.vacation ? `Отпуск · ${formatDateLabel(row.vacation.dateFrom)} — ${formatDateLabel(row.vacation.dateTo)}` : `${row.plan.label}${row.plan.app ? '' : ' · Google'}`}
                           run={serializeShiftControlRun(row.run)}
                           workDay={row.workDay ? {
                             status: row.workDay.status,
@@ -1890,7 +1893,7 @@ export default async function AdminWorkdayPage(
                           cashOperations={cashOperations.filter(operation => operation.userId === row.employee.id).map(operation => ({ ...operation, createdAt: operation.createdAt.toISOString() }))}
                           closeRequests={closeRequests.filter(request => request.employeeId === row.employee.id).map(request => ({ id: request.id, status: request.status, reasonCode: request.reasonCode, comment: request.comment, requestedAt: request.requestedAt.toISOString(), decidedAt: request.decidedAt?.toISOString() ?? null, decisionComment: request.decisionComment, decidedBy: request.decidedBy?.name ?? null }))}
                           autoChecks={row.autoChecks}
-                          timingViolations={usesAppSchedule(row.employee.name) ? row.timingViolations : row.timingViolations.filter(v=>v.taskId!==null)}
+                          timingViolations={row.plan.app ? row.timingViolations : row.timingViolations.filter(v=>v.taskId!==null)}
                           terminalFiscalControl={row.terminalFiscalControl ? {
                             total: row.terminalFiscalControl.total,
                             statuses: row.terminalFiscalControl.statuses,
