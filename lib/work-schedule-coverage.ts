@@ -69,8 +69,15 @@ export function scheduleCoverageCopy(coverage: ScheduleCoverage) {
   };
 }
 
-export function schedulePersonName(name: string) {
+function scheduleDisplayIdentity(name: string) {
   const normalized = name.split('/').pop()?.trim() || name.trim();
+  // Historical portal display order differs from the canonical payroll identity.
+  // Presentation only: do not rename the account or its payroll/1C mapping.
+  return /^астемир\s+тохов$/iu.test(normalized) ? 'Тохов Астемир' : normalized;
+}
+
+export function schedulePersonName(name: string) {
+  const normalized = scheduleDisplayIdentity(name);
   const parts = normalized.split(/\s+/).filter(Boolean);
   if (parts.length < 2) return normalized;
   return parts[1] || parts[0];
@@ -80,7 +87,7 @@ export function schedulePersonLabel(name: string, departmentNames: string[]) {
   const firstName = schedulePersonName(name);
   const duplicateCount = departmentNames.filter((item) => schedulePersonName(item) === firstName).length;
   if (duplicateCount < 2) return firstName;
-  const normalized = name.split('/').pop()?.trim() || name.trim();
+  const normalized = scheduleDisplayIdentity(name);
   const surname = normalized.split(/\s+/).filter(Boolean)[0] || '';
   return surname ? `${firstName} ${surname.charAt(0).toUpperCase()}.` : firstName;
 }

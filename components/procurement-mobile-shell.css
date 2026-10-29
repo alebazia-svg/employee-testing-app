@@ -1,4 +1,9 @@
 .procurement-pwa-header, .procurement-pwa-navigation { display: none; }
+/* SSR uses the desktop tree until matchMedia resolves. Never paint it on a phone. */
+@media (max-width: 767px) {
+  .procurement-shell[data-viewport-pending] { background: #f7f6f2; }
+  .procurement-shell[data-viewport-pending] > .admin-workspace { visibility: hidden; }
+}
 @media (max-width: 767px) {
   .procurement-responsive-shell .procurement-mobile-content { padding-inline: 16px; }
   .procurement-responsive-shell { max-width: 520px; margin-inline: auto; background: #f7faf8; }

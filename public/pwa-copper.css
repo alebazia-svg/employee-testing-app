@@ -115,6 +115,8 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-tab.is-active .employee-material-nav-icon-day svg polyline { stroke:#fff9eb; }
   .employee-material-tab.is-active .employee-material-nav-icon-schedule svg rect { fill:var(--pwa-copper); stroke:var(--pwa-copper); }
   .employee-material-tab.is-active .employee-material-nav-icon-schedule svg path { stroke:#fff9eb; }
+  .employee-material-tab.is-active .employee-material-nav-icon-procurement .pwa-composition-nav-icon path:first-child { fill:var(--pwa-copper); stroke:var(--pwa-copper); }
+  .employee-material-tab.is-active .employee-material-nav-icon-procurement .pwa-composition-nav-icon path:not(:first-child) { stroke:#fff9eb; }
   .employee-workday-sheet-overlay { background:#20241b70 !important; backdrop-filter:blur(5px) !important; }
   .employee-material-sheet { background:var(--pwa-paper) !important; border-radius:26px 26px 0 0 !important; box-shadow:0 -8px 40px #20241b24 !important; }
   .employee-material-sheet :is(h1,h2,h3) { color:var(--pwa-ink) !important; }

@@ -13,13 +13,21 @@ import { payrollFeatureState } from '@/lib/payroll-features';
 import { employeeNavigation } from '@/lib/employee-navigation';
 import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeActionReminder';
 import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
+import { EmployeePreviewViewport } from '@/components/EmployeePreviewViewport';
 export const dynamic = 'force-dynamic';
-export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string }> }) {
   const admin = await getCurrentAdmin();
   if (!admin) notFound();
   const preview = await readEmployeePreview(admin.id, (await params).visitId);
   if (!preview) return <main className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="my-4">Откройте сотрудника заново из списка.</p><Link className="underline" href="/admin/employees">К сотрудникам</Link></main>;
-  const tab = (await searchParams).tab ?? 'day';
+  const query = await searchParams;
+  const procurement = preview.employee.portalArea === 'PROCUREMENT';
+  const frame: 'phone' | 'desktop' | undefined = procurement && (query.frame === 'phone' || query.frame === 'desktop') ? query.frame : undefined;
+  const providerProps = { visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
+  if (procurement && !frame) return <EmployeePreviewProvider {...providerProps}><EmployeePreviewViewport visitId={preview.visit.id} employeeName={preview.employee.name}/></EmployeePreviewProvider>;
+  const tab = query.tab ?? (procurement ? 'procurement' : 'day');
   if (preview.employee.portalArea === 'WORKDAY' && !employeeNavigation(payrollFeatureState().employeeEnabled).some(section => section.id === tab)) notFound();
-  return <>{preview.employee.portalArea === 'WORKDAY' && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} visitId={preview.visit.id} employeeName={preview.employee.name} expiresAt={preview.visit.expiresAt.toISOString()}>{preview.employee.portalArea === 'PROCUREMENT' ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
+  if (procurement && (!['day', 'schedule', 'procurement'].includes(tab) || (tab !== 'procurement' && preview.employee.department !== 'procurement'))) notFound();
+  const calendar = procurement && tab === 'procurement';
+  return <>{!calendar && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} {...providerProps}>{calendar ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
 }

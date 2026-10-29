@@ -10,6 +10,7 @@ import {
 
 import { buildFormSummaries, buildScheduleSummaries } from '@/lib/payroll-attendance-summary';
 import { mergePayrollAttendanceSources, PAYROLL_APP_ATTENDANCE_CUTOVERS } from '@/lib/payroll-attendance-source';
+import { mergeDianaPayrollDays, DIANA_DAY_SOURCE_FROM, DIANA_DAY_SOURCE_NAME } from '@/lib/payroll-diana-day-source';
 import { getMoscowDateKey } from '@/lib/workday';
 
 
@@ -103,15 +104,30 @@ export async function refreshPayrollAttendance(request: Request) {
     const attendance = mergePayrollAttendanceSources({
       googleRows: attendanceData.rows, appUsers, periodKey: period.periodKey, throughDate, cutovers,
     });
+    let scheduleSummaries = buildScheduleSummaries(scheduleData.rows, period.periodKey);
+    let scheduleMessage = scheduleData.message;
+    if (period.periodKey >= DIANA_DAY_SOURCE_FROM.slice(0, 7)) {
+      if (scheduleData.mode !== 'google-sheets') throw new Error('График Google недоступен.');
+      const dianaUsers = await prisma.user.findMany({
+        where: { role: 'EMPLOYEE', isActive: true, department: 'retail', OR: [{ payrollName: DIANA_DAY_SOURCE_NAME }, { name: DIANA_DAY_SOURCE_NAME }] },
+        select: { id: true, name: true, payrollName: true, workDays: {
+          where: { date: { gte: `${period.periodKey}-01`, lte: throughDate } },
+          select: { userId: true, date: true, startedAt: true, status: true },
+        } },
+      });
+      const merged = mergeDianaPayrollDays({ googleRows: scheduleData.rows, appUsers: dianaUsers, periodKey: period.periodKey, throughDate });
+      scheduleSummaries = merged.summaries;
+      scheduleMessage = `${scheduleMessage} ${merged.message}`;
+    }
     const payload = createPayrollAttendanceSnapshotPayload({
       period,
       attendanceMode: attendance.sources.length ? 'google-sheets+pwa' : attendanceData.mode,
       attendanceMessage: attendanceData.message,
       scheduleMode: scheduleData.mode,
-      scheduleMessage: scheduleData.message,
+      scheduleMessage,
       formSummaries: attendance.formSummaries,
       attendanceSources: attendance.sources,
-      scheduleSummaries: buildScheduleSummaries(scheduleData.rows, period.periodKey),
+      scheduleSummaries,
     });
     const replacementError = getPayrollAttendanceSnapshotReplacementError(payload, savedPayload);
     if (replacementError) throw new Error(replacementError);

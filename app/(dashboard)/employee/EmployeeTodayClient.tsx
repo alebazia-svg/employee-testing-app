@@ -69,7 +69,8 @@ import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-emplo
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
-import { colleaguePresence } from '@/lib/workday-presence';
+import { canEditDianaPastSchedule } from '@/lib/diana-october-schedule';
+import { actualColleagueWorkday, colleaguePresence } from '@/lib/workday-presence';
 import { expectedColleagueShiftCode, hasColleagueShiftConflict } from '@/lib/workday-colleague-shift';
 import { formatDurationWithSeconds } from '@/lib/workday-duration';
 import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
@@ -1972,11 +1973,12 @@ export function EmployeeTodayClient({
     });
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
+  const canEditOwnScheduleDate = (date: string) => date >= today || canEditDianaPastSchedule(user, date, today);
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
   const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
   const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
   const incompleteScheduleDates = calendarDays.filter((cell) => (
-    cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
+    cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
   ));
   const upcomingOwnVacation = ownVacationsState
     .filter((vacation) => vacation.status === 'active' && vacation.dateTo >= today)
@@ -2021,6 +2023,7 @@ export function EmployeeTodayClient({
 
   function colleagueDetail(person: UserSummary) {
     const workday = todayWorkdayByUser.get(person.id);
+    if (workday && needsWorkdayEndReminder(person)) return actualColleagueWorkday(workday);
     if (workday?.shiftCode) return `Смена ${shiftLabel(workday.shiftCode)}`;
     if (todayPresence(person) === 'scheduled') {
       const shiftContext = {
@@ -2094,7 +2097,7 @@ export function EmployeeTodayClient({
     const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working' && !departmentVacationForDate(date, entry.userId)).length;
     const coverage = scheduleCoverage(user.department, workingCount);
     const replacementRequested = date >= today && !ownVacation && coverage.needsReplacement && replacementRequestDates.has(date) && ownEntry?.status !== 'working';
-    const canEdit = date >= today;
+    const canEdit = canEditOwnScheduleDate(date);
     const workingNames = scheduleNames(selectedWorkingRows);
     const unfilledNames = scheduleNames(colleagueRows.filter(({ person, entry }) => !entry && !departmentVacationForDate(date, person.id)));
     const colleaguesUnfilled = Boolean(unfilledNames);
@@ -2306,7 +2309,7 @@ export function EmployeeTodayClient({
     if (!scheduleMonthLoaded) return;
     setError(''); setMessage('');
     const original = Object.fromEntries(calendarDays
-      .filter(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date))
+      .filter(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date))
       .map(cell => [cell.date, ownScheduleByDate.get(cell.date)?.status ?? null])) as Record<string, BulkScheduleStatus | null>;
     setBulkOriginalStatuses(original);
     setBulkWorkingDates(new Set(Object.entries(original).filter(([,status]) => status === 'working').map(([date]) => date)));
@@ -5253,7 +5256,7 @@ export function EmployeeTodayClient({
                 </div>
                 {workingColleagues.length > 0 && <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
-                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title={needsWorkdayEndReminder(user) ? 'Ещё не начали день' : 'Ещё не начали смену'} people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
                   const vacation = departmentVacationForDate(today, person.id);
                   return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
@@ -5298,7 +5301,7 @@ export function EmployeeTodayClient({
 
               {scheduleMode === 'list' && (
                 <div className='grid gap-2.5'>
-                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
+                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
                       <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
@@ -5358,7 +5361,7 @@ export function EmployeeTodayClient({
                     </button>
                   </div>}
 
-                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
+                  {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
                       <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
@@ -5392,7 +5395,7 @@ export function EmployeeTodayClient({
                       const isToday = cell.date === today;
                       const isPast = cell.date < today;
                       const isOutsideMonth = !cell.inMonth;
-                      const isLockedMissing = !ownEntry && isPast;
+                      const isLockedMissing = !ownEntry && isPast && !canEditDianaPastSchedule(user, cell.date, today);
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
