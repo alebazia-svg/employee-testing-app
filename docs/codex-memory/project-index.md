@@ -388,6 +388,8 @@ Released code `2c1d4961` over production 1.19.2. See
 identity, approved reserve recovery and final storage checks (18.25 GiB free).
 `procurement-final-candidate-20261029.md` preserves local/TEST acceptance evidence.
 Desktop financial APIs/sources and 1C configuration unchanged; experimental HTTP
-retry excluded. Account records were not changed: Astemir remains Operations,
-Diana disabled in Retail, Muhamed not created. Account activation is still separate.
+retry excluded. Subsequent owner-approved account activation is recorded in
+`procurement-employee-activation-20261029.md`: Astemir now Procurement with his
+existing finance access; Muhamed created as WORKDAY-only and linked to canonical
+payroll Кумыков Мухаммед. Diana remains disabled in Retail.
 Physical camera/push/device acceptance remains unverified.
