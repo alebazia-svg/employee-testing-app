@@ -107,3 +107,6 @@ a.tax-summary-row:hover{background:#faf8f5}
 .tax-callout .tax-hint{margin-left:4px}
 .tax-hint-pop p,.tax-panel-head .tax-hint-pop p,.tax-item .tax-hint-pop p,.tax-callout .tax-hint-pop p{color:#f3efe9;margin:0;font-size:12px;line-height:1.5;font-weight:400}
 .tax-hint-pop p+p{margin-top:6px}
+.tax-ops{font-size:12px}
+.tax-ops td small{display:block;max-width:420px;white-space:normal;color:#796e64;font-size:11px;line-height:1.35}
+.tax-ops th,.tax-ops td{padding:6px 10px}

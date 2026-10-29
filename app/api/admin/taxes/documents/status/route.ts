@@ -3,6 +3,7 @@ import { requireAdminApi } from '@/lib/admin-api-auth';
 import { loadPortalReports } from '@/lib/ausn-portal-view';
 import { reportChanges } from '@/lib/ausn-month-review';
 import { taxProcessingNote } from '@/lib/tax-processing-status';
+import { processableTypes } from '@/lib/ausn-processing';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,12 +19,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id') || '';
   const since = Date.parse(url.searchParams.get('since') || '');
-  const document = await prisma.taxControlDocument.findUnique({ where: { id }, select: { status: true } });
+  const document = await prisma.taxControlDocument.findUnique({ where: { id }, select: { status: true, documentType: true } });
   if (!document) return Response.json({ error: 'Документ не найден.' }, { status: 404 });
   const note = taxProcessingNote(id);
-  const state = document.status === 'PROCESSED' ? 'done' : document.status === 'PROCESSING_FAILED' ? 'failed' : 'processing';
+  const state = document.status === 'PROCESSED' || !processableTypes.has(document.documentType) ? 'done' : document.status === 'PROCESSING_FAILED' ? 'failed' : 'processing';
   let changes: string[] = [];
-  if (state === 'done' && Number.isFinite(since)) {
+  if (state === 'done' && document.status === 'PROCESSED' && Number.isFinite(since)) {
     const fulls = (await loadPortalReports().catch(() => [])).filter((report) => report.kind === 'full');
     const before = fulls.find((report) => stamp(report.sourceFile) < since);
     changes = reportChanges(before, fulls[0]);
