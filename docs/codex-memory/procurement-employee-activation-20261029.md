@@ -53,3 +53,21 @@ migration, production SQL, 1C write or financial submission was needed.
 
 Screenshot:
 `/Users/bela/.codex/visualizations/2026/10/26/01a17a42-c4f9-76c3-a778-25efa747a27a/muhamed-workday-configured-20261029.png`.
+
+## Subsequent owner-approved Diana activation
+
+Owner separately confirmed enabling Diana's disabled access on 2026-10-29. Through
+normal ADMIN Employees, changed only isActive to true; retained Кумахова Диана,
+login d.kumakhova, Retail, WORKDAY, SCAN and existing payroll identity/rule.
+Re-read shows active access. Actor-bound preview confirms Retail QR prompt with
+no shift selector, Day/Schedule/Salary navigation. Existing named Diana exception
+uses actual marks, end without QR and three 18:00/18:30/19:00 Moscow reminders.
+No real workday started, password reset, fiscal/financial action or 1C write.
+Existing workday policy tests cover Diana. Screenshot saved as
+`diana-workday-active-20261029.png` in the same visualization directory.
+
+Muhamed's original masked access dialog still exists in Microsoft Edge tab
+831432177; user was viewing the local Codex preview and could not see that Edge
+tab. Do not reset the password or reload/close this one-time dialog. Screenshot
+`muhamed-access-dialog-masked.png` shows where Show/Copy controls are located,
+without recording the password.

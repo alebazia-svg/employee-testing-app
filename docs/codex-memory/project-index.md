@@ -391,5 +391,5 @@ Desktop financial APIs/sources and 1C configuration unchanged; experimental HTTP
 retry excluded. Subsequent owner-approved account activation is recorded in
 `procurement-employee-activation-20261029.md`: Astemir now Procurement with his
 existing finance access; Muhamed created as WORKDAY-only and linked to canonical
-payroll Кумыков Мухаммед. Diana remains disabled in Retail.
+payroll Кумыков Мухаммед. Diana subsequently enabled in Retail by separate explicit owner approval.
 Physical camera/push/device acceptance remains unverified.
