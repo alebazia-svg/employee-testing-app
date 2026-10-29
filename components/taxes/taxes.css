@@ -1,0 +1,109 @@
+/* Taxes workspace. Same tokens as Контроль дня / Закупки: warm neutral panels,
+   copper accent, 13–14px body text, semibold rather than black weights. */
+.tax-ws{display:grid;gap:16px;max-width:1180px;margin-inline:auto;color:#25282b}
+.tax-panel{background:#fff;border:1px solid #e4ddd6;border-radius:14px;overflow:hidden}
+.tax-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid #eee7df}
+.tax-panel-head h2{font-size:16px;font-weight:650;margin:0;line-height:1.35}
+.tax-panel-head p{font-size:12px;color:#796e64;margin:3px 0 0;line-height:1.45}
+.tax-panel-head .tax-link{white-space:nowrap}
+.tax-body{padding:16px 18px}
+.tax-group{background:#efe9e2;padding:8px 18px;font-size:12px;font-weight:650;color:#4c443c;display:flex;gap:10px;align-items:baseline}
+.tax-group span{font-weight:500;color:#796e64}
+.tax-muted{color:#796e64}
+.tax-small{font-size:12px}
+.tax-link{color:#754725;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:4px}
+.tax-link:hover{color:#5c3518}
+.tax-link svg{width:14px;height:14px}
+.tax-term{border-bottom:1px dotted #b8a99a;cursor:help}
+
+.tax-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tax-kpi{padding:14px 18px;border-left:1px solid #eee7df;min-width:0}
+.tax-kpi:first-child{border-left:0}
+.tax-kpi small{display:block;font-size:11px;color:#796e64;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+.tax-kpi strong{display:block;font-size:clamp(20px,2.1vw,26px);line-height:1.2;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px}
+.tax-kpi span{display:block;font-size:12px;color:#796e64;margin-top:2px}
+.tax-kpi[data-accent=true] strong{color:#754725}
+@media(max-width:640px){.tax-kpis{grid-template-columns:1fr}.tax-kpi{border-left:0;border-top:1px solid #eee7df}.tax-kpi:first-child{border-top:0}.tax-kpi strong{font-size:22px}}
+
+.tax-limit-bar{position:relative;height:12px;border-radius:99px;background:#efe9e2;margin:4px 0 22px}
+.tax-limit-bar>i{display:block;height:100%;border-radius:99px;background:#3d8b5a}
+.tax-limit-bar[data-level=early]>i{background:#c69a44}.tax-limit-bar[data-level=plan]>i{background:#c06a1a}.tax-limit-bar[data-level=urgent]>i{background:#b63636}.tax-limit-bar[data-level=unknown]>i{background:#a6afb4}
+.tax-limit-bar b{position:absolute;top:-3px;width:2px;height:18px;background:#fff;box-shadow:0 0 0 1px #d8cfc5}
+.tax-limit-bar b::after{content:attr(data-label);position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#9a8e83;white-space:nowrap}
+
+.tax-callout{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.55;background:#fffaf4;border:1px solid #ecdccb;color:#4c3a2a}
+.tax-callout strong{font-weight:650}
+.tax-callout[data-tone=ok]{background:#f1f8f3;border-color:#cfe5d6;color:#22533a}
+.tax-callout[data-tone=warn]{background:#fff8e8;border-color:#efd9a6;color:#6b4a0d}
+.tax-callout[data-tone=error]{background:#fff3f2;border-color:#efc5c1;color:#8f2a24}
+.tax-callout p+p{margin-top:6px}
+
+.tax-status{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;line-height:1.3}
+.tax-status svg{width:12px;height:12px}
+.tax-status[data-tone=ok]{background:#e7f3ea;color:#267a45}
+.tax-status[data-tone=warn]{background:#fff1cf;color:#866014}
+.tax-status[data-tone=error]{background:#fae8e6;color:#a3342d}
+.tax-status[data-tone=muted]{background:#eef1f3;color:#58666f}
+.tax-status[data-tone=info]{background:#f4e6d5;color:#79502d}
+
+.tax-summary-row{display:grid;grid-template-columns:170px minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px 18px;border-top:1px solid #eee7df;font-size:13px}
+.tax-summary-row:first-child{border-top:0}
+a.tax-summary-row:hover{background:#faf8f5}
+.tax-summary-row>b{font-weight:650}
+.tax-summary-row p{line-height:1.5}
+@media(max-width:1100px){.tax-summary-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}.tax-summary-row>b{grid-column:1}.tax-summary-row>p{grid-column:1/-1;grid-row:2}.tax-summary-row>span{grid-column:2;grid-row:1}}
+
+.tax-queue{border-left:3px solid #a6afb4}
+.tax-queue[data-tone=error]{border-left-color:#b63636}.tax-queue[data-tone=warn]{border-left-color:#c69a44}.tax-queue[data-tone=info]{border-left-color:#b17b4d}
+.tax-queue>header{padding:10px 18px;background:#faf8f5;border-bottom:1px solid #eee7df;display:flex;align-items:center;gap:9px}
+.tax-queue[data-tone=error]>header{background:#fdf3f2}.tax-queue[data-tone=warn]>header{background:#fcf6e8}
+.tax-queue>header h2{font-size:14px;font-weight:650;margin:0}
+.tax-queue>header span{font-size:12px;padding:2px 7px;background:#eee7df;border-radius:6px;font-weight:600}
+.tax-item{padding:12px 18px;border-top:1px solid #eee7df;font-size:13px;line-height:1.5}
+.tax-queue>header+.tax-item{border-top:0}
+.tax-item>b{display:block;font-weight:650}
+.tax-item p{color:#5f564e}
+.tax-item .tax-action{margin-top:4px;color:#25282b}
+.tax-item .tax-action::before{content:'Что сделать: ';color:#796e64}
+
+.tax-channels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.tax-channel{border:1px solid #eee7df;border-radius:10px;padding:10px 12px;font-size:12px}
+.tax-channel i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
+.tax-channel strong{display:block;font-size:16px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}
+.tax-channel span{color:#796e64}
+@media(max-width:800px){.tax-channels{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tax-stack{display:flex;height:10px;border-radius:99px;overflow:hidden;background:#efe9e2}
+
+.tax-table-wrap{overflow-x:auto}
+.tax-table{width:100%;border-collapse:collapse;font-size:13px}
+.tax-table th{font-size:10px;text-transform:uppercase;letter-spacing:.025em;color:#7d7064;background:#faf8f5;padding:9px 12px;text-align:left;font-weight:600;white-space:nowrap}
+.tax-table td{padding:10px 12px;border-top:1px solid #eee7df;vertical-align:top}
+.tax-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tax-table tfoot td{font-weight:650;background:#faf8f5}
+.tax-table tr[data-tone=error] td{background:#fffafa}
+.tax-table td small{display:block;font-size:11px;color:#796e64;margin-top:2px}
+.tax-table td small[data-tone=error]{color:#a3342d;font-weight:600}
+.tax-table td:first-child,.tax-table th:first-child{padding-left:18px}
+.tax-table td:last-child,.tax-table th:last-child{padding-right:18px}
+
+.tax-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;font-size:12px;color:#796e64;padding:2px 4px}
+.tax-details>summary{list-style:none;cursor:pointer}
+.tax-details>summary::-webkit-details-marker{display:none}
+.tax-upload{margin-top:10px;padding:12px;border-radius:10px;background:#faf8f5;border:1px solid #eee7df}
+
+.tax-more{margin-top:3px}
+.tax-more>summary{display:inline-flex}
+.tax-item>b+.tax-link,.tax-item>b+div{margin-top:6px}
+
+/* (i) hint: one tap opens a short dark bubble; nothing extra on screen by default. */
+.tax-hint{position:relative;display:inline-flex;vertical-align:middle;font-weight:400}
+.tax-hint>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:#a0938a;border-radius:99px}
+.tax-hint>summary::-webkit-details-marker{display:none}
+.tax-hint>summary:hover,.tax-hint[open]>summary{color:#754725}
+.tax-hint-label{font-size:12px;font-weight:600;color:#754725}
+.tax-hint-pop{position:absolute;z-index:30;top:calc(100% + 6px);left:-10px;width:min(320px,78vw);padding:10px 12px;border-radius:10px;background:#25282b;color:#f3efe9;font-size:12px;font-weight:400;line-height:1.5;text-transform:none;letter-spacing:0;white-space:normal;text-align:left;box-shadow:0 10px 24px rgba(23,28,36,.25)}
+.tax-item .tax-hint-pop{left:auto;right:-10px}
+.tax-item>b .tax-hint-pop,.tax-panel-head .tax-hint-pop,.tax-callout .tax-hint-pop{left:-10px;right:auto}
+.tax-callout .tax-hint{margin-left:4px}
+.tax-hint-pop p,.tax-panel-head .tax-hint-pop p,.tax-item .tax-hint-pop p,.tax-callout .tax-hint-pop p{color:#f3efe9;margin:0;font-size:12px;line-height:1.5;font-weight:400}
+.tax-hint-pop p+p{margin-top:6px}

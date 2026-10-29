@@ -28,7 +28,7 @@ import { prisma } from '@/lib/prisma';
 import {isPaymentReceipt} from './procurement-document-policy';
 import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from './ausn-report-cache';
 import { buildTaxDocumentPlan } from './tax-document-plan';
-import { taxDocumentReminderEventKey, taxLimitReminderEventKey } from './tax-document-reminders';
+import { currentTaxAttentionReminders, taxDocumentReminderEventKey, taxLimitReminderEventKey } from './tax-document-reminders';
 
 export type AdminInboxViewItem = {
   id: string;
@@ -69,7 +69,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       orderBy: { event: { occurredAt: 'desc' } },
     }),
     prisma.adminInboxReceipt.findMany({
-      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure', 'tax_control', 'tax_limit'] } } },
+      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure', 'tax_control', 'tax_limit', 'tax_freshness', 'tax_limit_decision'] } } },
       include: { event: true }, orderBy: { event: { occurredAt: 'desc' } },
     }),
   ]);
@@ -91,6 +91,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const risk = assessTaxLimitRisk(report);
     return risk.level === 'unknown' || risk.level === 'normal' ? undefined : taxLimitReminderEventKey({ level: risk.level, dataCutoff: report.dataCutoff });
   }) : undefined;
+  const hasTaxAttention = rows.some((row) => ['tax_freshness', 'tax_limit_decision'].includes(row.event.sourceType));
+  const currentTaxAttentionKeys = hasTaxAttention ? new Set((await currentTaxAttentionReminders(now).catch(() => [])).map((reminder) => reminder.eventKey)) : new Set<string>();
   const receiptIds=rows.filter(r=>r.event.sourceType==='supplier_payment_receipt').map(r=>r.event.sourceId);
   const currentReceipts=receiptIds.length?await prisma.supplierPaymentReceipt.findMany({where:{id:{in:receiptIds}},select:{id:true,purpose:true,replacedById:true}}):[];
   const activeReceiptIds=new Set(currentReceipts.filter(isPaymentReceipt).map(f=>f.id));
@@ -246,6 +248,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       current: sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
         : sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
         : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
+        : sourceType === 'tax_freshness' || sourceType === 'tax_limit_decision' ? currentTaxAttentionKeys.has(row.event.eventKey)
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),

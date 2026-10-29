@@ -1,7 +1,7 @@
 export type AttentionPushDetail = { identity: string; detail: string; action: string; reference?: string };
 export type AttentionUrgency = { key: string; at: string; label: string; phase: 'upcoming' | 'due'; signals?: string[] };
 /** Business attention is independent from notification read state. */
-export const ATTENTION_LIFECYCLE_SOURCES = ['fiscal_manager_attribution', 'work_schedule_coverage', 'expense_cash_issue', 'expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review', 'tax_limit'] as const;
+export const ATTENTION_LIFECYCLE_SOURCES = ['fiscal_manager_attribution', 'work_schedule_coverage', 'expense_cash_issue', 'expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review', 'tax_limit', 'tax_freshness', 'tax_limit_decision'] as const;
 export const ATTENTION_PUSH_TYPES = ['fiscal_manager.attention', 'work_schedule.coverage_gap', 'expense_request.cash_issue', 'expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.created', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
 export type AttentionItem = {
   id: string; readAt: string | null;

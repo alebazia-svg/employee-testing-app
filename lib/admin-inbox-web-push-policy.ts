@@ -16,6 +16,8 @@ const STANDARD_HOURS_EVENT_TYPES = [
   'terminal_fiscal_review.employee_message',
   'dependency.down',
   'infrastructure.down',
+  'tax.figures_stale',
+  'tax.limit_decision',
 ] as const;
 
 const SHIFT_CLOSE_EVENT_TYPES = [

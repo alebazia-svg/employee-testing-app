@@ -1,0 +1,15 @@
+[Unit]
+Description=OFFONIKA AUSN figures refresh through the portal intake bridge (no document, read-only sources)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-ausn-refresh.lock /usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/refresh-ausn-report.ts
+TimeoutStartSec=20min
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

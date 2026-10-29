@@ -55,6 +55,16 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Лимит АУСН',
     actionLabel: 'Открыть налоги',
   },
+  'tax.limit_decision': {
+    category: 'decisions',
+    typeLabel: 'Лимит АУСН',
+    actionLabel: 'Открыть налоги',
+  },
+  'tax.figures_stale': {
+    category: 'system',
+    typeLabel: 'Налоги: данные',
+    actionLabel: 'Открыть налоги',
+  },
   'workday_issue.employee_message': {
     category: 'messages',
     typeLabel: 'Сообщение сотрудника',
@@ -158,6 +168,16 @@ export function adminInboxSourceState(input: {
     return input.current
       ? { active: true, label: 'Документы ожидаются', tone: 'attention' }
       : { active: false, label: 'Период обновлён', tone: 'resolved' };
+  }
+  if (input.sourceType === 'tax_freshness') {
+    return input.current
+      ? { active: true, label: 'Цифры не обновлены', tone: 'attention' }
+      : { active: false, label: 'Цифры обновились', tone: 'resolved' };
+  }
+  if (input.sourceType === 'tax_limit_decision') {
+    return input.current
+      ? { active: true, label: 'Нужно решение', tone: 'attention' }
+      : { active: false, label: 'Ситуация изменилась', tone: 'resolved' };
   }
   if (input.sourceType === 'tax_limit') {
     return input.current

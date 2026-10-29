@@ -5,6 +5,8 @@ import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from
 import { queueAdminInboxTelegramDelivery } from './admin-inbox';
 import { buildTaxDocumentPlan } from './tax-document-plan';
 import { taxDocumentTypes } from './tax-document-types';
+import { loadPortalReports } from './ausn-portal-view';
+import { taxDecisionReminder, taxFreshnessReminder, type TaxReminder } from './tax-attention-reminders';
 
 export function taxDocumentReminderEventKey(period: { periodKey: string; missing: readonly string[] }) {
   return `tax_document_missing:${period.periodKey}:${[...period.missing].sort().join(',')}`;
@@ -44,12 +46,49 @@ export async function syncTaxLimitReminder(db: PrismaClient, now = new Date()) {
 }
 
 export async function syncTaxControlReminders(db: PrismaClient, now = new Date()) {
-  const [documents, limit, processing] = await Promise.all([
+  const [documents, limit, processing, attention] = await Promise.all([
     syncTaxDocumentReminder(db, now),
     syncTaxLimitReminder(db, now),
     syncTaxProcessingFailureReminder(db, now),
+    syncTaxAttentionReminders(db, now),
   ]);
-  return { documents, limit, processing };
+  return { documents, limit, processing, attention };
+}
+
+// Stale/unavailable figures and the limit decision date go only to the person
+// responsible for tax documents (TAX_CONTROL_ALERT_LOGINS, comma-separated), in the
+// portal inbox and web push — never to Telegram and never to other admins.
+export async function currentTaxAttentionReminders(now = new Date()): Promise<TaxReminder[]> {
+  const reports = await loadPortalReports();
+  const year = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(now).slice(0, 4);
+  const full = reports.find((report) => report.kind === 'full' && report.year === year);
+  const freshness = taxFreshnessReminder(reports, now);
+  // A decision date computed from stale figures would be misleading.
+  const decision = freshness ? undefined : taxDecisionReminder(full?.available ? full : undefined, now);
+  return [freshness, decision].filter((item): item is TaxReminder => Boolean(item));
+}
+
+export function taxAlertLogins(env: Record<string, string | undefined> = process.env) {
+  return (env.TAX_CONTROL_ALERT_LOGINS || '').split(',').map((login) => login.trim()).filter(Boolean);
+}
+
+export async function syncTaxAttentionReminders(db: PrismaClient, now = new Date()) {
+  const logins = taxAlertLogins();
+  if (!logins.length) return { state: 'no_recipient' as const };
+  const reminders = await currentTaxAttentionReminders(now);
+  const recipients = await db.user.findMany({ where: { login: { in: logins }, role: 'ADMIN', isActive: true }, select: { id: true } });
+  if (!recipients.length) return { state: 'no_recipient' as const };
+  for (const reminder of reminders) {
+    await db.$transaction(async (tx) => {
+      const saved = await tx.adminInboxEvent.upsert({
+        where: { eventKey: reminder.eventKey },
+        create: { eventKey: reminder.eventKey, type: reminder.type, title: reminder.title, body: reminder.body, href: '/admin/taxes', sourceType: reminder.sourceType, sourceId: reminder.eventKey.split(':').slice(1).join(':'), occurredAt: now },
+        update: {},
+      });
+      await tx.adminInboxReceipt.createMany({ data: recipients.map((user) => ({ eventId: saved.id, userId: user.id })), skipDuplicates: true });
+    });
+  }
+  return { state: reminders.length ? 'raised' as const : 'clear' as const, keys: reminders.map((reminder) => reminder.eventKey) };
 }
 
 export async function syncTaxProcessingFailureReminder(db: PrismaClient, now = new Date()) {
