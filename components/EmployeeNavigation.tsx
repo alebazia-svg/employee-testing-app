@@ -6,6 +6,7 @@ import { CalendarDays, Clock3, CreditCard, ShoppingBag } from 'lucide-react';
 import { PremiumCalendarIcon, PremiumCardIcon, PremiumClockIcon } from './PwaPreviewIcons';
 import { useEmployeePreview } from './EmployeePreviewProvider';
 import { employeeNavigation, type EmployeeSection } from '@/lib/employee-navigation';
+import { useProcurementMobileNavigation } from './ProcurementMobileNavigation';
 import { cn } from '@/lib/utils';
 
 const icons = { day: PremiumClockIcon, schedule: PremiumCalendarIcon, payroll: PremiumCardIcon };
@@ -13,6 +14,7 @@ export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled 
   active: EmployeeSection | 'procurement'; payrollEnabled: boolean; procurementEnabled?: boolean; onSelect?: (section: EmployeeSection) => boolean;
 }) {
   const router = useRouter();
+  const mobileNavigation = useProcurementMobileNavigation();
   const preview = useEmployeePreview();
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -22,13 +24,14 @@ export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled 
       {sections.map(section => {
         const Icon = section.id === 'procurement' ? null : icons[section.id], selected = active === section.id;
         const href = preview ? preview.href(section.href) : section.href;
-        const crossRoute = procurementEnabled && !selected && (active === 'procurement' || section.id === 'procurement');
+        const crossRoute = !mobileNavigation && procurementEnabled && !selected && (active === 'procurement' || section.id === 'procurement');
         const attributes = {
           'aria-current': selected ? 'page' as const : undefined,
           'aria-busy': isPending && pendingSection === section.id || undefined,
           onClick: (event: MouseEvent<HTMLElement>) => {
             event.preventDefault();
             if (selected) return;
+            if (mobileNavigation && section.id !== 'payroll') { mobileNavigation.select(section.id); return; }
             if (section.id !== 'procurement' && onSelect?.(section.id)) return;
             setPendingSection(section.id);
             startTransition(() => router.push(href));

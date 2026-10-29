@@ -2,13 +2,13 @@ import React from 'react';
 import { deliveryCollectionAmount, deliveryNativeFresh, type DeliveryNativeView } from '@/lib/procurement-delivery-native';
 const money = (n: number) => `${n.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
 const titles = { waiting: 'Ожидает согласования', approved: 'Пополнение согласовано', payable: 'К выдаче', partial: 'Выдано частично', issued: 'Пополнение выдано', rejected: 'Заявка отклонена', review: 'Статус заявки уточняется' };
-export function ProcurementDeliveryNativeStatus({ view, now, failed = false, audience = 'admin', showCompleted = false }: { view?: DeliveryNativeView; now?: number; failed?: boolean; audience?: 'admin' | 'buyer'; showCompleted?: boolean }) {
+export function ProcurementDeliveryNativeStatus({ view, now, failed = false, audience = 'admin' }: { view?: DeliveryNativeView; now?: number; failed?: boolean; audience?: 'admin' | 'buyer' }) {
   if (!view || view.state === 'unlinked') return null;
   const s = view.status;
   if (failed || view.state === 'unavailable' || !s || !deliveryNativeFresh(s, now)) return <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{audience === 'buyer' ? 'Статус пополнения временно недоступен. Обновим автоматически.' : 'Статус заявки временно недоступен. Обновим автоматически.'}</p>;
   if (audience === 'buyer') {
     const amount = deliveryCollectionAmount(s);
-    if (amount === null) return showCompleted && s.state === 'issued' && s.issued === s.amount && s.remaining === 0 ? <p role="status" className="mt-3 text-sm text-stone-700"><strong>Выдано {money(s.issued)}</strong><span className="mt-1 block text-xs text-stone-500">Заявка № {s.number}</span></p> : null;
+    if (amount === null) return null;
     return <div role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">
       <p className="font-bold">Можно получить <span className="whitespace-nowrap">{money(amount)}</span></p>
       <p className="mt-1">{s.cashbox}</p>

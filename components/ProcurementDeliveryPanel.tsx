@@ -85,7 +85,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
       <p>Запрос на пополнение отправлен</p>
       {view.requestDetails ? <p className="mt-1">{view.requestDetails.amount.toLocaleString('ru-RU', { minimumFractionDigits: Number.isInteger(view.requestDetails.amount) ? 0 : 2, maximumFractionDigits: 2 })} ₽</p> : null}
     </div> : null}
-    <ProcurementDeliveryNativeStatus view={view.nativeRequest} now={now} failed={refreshFailed} audience="buyer" showCompleted={!!mobilePresentation} />
+    <ProcurementDeliveryNativeStatus view={view.nativeRequest} now={now} failed={refreshFailed} audience="buyer" />
     {!buyerRequested || !view.requestDetails || issued ? <button type="button" disabled={!canRequest && !preview}
       onClick={() => { setError(''); setFormOpen(true); }} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{buyerRequested && !issued ? 'Указать сумму' : 'Запросить пополнение'}</button> : null}
     {formOpen ? <ProcurementDeliveryRequestDialog balance={view.snapshot.balance ?? 0} pending={pending === 'POST'} available={canRequest}

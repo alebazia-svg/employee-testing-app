@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { EmployeeMobileStylePreload } from '@/components/EmployeeMobileStylePreload';
+import { Suspense } from 'react';
+import { ProcurementWorkdayContent } from '@/components/ProcurementWorkdayContent';
 import { notFound } from 'next/navigation';
 import { getCurrentAdmin } from '@/lib/auth';
 import { readEmployeePreview } from '@/lib/employee-preview';
@@ -28,6 +31,11 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
   const tab = query.tab ?? (procurement ? 'procurement' : 'day');
   if (preview.employee.portalArea === 'WORKDAY' && !employeeNavigation(payrollFeatureState().employeeEnabled).some(section => section.id === tab)) notFound();
   if (procurement && (!['day', 'schedule', 'procurement'].includes(tab) || (tab !== 'procurement' && preview.employee.department !== 'procurement'))) notFound();
+  if (procurement && frame === 'phone' && preview.employee.department === 'procurement') return <><EmployeeMobileStylePreload/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}>
+    <ProcurementShell userName={preview.employee.name} workdayEnabled workdayContent={<Suspense fallback={<p className='px-4 py-6 text-sm text-slate-500'>Загружаем рабочий день…</p>}><ProcurementWorkdayContent user={preview.employee}/></Suspense>}>
+      <ProcurementHome user={preview.employee} readOnly />
+    </ProcurementShell>
+  </EmployeePreviewProvider></>;
   const calendar = procurement && tab === 'procurement';
   return <>{!calendar && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} {...providerProps}>{calendar ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
 }

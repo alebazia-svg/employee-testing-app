@@ -397,3 +397,16 @@
  .procurement-source-status li strong{font-size:12px;font-weight:600}
  .procurement-source-status li p{margin:3px 0 0;font-size:12px;line-height:1.5;color:#756f66}
 }
+
+/* Mounted mobile views share one header/navigation. Hidden views must stay hidden
+   even when their ordinary layout uses flex/grid. Desktop tree is untouched. */
+.procurement-responsive-shell [data-mobile-pane][hidden] { display: none !important; }
+.procurement-responsive-shell .employee-material-ui.procurement-embedded-workday {
+  min-height: 0 !important; padding: 0 !important; background: transparent !important;
+}
+.procurement-responsive-shell.employee-material-ui .procurement-mobile-cabinet > .employee-material-header {
+  padding: 22px 18px 44px !important;
+}
+.procurement-responsive-shell .procurement-mobile-pages:has(> [data-mobile-pane='workday']:not([hidden]))::after {
+  height: 0 !important;
+}

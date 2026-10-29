@@ -9,7 +9,7 @@ export function EmployeePreviewViewport({ visitId, employeeName }: { visitId: st
   const [device, setDevice] = useState<'phone' | 'desktop'>('phone');
   const preview = useEmployeePreview();
   const topInset = preview?.topInset ?? 64;
-  return <section className='min-h-screen bg-[#f1f0ed] pb-6'>
+  return <section className='bg-[#f1f0ed] pb-6' style={{ minHeight: `calc(100dvh - ${topInset}px)` }}>
     <div className='sticky z-30 flex justify-center bg-[#f1f0ed] px-4 py-4' style={{ top: topInset }}>
       <div role='group' aria-label='Размер экрана сотрудника' className='inline-flex gap-1 rounded-xl border border-[#d7c4b1] bg-[#eee8df] p-1'>
         {([{ id: 'phone', label: 'Телефон', Icon: Smartphone }, { id: 'desktop', label: 'Компьютер', Icon: Monitor }] as const).map(({ id, label, Icon }) =>

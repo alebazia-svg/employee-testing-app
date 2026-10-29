@@ -11,6 +11,7 @@ import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employe
 import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
+import { useProcurementMobileNavigation } from '@/components/ProcurementMobileNavigation';
 import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { initialEmployeeSection } from '@/lib/employee-navigation';
 import { PersonalPayrollClient } from './payroll/PersonalPayrollClient';
@@ -1276,8 +1277,16 @@ export function EmployeeTodayClient({
     'mobo-type': 'portal-palette-mobo portal-typography-refined',
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
-  const [activeTab, setActiveTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
-  useEmployeeActivityVisit(activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
+  const mobileNavigation = useProcurementMobileNavigation();
+  const [localTab, setLocalTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
+  const activeTab: Tab = mobileNavigation && mobileNavigation.active !== 'procurement' ? mobileNavigation.active : localTab;
+  const selectMobile = mobileNavigation?.select;
+  const setActiveTab = useCallback((tab: Tab) => {
+    setLocalTab(tab);
+    if (tab === 'day' || tab === 'schedule') selectMobile?.(tab, true);
+  }, [selectMobile]);
+  const workdayVisible = !mobileNavigation || mobileNavigation.active !== 'procurement';
+  useEmployeeActivityVisit(!workdayVisible ? null : activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1335,7 +1344,7 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
-  useEmployeePeriodView('schedule_view', scheduleMode === 'month' ? calendarMonth : selectedScheduleDate, activeTab === 'schedule');
+  useEmployeePeriodView('schedule_view', scheduleMode === 'month' ? calendarMonth : selectedScheduleDate, workdayVisible && activeTab === 'schedule');
   const scheduleAuditSeen = useRef('');
   useEffect(() => { if (activeTab !== 'schedule') scheduleAuditSeen.current = ''; }, [activeTab]);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
@@ -1575,6 +1584,7 @@ export function EmployeeTodayClient({
   const openedScheduleQuery = useRef<string | null>(null);
   useEffect(() => {
     if (searchParams.get('tab') !== 'schedule') { openedScheduleQuery.current = null; return; }
+    if (mobileNavigation && !searchParams.has('date') && !searchParams.has('edit')) return;
     const key = searchParams.toString();
     if (openedScheduleQuery.current === key) return;
     openedScheduleQuery.current = key;
@@ -2185,6 +2195,12 @@ export function EmployeeTodayClient({
       </div>
     );
   }
+
+  const setMobileNavigationHidden = mobileNavigation?.setNavigationHidden;
+  useEffect(() => {
+    setMobileNavigationHidden?.(Boolean(bulkScheduleMode || bulkScheduleConfirmOpen || bulkScheduleExitConfirmOpen || editingScheduleDate || pendingScheduleChange || vacationEditorOpen));
+    return () => setMobileNavigationHidden?.(false);
+  }, [setMobileNavigationHidden, bulkScheduleMode, bulkScheduleConfirmOpen, bulkScheduleExitConfirmOpen, editingScheduleDate, pendingScheduleChange, vacationEditorOpen]);
 
   function openVacationEditor(vacation?: EmployeeVacation | null) {
     const initialDate = selectedScheduleDate >= today ? selectedScheduleDate : today;
@@ -4188,8 +4204,9 @@ export function EmployeeTodayClient({
     );
   }
 
+  const WorkdayRoot = mobileNavigation ? 'div' : 'main';
   return (
-    <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass, activeTab === 'payroll' && 'payroll-phone')}>
+    <WorkdayRoot className={cn(mobileNavigation ? 'portal-neutral-design employee-material-ui procurement-embedded-workday' : 'portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass, activeTab === 'payroll' && 'payroll-phone')}>
       <EmployeeCloseBlockedSheet
         open={closeBlockedSheetOpen}
         items={attentionItems}
@@ -4488,8 +4505,8 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
-      <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
-        <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
+      <div className={mobileNavigation ? 'flex min-w-0 flex-col' : 'employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'}>
+        {!mobileNavigation && <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />}
 
         <div className={cn(
           activeTab === 'payroll' ? 'flex-1' : 'flex-1 px-4',
@@ -5546,7 +5563,7 @@ export function EmployeeTodayClient({
         </div>
       </div>
 
-        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation procurementEnabled={user.portalArea === 'PROCUREMENT'} active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
+        {!mobileNavigation && !bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation procurementEnabled={user.portalArea === 'PROCUREMENT'} active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
           if (section === 'schedule' && activeTab !== 'schedule') {
             setCalendarMonth(monthKeyFromDate(today));
             setSelectedScheduleDate(today);
@@ -5554,6 +5571,6 @@ export function EmployeeTodayClient({
           setActiveTab(section);
           return true;
         }} />}
-    </main>
+    </WorkdayRoot>
   );
 }
