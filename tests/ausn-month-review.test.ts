@@ -45,7 +45,7 @@ test('issues put real differences first and never report an unpaid month before 
   const issues = reviewIssues({ report, months: reviewMonths({ report, plan, today: '2026-10-25' }) });
   assert.equal(issues[0].severity, 'high');
   assert.ok(issues.some((issue) => issue.kind === 'fns' && issue.periodKey === '2026-08' && issue.amount === 15_000));
-  assert.ok(issues.some((issue) => issue.kind === 'payment' && issue.periodKey === '2026-08' && /недоплачено/.test(issue.title)));
+  assert.ok(issues.some((issue) => issue.kind === 'payment' && issue.periodKey === '2026-08' && /найденный платёж меньше/.test(issue.title)));
   assert.ok(!issues.some((issue) => issue.kind === 'payment' && issue.periodKey === '2026-10'));
   assert.ok(issues.some((issue) => issue.kind === 'refunds'));
 });
@@ -89,4 +89,33 @@ test('no false alarms from production data: open month, unsearched payments, one
   assert.ok(!issues.some((issue) => issue.kind === 'payment' && /не найдена/.test(issue.title)));
   assert.ok(!issues.some((issue) => issue.periodKey === '2026-10' && issue.kind === 'fns' && issue.severity === 'high'));
   assert.equal(issues.filter((issue) => issue.kind === 'ens' && issue.severity === 'medium').length, 1);
+});
+
+
+test('unknown or inconsistent comparisons cannot close reconciliation', () => {
+  for (const difference of [undefined, 0]) {
+    const changed = { ...report, monthDetails: report.monthDetails.map((d) => d.periodKey === '2026-05' ? { ...d, fnsDifference: difference } : d) };
+    const month = reviewMonths({ report: changed, plan: [], today: '2026-11-30' }).find((m) => m.periodKey === '2026-05')!;
+    assert.equal(month.checks[0].state, 'unknown');
+    assert.notEqual(month.state, 'ok');
+  }
+});
+
+test('upload without comparison never announces a match', () => {
+  const before = { ...report, monthDetails: [] };
+  const after = { ...report, monthDetails: [{ ...report.monthDetails[0], fnsAccepted: 100, fnsDifference: undefined }] };
+  const changes = reportChanges(before, after).join(' ');
+  assert.match(changes, /сопоставление не подтверждено/);
+  assert.doesNotMatch(changes, /совпадает/);
+});
+
+test('a completed historical cutoff month remains closed', () => {
+  const historical = { ...report, dataCutoff: '2026-09-30', monthlyIncome: [{ periodKey: '2026-09', label: 'Сентябрь 2026', amount: 100, partial: false }], monthDetails: [] };
+  assert.equal(reviewMonths({ report: historical, plan: [], today: '2026-10-30' })[0].partial, false);
+});
+
+test('unavailable optional sources hide monthly as well as annual control values', () => {
+  const gated = parsePortalReport(ownerFullReport.replace(/загружен[^\n|]*/g, 'не выполнялась'), 'ausn-executive-full-20261025T074847.md');
+  assert.equal(gated.available, true);
+  assert.ok(gated.monthDetails.every((d) => d.fnsAccepted === undefined && d.fnsDifference === undefined && d.fnsAssessed === undefined));
 });
