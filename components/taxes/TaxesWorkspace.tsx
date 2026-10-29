@@ -120,7 +120,7 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
   const unpaidDue = months.filter((month) => month.checks.find((check) => check.key === 'payment')?.state === 'missing');
   const underpaid = months.filter((month) => month.checks.find((check) => check.key === 'payment')?.state === 'diff' && (month.detail?.enpPayment ?? 0) < (month.detail?.tax ?? 0));
   const status: readonly [string, string] = !outlook ? ['muted', 'Нет прогноза'] : outlook.state === 'exceeded' ? ['error', 'Лимит превышен'] : outlook.state === 'decide_now' ? ['error', 'Решение нужно сейчас'] : outlook.state === 'decide_by' ? ['warn', `Решить до ${dayMonth(outlook.decisionDate)}`] : ['ok', 'Хватит до конца года'];
-  const range = outlook && outlook.state !== 'exceeded' && outlook.cautious.withinYear ? (outlook.usual.withinYear && outlook.cautious.date !== outlook.usual.date ? `${dayNum(outlook.cautious.date)}–${dayMonth(outlook.usual.date)}` : dayMonth(outlook.cautious.date)) : undefined;
+  const range = outlook && outlook.state !== 'exceeded' && outlook.cautious.withinYear ? (outlook.usual.withinYear && outlook.cautious.date !== outlook.usual.date ? (outlook.cautious.date?.slice(0, 7) === outlook.usual.date?.slice(0, 7) ? `${dayNum(outlook.cautious.date)}–${dayMonth(outlook.usual.date)}` : `${dayMonth(outlook.cautious.date)} – ${dayMonth(outlook.usual.date)}`) : dayMonth(outlook.cautious.date)) : undefined;
   const barLevel = risk.level !== 'unknown' ? risk.level : used >= 95 ? 'urgent' : used >= 90 ? 'plan' : used >= 80 ? 'early' : 'normal';
   return <>
     <section className='tax-panel' aria-label='Годовой лимит дохода'>
@@ -239,7 +239,9 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
 function Documents({ missingTypes, documents, upload, generalUpload, plan, afterUpload }: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
   const declaration = documents.find((document) => document.documentType === 'USN_DECLARATION');
   const transition = documents.find((document) => document.documentType === 'AUSN_TRANSITION_NOTICE');
-  const statusLabel = (status: string) => status === 'PROCESSED' ? ['ok', 'Учтён в сверке'] : status === 'PROCESSING_FAILED' ? ['error', 'Не обработан'] : ['muted', 'В архиве'];
+  const processingTypes = new Set(['AUSN_INCOME', 'ENS_OPERATIONS', 'AUSN_CALCULATION']);
+  // A processable file stays UPLOADED only while the server recalculates (a few minutes).
+  const statusLabel = (document: TaxDocumentRow) => document.status === 'PROCESSED' ? ['ok', 'Учтён в сверке'] : document.status === 'PROCESSING_FAILED' ? ['error', 'Не обработан'] : processingTypes.has(document.documentType) && Date.now() - new Date(document.createdAt).getTime() < 20 * 60_000 ? ['info', 'Пересчитываем…'] : ['muted', 'В архиве'];
   return <>
     <section className='tax-panel tax-queue' data-tone={missingTypes.length ? 'warn' : 'info'} aria-label='Что загрузить'>
       <header><h2>{missingTypes.length ? 'Что загрузить' : 'Все документы загружены'}</h2>{missingTypes.length > 0 && <span>{missingTypes.length}</span>}</header>
@@ -269,7 +271,7 @@ function Documents({ missingTypes, documents, upload, generalUpload, plan, after
       <div className='tax-panel-head'><div><h2>История загрузок</h2><p>{plural(documents.length, 'файл', 'файла', 'файлов')}</p></div></div>
       <div className='tax-table-wrap'><table className='tax-table'>
         <thead><tr><th>Документ</th><th>Период</th><th>Статус</th><th>Загружен</th><th /></tr></thead>
-        <tbody>{documents.map((document) => { const [tone, label] = statusLabel(document.status); return <tr key={document.id}>
+        <tbody>{documents.map((document) => { const [tone, label] = statusLabel(document); return <tr key={document.id}>
           <td><span className='font-semibold'>{documentName(document.documentType)}</span><small className='max-w-[320px] truncate'>{document.originalName}</small></td>
           <td className='whitespace-nowrap'>{coverage(document)}</td>
           <td><span className='tax-status' data-tone={tone}>{label}</span></td>

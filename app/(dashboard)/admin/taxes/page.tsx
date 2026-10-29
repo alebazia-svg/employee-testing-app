@@ -5,7 +5,7 @@ import { loadPortalReports } from '@/lib/ausn-portal-view';
 import { getCurrentAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildTaxWorkspace } from '@/lib/tax-workspace-data';
-import { TaxDocumentUpload } from './TaxDocumentUpload';
+import { TaxDocumentUpload, TaxUploadStatus } from './TaxDocumentUpload';
 import { RefreshFigures } from '@/components/taxes/RefreshFigures';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +31,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
       documents={documents.map((document) => ({ ...document, uploadedBy: document.uploadedBy?.name }))}
       upload={({ documentType, periodKey }) => <TaxDocumentUpload fixedType={documentType as never} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} />}
       refresh={<RefreshFigures />}
+      afterUpload={<TaxUploadStatus placement='page' />}
       generalUpload={<TaxDocumentUpload defaultDocumentType='AUSN_KKT' defaultPeriod={latestDuePeriod} latestDuePeriod={latestDuePeriod} />}
     />
   </AdminShell>;

@@ -79,3 +79,14 @@ Restore the preceding verified image and source commit; disable
 - `TAX_CONTROL_ALERT_LOGINS=admin` (the only ADMIN account, used by Бэла).
 - Known dependency: Platforma OFD is read through the Mac tunnel; when the Mac
   sleeps, refresh fails and the hourly timer retries.
+
+## 1.19.4 — upload answers at once (1.19.3 was the procurement release)
+
+- Upload of a processable tax file returns 202 right after the file is saved; the
+  yearly recalculation (3–5 min) runs in the background and the page follows it via
+  `GET /api/admin/taxes/documents/status?id=&since=` («Файл принят» → «Готово» with
+  what changed, or the reason it failed). History shows «Пересчитываем…» meanwhile.
+- Limit end range across two months reads «30 ноября – 3 декабря».
+- Runner on the server (separate from the portal): e90c175 — ENS/LK uploads accumulate,
+  Alfa-Bank account counted, own transfers excluded. Rollback chain in
+  /root/taxes-release-20261029.rollback (PREV_RUNNER_MERGE, PREV_RUNNER_ALFA).
