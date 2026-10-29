@@ -1,5 +1,6 @@
 import type { PortalMonthDetail, PortalReport } from './ausn-portal-view';
 import type { TaxPeriodPlan } from './tax-document-plan';
+import type { FnsGaps, FnsMonthGaps } from './ausn-fns-gaps';
 
 // Presentation layer over runner values. It compares figures the runner already
 // printed for the same month; it never recalculates a tax base or a tax amount.
@@ -7,7 +8,7 @@ export type CheckState = 'ok' | 'diff' | 'missing' | 'not_due' | 'unknown';
 export type MonthCheck = { key: 'fns' | 'ens' | 'payment' | 'documents'; label: string; state: CheckState; value?: string; note?: string };
 export type MonthState = 'ok' | 'attention' | 'waiting' | 'open';
 export type MonthReview = { periodKey: string; detail?: PortalMonthDetail; partial: boolean; state: MonthState; checks: MonthCheck[] };
-export type ReviewIssue = { periodKey: string; severity: 'high' | 'medium' | 'low'; kind: MonthCheck['key'] | 'refunds' | 'missing_data'; title: string; text: string; action?: string; amount?: number; uploadHint?: boolean };
+export type ReviewIssue = { periodKey: string; severity: 'high' | 'medium' | 'low'; kind: MonthCheck['key'] | 'refunds' | 'missing_data'; title: string; text: string; action?: string; amount?: number; uploadHint?: boolean; operations?: FnsMonthGaps };
 
 const tolerance = 1;
 const rub = (value?: number) => value === undefined ? '—' : `${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
@@ -47,21 +48,63 @@ export function reviewMonths(input: { report?: PortalReport; plan: TaxPeriodPlan
   });
 }
 
-export function reviewIssues(input: { report?: PortalReport; months: MonthReview[] }): ReviewIssue[] {
+const plural = (count: number, one: string, few: string, many: string) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? one : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? few : many}`;
+
+// Explains a monthly income difference by the operations behind it, when the
+// runner compared our bank and cash desk with the tax office export.
+function explainFnsDifference(difference: number, gaps: FnsMonthGaps | undefined) {
+  if (!gaps) return undefined;
+  const parts: string[] = [];
+  const actions: string[] = [];
+  if (gaps.missingInFns.length) {
+    const kinds = [...new Set(gaps.missingInFns.map((item) => item.kind).filter(Boolean))].join(', ').toLowerCase();
+    parts.push(`Налоговая не видит ${plural(gaps.missingInFns.length, 'поступление', 'поступления', 'поступлений')} на ${rub(gaps.missingInFnsTotal)}${kinds ? ` (${kinds})` : ''}: деньги пришли на ваши счета, а в кабинете АУСН их нет.`);
+    actions.push('Покажите список бухгалтеру: этот доход нужно отразить в личном кабинете АУСН, иначе налог с него не начислен.');
+  }
+  if (gaps.missingInOurs.length) {
+    parts.push(`У налоговой есть ${plural(gaps.missingInOurs.length, 'операция', 'операции', 'операций')} на ${rub(gaps.missingInOursTotal)}, которых нет в 1С.`);
+    actions.push('Проверьте, загружены ли в 1С выписки по всем счетам за эти дни.');
+  }
+  if (gaps.cashDays.length && Math.abs(gaps.cashDifference) > tolerance) {
+    parts.push(`Касса: за ${plural(gaps.cashDays.length, 'день', 'дня', 'дней')} чеки расходятся с налоговой на ${signed(gaps.cashDifference)}.`);
+    actions.push('По кассе сверьте чеки за эти дни: личный кабинет налоговой → АУСН → Доходы, источник ККТ.');
+  }
+  const explained = gaps.missingInFnsTotal - gaps.missingInOursTotal + gaps.cashDifference;
+  const rest = Math.round((difference - explained) * 100) / 100;
+  if (Math.abs(rest) > tolerance) parts.push(`Не разобрано по операциям: ${signed(rest)}.`);
+  if (!parts.length) return undefined;
+  return { text: parts.join(' '), action: actions.join(' ') || undefined };
+}
+
+export function reviewIssues(input: { report?: PortalReport; months: MonthReview[]; gaps?: FnsGaps }): ReviewIssue[] {
   const issues: ReviewIssue[] = [];
+  // A tax difference that follows from an income difference of the same month
+  // is not a separate problem: it is mentioned inside the income item.
+  const incomeDiffMonths = new Set(input.months.filter((month) => month.checks.some((check) => check.key === 'fns' && check.state === 'diff')).map((month) => month.periodKey));
   for (const month of input.months) {
     const title = reviewMonthTitle(month.periodKey);
     const detail = month.detail;
     for (const check of month.checks) {
-      if (check.key === 'fns' && check.state === 'diff' && detail?.fnsDifference !== undefined) issues.push({ periodKey: month.periodKey, severity: 'high', kind: 'fns', amount: Math.abs(detail.fnsDifference), title: `${title}: налоговая учла на ${rub(Math.abs(detail.fnsDifference))} ${detail.fnsDifference > 0 ? 'меньше' : 'больше'}`, text: `По нашему учёту (1С, банк, касса) ${rub(detail.base)}, налоговая учла ${rub(detail.fnsAccepted)}.`, action: detail.fnsDifference > 0 ? 'Сначала загрузите свежую выгрузку «Доходы АУСН» из налоговой: часть операций налоговая учитывает с опозданием. Если разница останется — скорее всего, какой-то чек кассы не дошёл до налоговой или попал в другой месяц. Скачайте в личном кабинете налоговой детализацию по кассе (ККТ) за этот месяц и загрузите — по ней будет видно, какого чека не хватает.' : 'Налоговая учла больше, чем у нас: проверьте возвраты и исправления за месяц и загрузите подтверждающие документы в «Корректировки и возвраты».' });
-      if (check.key === 'ens' && check.state === 'diff' && detail?.fnsAssessed !== undefined && detail.tax !== undefined) issues.push({ periodKey: month.periodKey, severity: 'high', kind: 'ens', amount: Math.abs(detail.tax - detail.fnsAssessed), title: `${title}: налоговая начислила на ${rub(Math.abs(detail.tax - detail.fnsAssessed))} ${detail.tax > detail.fnsAssessed ? 'меньше' : 'больше'}`, text: `Налоговая начислила ${rub(detail.fnsAssessed)}, по нашему расчёту ${rub(detail.tax)}. Налоговая считает 8% от того дохода, который она учла.`, action: 'Сначала разберитесь с разницей по доходу за этот месяц — после неё обычно сходится и налог.' });
+      if (check.key === 'fns' && check.state === 'diff' && detail?.fnsDifference !== undefined) {
+        const gaps = input.gaps?.months[month.periodKey];
+        const explained = explainFnsDifference(detail.fnsDifference, gaps);
+        const taxNote = detail.fnsAssessed !== undefined && detail.tax !== undefined && Math.abs(detail.tax - detail.fnsAssessed) > tolerance ? ` Налог за месяц налоговая начислила на ${rub(Math.abs(detail.tax - detail.fnsAssessed))} ${detail.tax > detail.fnsAssessed ? 'меньше' : 'больше'} — это следствие той же разницы.` : '';
+        issues.push({
+          periodKey: month.periodKey, severity: 'high', kind: 'fns', amount: Math.abs(detail.fnsDifference),
+          title: `${title}: налоговая учла на ${rub(Math.abs(detail.fnsDifference))} ${detail.fnsDifference > 0 ? 'меньше' : 'больше'}`,
+          text: `${explained?.text || `По нашему учёту (1С, банк, касса) ${rub(detail.base)}, налоговая учла ${rub(detail.fnsAccepted)}.`}${taxNote}`,
+          action: explained?.action || (detail.fnsDifference > 0 ? 'Загрузите свежую выгрузку «Доходы АУСН» за этот месяц — сервер сравнит её с нашим учётом по операциям и покажет, чего не хватает.' : 'Налоговая учла больше, чем у нас: проверьте, загружены ли в 1С выписки по всем счетам, и возвраты за месяц.'),
+          operations: gaps && (gaps.missingInFns.length || gaps.missingInOurs.length || gaps.cashDays.length) ? gaps : undefined,
+        });
+      }
+      if (check.key === 'ens' && check.state === 'diff' && !incomeDiffMonths.has(month.periodKey) && detail?.fnsAssessed !== undefined && detail.tax !== undefined) issues.push({ periodKey: month.periodKey, severity: 'high', kind: 'ens', amount: Math.abs(detail.tax - detail.fnsAssessed), title: `${title}: налоговая начислила на ${rub(Math.abs(detail.tax - detail.fnsAssessed))} ${detail.tax > detail.fnsAssessed ? 'меньше' : 'больше'}`, text: `Налоговая начислила ${rub(detail.fnsAssessed)}, по нашему расчёту ${rub(detail.tax)}. Налоговая считает 8% от того дохода, который она учла.`, action: 'Сначала разберитесь с разницей по доходу за этот месяц — после неё обычно сходится и налог.' });
       if (check.key === 'payment' && check.state === 'diff' && detail?.enpPayment !== undefined && detail.tax !== undefined) { const difference = detail.enpPayment - detail.tax; issues.push({ periodKey: month.periodKey, severity: difference < 0 ? 'high' : 'medium', kind: 'payment', amount: Math.abs(difference), title: `${title}: ${difference < 0 ? 'недоплачено' : 'переплачено'} ${rub(Math.abs(difference))}`, text: `Оплачено из банка ${rub(detail.enpPayment)}, налог по нашему расчёту ${rub(detail.tax)}.`, action: difference < 0 ? 'Проверьте в личном кабинете налоговой раздел «Единый налоговый счёт»: если долг есть, доплатите, чтобы не начислили пени.' : 'Переплата останется на едином налоговом счёте и зачтётся в следующем месяце — делать ничего не нужно.' }); }
     }
   }
   const missingFns = input.months.filter((month) => month.checks.some((check) => check.key === 'fns' && check.state === 'missing')).map((month) => month.periodKey);
-  if (missingFns.length) issues.push({ periodKey: missingFns.at(-1)!, severity: 'medium', kind: 'fns', title: `Нет доходов из налоговой за ${missingFns.map(monthWord).join(', ')}`, text: 'Без них нельзя проверить, совпадает ли наш доход с тем, что учла налоговая.', action: 'Личный кабинет налоговой → АУСН → Доходы: скачайте Excel за весь год и загрузите — один файл закрывает все месяцы.', uploadHint: true });
+  if (missingFns.length) issues.push({ periodKey: missingFns.at(-1)!, severity: 'medium', kind: 'fns', title: `Нет доходов из налоговой за ${missingFns.map(monthWord).join(', ')}`, text: 'Без них нельзя проверить, совпадает ли наш доход с тем, что учла налоговая.', action: 'Личный кабинет налоговой → АУСН → Доходы: выгрузка Excel за любой период — новые месяцы добавятся к уже загруженным.', uploadHint: true });
   const missingEns = input.months.filter((month) => month.checks.some((check) => check.key === 'ens' && check.state === 'missing')).map((month) => month.periodKey);
-  if (missingEns.length) issues.push({ periodKey: missingEns.at(-1)!, severity: 'medium', kind: 'ens', title: `Нет начислений налога за ${missingEns.map(monthWord).join(', ')}`, text: 'Сервер видит только последнюю загруженную выгрузку ЕНС, поэтому нужна одна выгрузка за весь год.', action: 'Личный кабинет налоговой → Единый налоговый счёт → Операции: выгрузка с 1 января по сегодня, ZIP.', uploadHint: true });
+  if (missingEns.length) issues.push({ periodKey: missingEns.at(-1)!, severity: 'medium', kind: 'ens', title: `Нет начислений налога за ${missingEns.map(monthWord).join(', ')}`, text: 'Без них нельзя сверить налог.', action: 'Личный кабинет налоговой → Единый налоговый счёт → Операции: ZIP за любой период — операции добавятся к уже загруженным.', uploadHint: true });
   const refunds = input.report?.attention.find((item) => /^Возвраты OFD/.test(item));
   if (refunds) issues.push({ periodKey: '', severity: 'low', kind: 'refunds', title: refunds.replace(/^Возвраты OFD/, 'Возвраты по кассе').replace(/\. Автоматически.*$/, ''), text: 'Возвраты покупателям сами по себе доход не уменьшают.', action: 'Если возврат настоящий, загрузите подтверждение в «Корректировки и возвраты».' });
   const order = { high: 0, medium: 1, low: 2 } as const;

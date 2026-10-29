@@ -90,3 +90,20 @@ Restore the preceding verified image and source commit; disable
 - Runner on the server (separate from the portal): e90c175 — ENS/LK uploads accumulate,
   Alfa-Bank account counted, own transfers excluded. Rollback chain in
   /root/taxes-release-20261029.rollback (PREV_RUNNER_MERGE, PREV_RUNNER_ALFA).
+
+## 1.19.5 — what exactly the tax office has not counted
+
+- Runner (ai-business-os, branch codex/ausn-portal-refresh-on-e6d4241): each full run
+  also writes `ausn-fns-gaps-<stamp>.json` next to the report — our bank income matched
+  one-to-one with the LK FNS export (exact amount, ±40 days), unmatched operations on
+  both sides and cash-desk days that differ. The report text (and Telegram) is unchanged.
+- Portal: the reconciliation item explains the difference by operations («Налоговая не
+  видит N поступлений на X ₽ …») with «Показать операции»; a tax difference caused by
+  the same month's income difference is folded into that item; upload hints no longer
+  ask for a whole-year export (uploads accumulate). Status of non-processed archive
+  documents is «done» at once.
+
+## 1.19.6 — operations list readable on a phone
+
+- «Показать операции» is a stacked list (amount, date, kind, account, purpose) instead
+  of a wide table that pushed the item past the screen edge; «за N дней» wording.

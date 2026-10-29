@@ -107,3 +107,10 @@ a.tax-summary-row:hover{background:#faf8f5}
 .tax-callout .tax-hint{margin-left:4px}
 .tax-hint-pop p,.tax-panel-head .tax-hint-pop p,.tax-item .tax-hint-pop p,.tax-callout .tax-hint-pop p{color:#f3efe9;margin:0;font-size:12px;line-height:1.5;font-weight:400}
 .tax-hint-pop p+p{margin-top:6px}
+.tax-ops{margin-top:4px;border:1px solid #eee7df;border-radius:10px;overflow:hidden}
+.tax-ops li{padding:8px 12px;border-top:1px solid #eee7df;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere}
+.tax-ops li:first-child{border-top:0}
+.tax-ops-head{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline}
+.tax-ops-head span{color:#796e64}
+.tax-ops li>span:not(.tax-ops-head){display:block;color:#4c443c}
+.tax-ops small{display:block;color:#796e64;font-size:11.5px}

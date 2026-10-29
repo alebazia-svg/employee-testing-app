@@ -217,7 +217,7 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
     { tone: 'info', title: 'К сведению', items: issues.filter((issue) => issue.severity === 'low') },
   ].filter((group) => group.items.length);
   return <>
-    {groups.map((group) => <section key={group.title} className='tax-panel tax-queue' data-tone={group.tone}><header><h2>{group.title}</h2><span>{group.items.length}</span></header>{group.items.map((issue, index) => <div key={index} className='tax-item flex flex-wrap items-center justify-between gap-x-4 gap-y-1'><b>{issue.title}</b>{issue.uploadHint ? <Link href={`${withTab(base)}documents`} className='tax-link'>Загрузить <ArrowRight /></Link> : <More label='что делать'><p>{issue.text}</p>{issue.action && <p className='mt-1.5'>{issue.action}</p>}</More>}</div>)}</section>)}
+    {groups.map((group) => <section key={group.title} className='tax-panel tax-queue' data-tone={group.tone}><header><h2>{group.title}</h2><span>{group.items.length}</span></header>{group.items.map((issue, index) => <div key={index} className='tax-item flex flex-wrap items-center justify-between gap-x-4 gap-y-1'><b>{issue.title}</b>{issue.uploadHint ? <Link href={`${withTab(base)}documents`} className='tax-link'>Загрузить <ArrowRight /></Link> : issue.operations ? null : <More label='что делать'><p>{issue.text}</p>{issue.action && <p className='mt-1.5'>{issue.action}</p>}</More>}{issue.operations && <GapDetails issue={issue} />}</div>)}</section>)}
     {!groups.length && full?.available && <div className='tax-callout' data-tone='ok'><strong>Расхождений нет.</strong></div>}
     {months.length > 0 && <section className='tax-panel' aria-label='Сверка по месяцам'>
       <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>По месяцам<More><p>Сравниваем наш учёт (1С, банк, касса) с данными налоговой.</p><p className='mt-1.5'>«Налоговая учла» — личный кабинет → АУСН → Доходы. «Налоговая начислила» — единый налоговый счёт. «Оплачено» — платёж из банка.</p><p className='mt-1.5'>Часы — срок ещё не наступил.</p></More></h2></div></div>
@@ -234,6 +234,21 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
       </table></div>
     </section>}
   </>;
+}
+
+function GapDetails({ issue }: { issue: TaxesWorkspaceProps['issues'][number] }) {
+  const gaps = issue.operations!;
+  const date = (value: string) => value.split('-').reverse().slice(0, 2).join('.');
+  return <div className='min-w-0 basis-full'>
+    <p className='tax-small mt-1 leading-relaxed text-[#5f564e]'>{issue.text}</p>
+    {issue.action && <p className='tax-small mt-1 font-semibold leading-relaxed text-[#4c443c]'>{issue.action}</p>}
+    <details className='tax-details group mt-2'>
+      <summary className='tax-link text-[13px]'>Показать операции</summary>
+      {gaps.missingInFns.length > 0 && <><p className='tax-small mt-2 font-semibold'>Есть у нас, нет у налоговой — {rub(gaps.missingInFnsTotal)}</p><ul className='tax-ops'>{gaps.missingInFns.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)} · {item.kind}{item.account ? ` · ${item.account}` : ''}</span></span>{item.payer && item.payer !== item.kind && <span>{item.payer}</span>}{item.purpose && <small>{item.purpose}</small>}</li>)}</ul></>}
+      {gaps.missingInOurs.length > 0 && <><p className='tax-small mt-3 font-semibold'>Есть у налоговой, нет в 1С — {rub(gaps.missingInOursTotal)}</p><ul className='tax-ops'>{gaps.missingInOurs.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)}</span></span>{item.operation && <small>{item.operation}</small>}</li>)}</ul></>}
+      {gaps.cashDays.length > 0 && <><p className='tax-small mt-3 font-semibold'>Касса по дням: чеки у нас / у налоговой</p><ul className='tax-ops'>{gaps.cashDays.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{date(item.date)}</b><span>{rub(item.ours)} / {rub(item.fns)}</span></span></li>)}</ul></>}
+    </details>
+  </div>;
 }
 
 function Documents({ missingTypes, documents, upload, generalUpload, plan, afterUpload }: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
