@@ -393,3 +393,18 @@ retry excluded. Subsequent owner-approved account activation is recorded in
 existing finance access; Muhamed created as WORKDAY-only and linked to canonical
 payroll Кумыков Мухаммед. Diana subsequently enabled in Retail by separate explicit owner approval.
 Physical camera/push/device acceptance remains unverified.
+
+## Employee inspection Phone/Computer — local candidate, 2026-10-29
+
+`employee-preview-devices-candidate-20261029.md`: owner-approved device selector
+for Astemir, real actor-bound mobile/desktop frames and three-tab routing,
+PWA stylesheet first-paint / cross-route prefetch, selected Procurement icon,
+colleague first names and factual no-shift times. Local only; 25 tests, typecheck,
+production build, HTTP read-only and four representative cabinet checks pass.
+No release authorized for this new candidate. Diana's actual salary preview is
+currently unavailable; bonus display remains a separate unapproved proposal.
+
+- Diana day-source local candidate: `diana-days-candidate-20261030.md` — actual
+  app start, otherwise Google schedule working day; no duplicate date, formula
+  or bonus changes. PWA plan remains separate; October past-date permission is
+  Diana-only. No release performed.
