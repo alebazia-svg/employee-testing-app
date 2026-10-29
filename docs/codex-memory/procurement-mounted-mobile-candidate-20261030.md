@@ -1,5 +1,9 @@
 # Unified Procurement mobile cabinet — local candidate, 2026-10-30
 
+**Released and verified as1.19.8, source `bbbbce2`, 2026-10-30.**
+Candidate notes below are historical. Exact release, checks and limitations:
+`../ops/unified-mobile-release-20261030.md`.
+
 Owner explicitly approved a local unified three-tab cabinet after reproducing
 cross-route pauses and the bell disappearing/reloading in production1.19.7.
 The owner subsequently approved release after final verification; this note
