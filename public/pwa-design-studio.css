@@ -253,8 +253,8 @@ body:has(#pwa-design-studio) .employee-material-ui button:focus-visible,
 body:has(#pwa-design-studio) .employee-material-popover button:focus-visible { outline:3px solid #84acd8; outline-offset:3px; }
 body:has(#pwa-design-studio) .employee-material-sheet-close { min-width:44px; min-height:44px; }
 body:has(#pwa-design-studio) .employee-material-sheet :is(label,legend) { color:#42536a; }
-body:has(#pwa-design-studio):has([role=alertdialog]) .pwa-shift-dock,
-body:has(#pwa-design-studio):has([role=alertdialog]) .employee-material-nav { visibility:hidden; }
+body:has(#pwa-design-studio):has([role=alertdialog]:not(dialog), dialog[open][role=alertdialog]) .pwa-shift-dock,
+body:has(#pwa-design-studio):has([role=alertdialog]:not(dialog), dialog[open][role=alertdialog]) .employee-material-nav { visibility:hidden; }
 
 /* Compact inner headers without changing the existing sheet actions. */
 body:has(#pwa-design-studio):has(#pwa-visual-proposal) .employee-material-sheet:has(:is(#kkm-resolution-title,#close-exception-sheet-title)) > div:first-child > .flex { align-items:center; }

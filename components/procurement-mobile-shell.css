@@ -1,0 +1,394 @@
+.procurement-pwa-header, .procurement-pwa-navigation { display: none; }
+@media (max-width: 767px) {
+  .procurement-responsive-shell .procurement-mobile-content { padding-inline: 16px; }
+  .procurement-responsive-shell { max-width: 520px; margin-inline: auto; background: #f7faf8; }
+  .procurement-responsive-shell .procurement-pwa-header,
+  .procurement-responsive-shell .procurement-pwa-navigation { display: block; }
+  .procurement-responsive-shell .procurement-shell-header,
+  .procurement-responsive-shell .procurement-desktop-workday { display: none; }
+  .procurement-responsive-shell > .admin-workspace { min-height: 0; padding: 8px 16px calc(6rem + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 767px) {
+  .procurement-responsive-shell.employee-material-ui { background: var(--pwa-canvas, #f7f6f2) !important; }
+  .procurement-responsive-shell .procurement-calendar > header { flex-direction: row; align-items: center; gap: 12px; }
+  .procurement-responsive-shell .procurement-calendar > header h1 { font-size: 22px; line-height: 1.2; letter-spacing: -.4px; }
+  .portal-neutral-design.procurement-shell.employee-material-ui .procurement-calendar .buyer-create-payment {
+    min-height: 44px; padding: 10px 12px; border: 1px solid #dcd8d0 !important; border-radius: 13px !important;
+    background: #fffdfa !important; color: #34383e !important; box-shadow: none !important; font-size: 13px; white-space: nowrap;
+  }
+  .procurement-responsive-shell .procurement-calendar > div:has(> nav[aria-label='Разделы календаря']) { border: 0; display: block; }
+  .procurement-responsive-shell nav[aria-label='Разделы календаря'] { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border: 1px solid #e1ddd5; border-radius: 14px; background: #eeece7; }
+  .portal-neutral-design.procurement-shell nav[aria-label='Разделы календаря'] button { margin: 0; min-height: 44px; border: 1px solid transparent !important; border-radius: 10px !important; background: transparent !important; color: #686b70 !important; font-size: 13px; font-weight: 600; }
+  .portal-neutral-design.procurement-shell nav[aria-label='Разделы календаря'] button[aria-pressed='true'] { background: #fff !important; border-color: #dedbd4 !important; color: #24282d !important; box-shadow: 0 1px 3px #24282d08 !important; }
+  .procurement-responsive-shell nav[aria-label='Разделы календаря'] + div { margin-top: 8px; }
+  .procurement-responsive-shell :is(input, select, textarea) { font-size: 16px; }
+  body:has(.procurement-responsive-shell) :is(.procurement-payment-dialog, .procurement-receipts-dialog, .pam-dialog) {
+    position: fixed; inset: auto 0 0; margin: 0 auto; width: 100%; max-width: 520px; max-height: calc(100dvh - 12px);
+    border: 1px solid #e5e2da; border-bottom: 0; border-radius: 24px 24px 0 0; background: #f7f6f2; color: #24282d;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  body:has(.procurement-responsive-shell) .procurement-payment-dialog > header { min-height: 64px; background: #fff; }
+  body:has(.procurement-responsive-shell) .procurement-payment-dialog > header button { min-width: 44px; min-height: 44px; }
+  body:has(.procurement-responsive-shell):has(dialog[open]) .employee-material-nav { visibility: hidden !important; }
+}
+/* Mobile calendar: dense dates and payment rows, details on demand. */
+@media (max-width: 767px) {
+  .procurement-responsive-shell .procurement-calendar { gap: 0; }
+  .procurement-responsive-shell nav[aria-label='Разделы календаря'] { padding: 4px; gap: 4px; border: 0; border-radius: 12px; background: #e8e1d5; }
+  .portal-neutral-design.procurement-shell nav[aria-label='Разделы календаря'] button { min-height: 40px; padding: 8px 12px; border: 0 !important; border-radius: 12px !important; color: #696b5b !important; }
+  .portal-neutral-design.procurement-shell nav[aria-label='Разделы календаря'] button[aria-pressed='true'] { color: #32392b !important; background: #fff !important; box-shadow: none !important; }
+  .procurement-responsive-shell .buyer-payment-list-section { padding: 10px 12px !important; border-radius: 16px !important; }
+  .procurement-responsive-shell .buyer-payment-list-section > div:first-child { flex-direction: row; align-items: center; justify-content: space-between; padding-bottom: 8px; gap: 8px; }
+  .procurement-responsive-shell .buyer-payment-list-section h2 { font-size: 15px; }
+  .procurement-responsive-shell .compact-payment-list { margin-top: 4px; }
+  .procurement-responsive-shell .compact-payment-list > div + div { margin-top: 8px; }
+  .procurement-responsive-shell [data-payment-day] { padding: 4px 6px !important; margin-bottom: 0; border-radius: 6px; }
+  .procurement-responsive-shell [data-payment-day] h3 { font-size: 12px; line-height: 18px; }
+  .procurement-responsive-shell .compact-payment-row {
+    grid-template-columns: minmax(0,1fr) auto 32px !important; column-gap: 6px !important; row-gap: 3px !important;
+    padding: 8px 2px !important; min-height: 64px; border-radius: 0 !important;
+  }
+  .procurement-responsive-shell .compact-payment-row > div:first-child { grid-column: 1; grid-row: 1; }
+  .procurement-responsive-shell .compact-payment-row > div:first-child h4 { font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+  .procurement-responsive-shell .compact-payment-row > div:nth-child(2) { grid-column: 2; grid-row: 1; text-align: right; }
+  .procurement-responsive-shell .compact-payment-row > div:nth-child(2) > p { font-size: 13px; line-height: 19px; }
+  .procurement-responsive-shell .compact-payment-row .compact-payment-status { grid-column: 1 / 3 !important; grid-row: 2 !important; }
+  .procurement-responsive-shell .compact-payment-status > span { padding: 2px 7px !important; font-size: 10px; line-height: 16px; }
+  .procurement-responsive-shell .compact-payment-row .compact-payment-actions { grid-column: 3 !important; grid-row: 1 / 3 !important; }
+  .procurement-responsive-shell .compact-payment-actions > button[aria-expanded] { width: 32px; min-width: 32px; height: 44px; }
+  .procurement-responsive-shell .compact-payment-row[data-expanded='false'] .procurement-secondary-action { display: none; }
+  .procurement-responsive-shell .compact-payment-row[data-expanded='true'] .compact-payment-actions { grid-column: 1 / -1 !important; grid-row: 3 !important; justify-content: space-between; }
+  .procurement-responsive-shell [data-payment-details] { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
+  body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-responsive-shell .procurement-calendar nav[aria-label='Разделы календаря'] {
+    padding: 4px !important; border: 0 !important; border-radius: 12px !important; background: #e8e1d5 !important;
+  }
+  body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-responsive-shell .procurement-calendar nav[aria-label='Разделы календаря'] button {
+    height: 40px !important; min-height: 40px !important; border: 0 !important; border-radius: 12px !important; background: transparent !important; color: #696b5b !important;
+  }
+  body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-responsive-shell .procurement-calendar nav[aria-label='Разделы календаря'] button[aria-pressed='true'] { background: #fff !important; color: #32392b !important; box-shadow: none !important; }
+}
+@media (max-width: 767px) {
+  .procurement-responsive-shell .procurement-calendar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; }
+  .procurement-responsive-shell .procurement-calendar > * { grid-column: 1 / -1; margin-top: 0 !important; }
+  .procurement-responsive-shell .procurement-calendar > header { grid-row: 1; }
+  .procurement-responsive-shell .procurement-calendar > .buyer-calendar-tabs-row { display: contents !important; }
+  .procurement-responsive-shell .buyer-calendar-tabs-row > nav { grid-column: 1 / -1; grid-row: 2; }
+  .procurement-responsive-shell .buyer-calendar-freshness { grid-column: 2; grid-row: 3; margin: 0 !important; padding: 0; align-self: center; justify-self: end; }
+  .procurement-responsive-shell .procurement-calendar > .procurement-receipts-entry { grid-column: 1; grid-row: 3; justify-self: start; align-self: center; min-height: 44px; }
+  .procurement-responsive-shell .buyer-calendar-freshness button { min-height: 44px; padding-inline: 7px; font-size: 10px; white-space: nowrap; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+}
+@media (max-width: 767px) {
+  .procurement-responsive-shell .procurement-calendar > header { display: contents; }
+  .procurement-responsive-shell .procurement-calendar > header > div:first-child { display: none; }
+  .procurement-responsive-shell .procurement-calendar > header > div:last-child { grid-column: 2; grid-row: 1; justify-self: end; }
+  .procurement-responsive-shell .buyer-calendar-tabs-row > nav { grid-column: 1; grid-row: 1; min-width: 0; }
+  .portal-neutral-design.procurement-shell.employee-material-ui .procurement-calendar .buyer-create-payment { padding-inline: 10px; font-size: 12px; }
+  .procurement-responsive-shell .buyer-calendar-freshness { grid-row: 2; }
+  .procurement-responsive-shell .procurement-calendar > .procurement-receipts-entry { grid-row: 2; }
+  body:has(.procurement-responsive-shell) .procurement-receipts-dialog:not(.receipt-view-expanded) {
+    margin: 0 auto !important; min-height: 0 !important; height: auto; inset: auto 0 0;
+  }
+  body:has(.procurement-responsive-shell) .procurement-receipts-dialog > header { padding: 10px 16px; min-height: 56px; }
+  body:has(.procurement-responsive-shell) .procurement-receipts-body { padding: 4px 16px 12px; }
+  body:has(.procurement-responsive-shell) .procurement-receipts-list > li { grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 12px 0; }
+  body:has(.procurement-responsive-shell) .procurement-receipts-list > li > div:first-child { grid-column: 1; }
+  body:has(.procurement-responsive-shell) .procurement-receipts-list > li > .procurement-receipt-amount { grid-column: 2; text-align: right; }
+  body:has(.procurement-responsive-shell) .payment-document-sections { gap: 8px; }
+  body:has(.procurement-responsive-shell) .payment-document-sections .payment-document-empty { margin-top: 4px; font-size: 11px; }
+}
+
+/* Shared mobile presentation; desktop markup and styles retain their defaults. */
+@media (max-width:767px) {
+  .procurement-responsive-shell .procurement-mobile-calendar {grid-template-columns:minmax(0,1fr) 44px;gap:12px}
+  .procurement-responsive-shell .procurement-mobile-calendar .buyer-create-payment {width:44px;min-width:44px;padding:0!important;border-radius:12px!important}
+  .buyer-create-payment-label {display:none}
+  .procurement-responsive-shell .procurement-mobile-calendar .buyer-calendar-tabs-row > nav {grid-column:1;grid-row:1}
+  .procurement-responsive-shell .procurement-mobile-calendar > .procurement-receipts-entry {display:none}
+  .procurement-responsive-shell .procurement-mobile-calendar .buyer-payment-list-section {border:0!important;padding:0!important;background:transparent!important;border-radius:0!important;box-shadow:none!important}
+  .procurement-mobile-calendar .buyer-payment-list-section>div:first-child {display:none!important}
+  .procurement-responsive-shell .procurement-mobile-calendar .compact-payment-list {margin-top:0!important}
+  .procurement-responsive-shell .procurement-mobile-calendar .compact-payment-list>div+div {margin-top:12px}
+  .procurement-responsive-shell .procurement-mobile-calendar [data-payment-day] {background:transparent!important;padding:4px 0!important;border-bottom:1px solid #e3e0d8;border-radius:0!important;color:#66696c}
+  .procurement-mobile-calendar [data-payment-day]>span[aria-label] {display:none}
+  .procurement-mobile-calendar [data-payment-day]>svg {display:none}
+  .procurement-responsive-shell .procurement-mobile-calendar .compact-payment-row {padding:10px 0!important}
+  .procurement-responsive-shell .procurement-mobile-calendar>.buyer-calendar-freshness {grid-row:auto;grid-column:1/-1;justify-self:center;order:10}
+  .procurement-responsive-shell .procurement-mobile-calendar>.buyer-calendar-freshness button {font-weight:400;color:#838382;font-size:11px}
+}
+@media(max-width:767px){
+ .procurement-mobile-calendar>.procurement-mobile-actions{grid-row:1;grid-column:1/-1}
+ .procurement-mobile-actions>aside{margin:0!important;padding:8px!important;min-height:64px}
+ .procurement-responsive-shell .procurement-mobile-calendar .buyer-calendar-tabs-row>nav{grid-row:2}
+ .procurement-responsive-shell .procurement-mobile-calendar>header>div:last-child{grid-row:2}
+}
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-mobile-calendar:not(:has(.procurement-mobile-actions button)) .buyer-calendar-tabs-row>nav{grid-row:1}
+ .procurement-responsive-shell .procurement-mobile-calendar:not(:has(.procurement-mobile-actions button))>header>div:last-child{grid-row:1}
+}
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar:has(.procurement-mobile-actions button)>header>div:last-child{grid-row:2;grid-column:2}
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar:has(.procurement-mobile-actions button) .buyer-calendar-tabs-row>nav{grid-row:2;grid-column:1}
+}
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-mobile-calendar .buyer-calendar-tabs-row>nav{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .procurement-responsive-shell .procurement-mobile-calendar .buyer-calendar-tabs-row>nav button{padding-inline:5px!important;font-size:12px!important}
+ .procurement-mobile-accountable{display:none}
+ .procurement-mobile-calendar[data-view='accountable']>.procurement-mobile-accountable{display:block}
+ .procurement-mobile-calendar[data-view='accountable']>.compact-payment-calendar,.procurement-mobile-calendar[data-view='accountable']>.buyer-calendar-freshness{display:none}
+ .procurement-mobile-accountable #delivery{border:0;border-radius:0;background:transparent;padding:0}
+ .procurement-mobile-accountable #delivery>h2{display:none}
+ .procurement-mobile-accountable #delivery>p:first-of-type{margin-top:0;font-size:12px}
+ .procurement-mobile-accountable #delivery>div:first-of-type>p{font-size:30px}
+ .procurement-mobile-accountable #delivery>button{min-height:48px;background:#24282d;border-radius:15px;font-weight:600}
+ .procurement-mobile-accountable dialog{position:fixed;inset:auto 0 0;margin:0 auto!important;width:100%;max-width:520px;max-height:calc(100dvh - 12px);border-radius:24px 24px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));background:#f7f6f2}
+ .procurement-mobile-accountable dialog input,.procurement-mobile-accountable dialog textarea{font-size:16px}
+}
+@media(max-width:767px){
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .employee-material-ui .procurement-mobile-accountable #delivery>button{background:linear-gradient(135deg,#303337,#191c20)!important;color:#fffdf6!important;border:1px solid #191c20!important;box-shadow:inset 0 1px #ffffff18,0 4px 10px #181b2010!important}
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar[data-view='accountable'] .buyer-calendar-tabs-row>nav,.procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar[data-view='history'] .buyer-calendar-tabs-row>nav{grid-column:1/-1}
+}
+@media(max-width:767px){
+ .procurement-mobile-calendar[data-view='history'] [aria-label='Список оплат']{border:0;border-radius:0;background:transparent}
+ .procurement-mobile-calendar[data-view='history'] [aria-label='Список оплат']>label{padding:0 0 12px;border-bottom:1px solid #e3e0d8}
+ .procurement-mobile-calendar[data-view='history'] [aria-label='Список оплат'] button{border-left:0!important;background:transparent!important;padding:12px 0!important}
+ .procurement-mobile-calendar[data-view='history'] [aria-label='Список оплат'] button span.text-base{color:#24282d;font-size:14px;font-weight:700}
+}
+@media(max-width:767px){
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog [aria-label='Назначение оплаты']{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:12px 16px 0;padding:4px;border:0;border-radius:12px;background:#e8e1d5}
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog [aria-label='Назначение оплаты'] button{min-height:40px;border:0!important;border-radius:10px;background:transparent!important;color:#696b5b!important;padding:8px;font-size:13px}
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog [aria-label='Назначение оплаты'] button[aria-pressed='true']{background:#fff!important;color:#32392b!important}
+}
+@media(max-width:767px){
+ .procurement-mobile-actions .employee-attention-row+.employee-attention-row{margin-top:8px}
+ .procurement-mobile-actions .employee-attention-caption{display:block}
+}
+
+@media(max-width:767px){.procurement-mobile-calendar>.procurement-mobile-actions:not(:has(button)){display:none}}
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar [data-payment-day='today']{border-left:0!important;box-shadow:none!important}
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar [data-payment-day='today']::before{display:none!important}
+}
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar [data-payment-day='today']{background:#eee5d8!important;border:0!important;border-radius:8px!important;padding:4px 8px!important;min-height:28px;color:#6c4d34!important;box-shadow:none!important}
+ .procurement-responsive-shell .procurement-calendar.procurement-mobile-calendar [data-payment-day='today'] h3{font-weight:700}
+}
+/* Review pass: historical detail uses a focused mobile page, retaining all facts. */
+@media(max-width:767px){
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .employee-material-ui .procurement-mobile-calendar[data-view='history'] [aria-label='Список оплат'] button[aria-pressed]{border:0!important;border-bottom:1px solid #e3e0d8!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:#24282d!important;padding:12px 4px!important}
+ .procurement-mobile-calendar:has(section[aria-label='Подробности оплаты']:not(.hidden)){display:block!important}
+ .procurement-mobile-calendar:has(section[aria-label='Подробности оплаты']:not(.hidden))>.procurement-mobile-actions,.procurement-mobile-calendar:has(section[aria-label='Подробности оплаты']:not(.hidden))>header,.procurement-mobile-calendar:has(section[aria-label='Подробности оплаты']:not(.hidden)) .buyer-calendar-tabs-row>nav{display:none!important}
+ .procurement-mobile-calendar[data-view='history'] section[aria-label='Подробности оплаты']{border:0!important;padding:0!important;border-radius:0!important;background:transparent!important}
+ .procurement-mobile-calendar[data-view='history'] section[aria-label='Подробности оплаты']>button{min-height:44px;margin-bottom:12px;color:#754e34}
+ .procurement-mobile-calendar[data-view='history'] section[aria-label='Подробности оплаты'] article{grid-template-columns:minmax(0,1fr)!important;gap:10px}
+ .procurement-mobile-calendar[data-view='history'] section[aria-label='Подробности оплаты'] article>*{grid-column:1!important}
+ .procurement-mobile-calendar[data-view='history'] section[aria-label='Подробности оплаты'] article>div:nth-child(2){text-align:left}
+ .procurement-mobile-calendar[data-view='history'] .payment-history-money{display:grid;grid-template-columns:1fr;gap:8px;border:0;padding:0;background:transparent}
+ .procurement-mobile-calendar[data-view='history'] .payment-history-money>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:12px;border:1px solid #e4e0d8;border-radius:12px;background:#fff}
+ .procurement-mobile-calendar[data-view='history'] .payment-history-money>div>p{grid-column:1/-1;font-size:11px}
+ .procurement-mobile-calendar[data-view='history'] .payment-history-money strong{font-size:16px;white-space:nowrap}
+ body:has(.procurement-mobile-calendar) .pam-dialog .pam-dialog-content dl.grid-cols-2,body:has(.procurement-mobile-calendar) .pam-dialog dd.grid-cols-2{grid-template-columns:1fr!important}
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog form>.sticky{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog form>.sticky button{min-height:44px}
+ body:has(.procurement-mobile-calendar) .receipt-view-tools button,body:has(.procurement-mobile-calendar) .receipt-view-tools a,body:has(.procurement-mobile-calendar) .receipt-view-pages button{min-height:44px}
+}
+@media(max-width:767px){
+ .procurement-mobile-calendar:has(section[aria-label='Подробности оплаты']:not(.hidden))>.buyer-calendar-freshness{display:none!important}
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-payment-dialog [aria-label='Назначение оплаты'] button{box-shadow:none!important}
+}
+
+@media(max-width:767px){
+ .procurement-mobile-actions{display:flex;flex-direction:column}
+ .procurement-mobile-actions>button[data-action-kind='money']{order:-1}
+ .procurement-mobile-actions>button{margin-top:0!important}
+ .procurement-mobile-accountable>section+section{margin-top:20px}
+ .procurement-mobile-accountable .procurement-funds-summary{padding:16px!important;border-radius:16px!important}
+ .procurement-mobile-accountable .procurement-funds-summary h2{font-size:16px}
+ .procurement-mobile-calendar[data-view='accountable']>.compact-payment-calendar{display:none}
+ .procurement-mobile-calendar[data-view='current']>.compact-payment-calendar>aside,.procurement-mobile-calendar[data-view='history']>.compact-payment-calendar>aside{display:none}
+ .procurement-mobile-calendar>.buyer-calendar-freshness{grid-column:1/-1;grid-row:auto;justify-self:center}
+}
+
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-mobile-calendar [data-payment-day='past']{color:#9d3830!important}
+ .procurement-responsive-shell .buyer-create-payment-label{display:none}
+ .procurement-responsive-shell .procurement-mobile-actions .employee-attention-row{width:100%}
+ .procurement-responsive-shell .pam-dialog-footer{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+ .procurement-responsive-shell .pam-dialog-footer button{min-height:44px}
+}
+
+/* Expanded mobile payment: readable facts, then one group of actions. */
+@media(max-width:767px){
+ .procurement-responsive-shell .compact-payment-row[data-expanded='true']{background:transparent!important;row-gap:8px!important}
+ .procurement-responsive-shell .compact-payment-row[data-expanded='true'] .compact-payment-actions{grid-column:3!important;grid-row:1/3!important;justify-content:flex-end}
+ .procurement-responsive-shell .compact-payment-row [data-payment-details]{margin:0 0 4px;padding:12px!important;border:1px solid #e2ddd4;border-radius:14px;background:#fffdf9;min-width:0}
+ .procurement-responsive-shell [data-payment-details]>div{flex-basis:100%;width:100%;min-width:0}
+ .procurement-responsive-shell .mobile-payment-facts{display:grid;gap:10px;margin:0;text-align:left}
+ .procurement-responsive-shell .mobile-payment-facts>div{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;min-width:0}
+ .procurement-responsive-shell .mobile-payment-facts dt{font-size:11px;line-height:16px;font-weight:500;color:#797970}
+ .procurement-responsive-shell .mobile-payment-facts dd{margin:0;font-size:13px;line-height:19px;font-weight:600;color:#303531;overflow-wrap:anywhere}
+ .procurement-responsive-shell .mobile-payment-facts small{display:block;margin-top:3px;font-size:11px;line-height:16px;font-weight:400;color:#797970}
+ .procurement-responsive-shell .mobile-payment-detail-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px!important;padding-top:12px;border-top:1px solid #e8e3da}
+ .procurement-responsive-shell .mobile-payment-detail-actions>button{display:flex;width:100%;min-height:44px!important;align-items:center;justify-content:center;margin:0!important;font-size:12px;font-weight:600}
+ .procurement-responsive-shell [data-payment-details] details{padding-top:4px}
+ .procurement-responsive-shell [data-payment-details] summary{display:flex;min-height:44px;align-items:center;font-weight:600}
+ .procurement-responsive-shell [data-payment-details] details>div{padding:10px;border-radius:10px;background:#f4f2ec;overflow-wrap:anywhere}
+}
+@media(max-width:767px){
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog form details>summary{min-height:44px;line-height:20px;font-size:13px;overflow-wrap:anywhere}
+ body:has(.procurement-mobile-calendar) .procurement-payment-dialog form details>summary>span{display:block;margin:3px 0 0!important;font-size:11px;font-weight:400;line-height:16px;color:#797970}
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-payment-dialog [aria-label='Основание оплаты']{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-block:12px;padding:4px;border-radius:12px;background:#e8e1d5}
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-payment-dialog [aria-label='Основание оплаты'] button{min-width:0;min-height:44px;padding:7px;border:0!important;border-radius:9px!important;background:transparent!important;box-shadow:none!important;font-size:12px;line-height:17px;color:#686a60!important;white-space:normal}
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-payment-dialog [aria-label='Основание оплаты'] button[aria-pressed='true']{background:#fffdf9!important;color:#303531!important}
+}
+/* Remaining disclosure interiors: mobile only, shared data/actions untouched. */
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) :is(.procurement-change-history,.procurement-receipt-evidence details,.payment-document-sections>details),
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form details{min-width:0;border:1px solid #e3ded4;border-radius:12px;background:#fffdf9;padding:0;overflow:hidden;text-align:left}
+ body:has(.procurement-responsive-shell) :is(.procurement-change-history,.procurement-receipt-evidence details,.payment-document-sections>details)>summary,
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form details>summary{display:list-item;box-sizing:border-box;min-height:44px;padding:12px;line-height:19px;font-size:12px;font-weight:600;color:#494c43;text-decoration:none;overflow-wrap:anywhere;cursor:pointer;list-style-position:inside}
+ body:has(.procurement-responsive-shell) :is(.procurement-change-history,.procurement-receipt-evidence details,.payment-document-sections>details)[open]>summary,
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form details[open]>summary{border-bottom:1px solid #e8e3da}
+ body:has(.procurement-responsive-shell) :is(.procurement-change-history,.procurement-receipt-evidence details,.payment-document-sections>details)>:not(summary),
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form details>:not(summary){margin:0!important;padding:12px;min-width:0;overflow-wrap:anywhere;text-align:left}
+ body:has(.procurement-responsive-shell) .procurement-change-history>div>div+div{border-top:1px solid #e8e3da;padding-top:12px}
+ body:has(.procurement-responsive-shell) .procurement-change-history p{font-size:12px;line-height:19px;white-space:pre-wrap;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .procurement-change-history p+p{margin-top:5px}
+ body:has(.procurement-responsive-shell) .procurement-evidence-document{border:1px solid #e5e0d7;border-radius:10px;background:#f5f3ed;padding:10px;line-height:19px;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .procurement-evidence-document p+p{margin-top:5px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-receipt-evidence{margin-top:8px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child{gap:10px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child>div{min-width:0;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child>button{flex-shrink:0;min-height:44px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-choice{display:grid;grid-template-columns:minmax(0,1fr) minmax(80px,38%);gap:8px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-choice>span{min-width:0;overflow-wrap:anywhere;white-space:normal}
+ body:has(.procurement-responsive-shell) .payment-document-sections{min-width:0;gap:14px}
+ body:has(.procurement-responsive-shell) .payment-document-files>li{min-width:0;padding:12px 0;border-bottom:1px solid #ebe6de}
+ body:has(.procurement-responsive-shell) .payment-document-files>li:last-child{border-bottom:0}
+ body:has(.procurement-responsive-shell) .payment-document-open{width:100%;min-height:44px;line-height:19px;font-size:13px;align-items:flex-start;padding-block:8px}
+ body:has(.procurement-responsive-shell) .payment-document-open svg{margin-top:1px}
+ body:has(.procurement-responsive-shell) .payment-document-meta{margin:2px 0 8px;font-size:11px;line-height:17px;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .payment-document-secondary{display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;margin:4px 8px 0 0;border:1px solid #e2dbd0;border-radius:10px;font-size:12px}
+ body:has(.procurement-responsive-shell) .payment-document-panel{padding:12px;min-width:0;text-align:left;line-height:19px}
+ body:has(.procurement-responsive-shell) .payment-document-panel>div,
+ body:has(.procurement-responsive-shell) .receipt-upload-retained>div{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}
+ body:has(.procurement-responsive-shell) .payment-document-panel button,
+ body:has(.procurement-responsive-shell) .receipt-upload-retained button{width:100%;min-height:44px;white-space:normal}
+ body:has(.procurement-responsive-shell) .payment-document-choices{display:grid;gap:8px;min-width:0;margin-bottom:12px}
+ body:has(.procurement-responsive-shell) .payment-document-choices legend{font-size:11px;color:#75776e;margin-bottom:8px}
+ body:has(.procurement-responsive-shell) .payment-document-choices label{display:flex;align-items:flex-start;gap:8px;margin:0;padding:10px;border:1px solid #e1dbd0;border-radius:10px;background:#fffdf9;line-height:19px;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .payment-document-choices input{flex-shrink:0;width:18px;height:18px;margin:0;accent-color:#936849}
+ body:has(.procurement-responsive-shell) .pd-payment-facts{padding:12px;border:1px solid #e3ded4;border-radius:12px;background:#fffdf9;line-height:19px;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .pd-payment-facts>div{margin:0!important}
+ body:has(.procurement-responsive-shell) .pd-payment-facts p+p{margin-top:8px}
+ body:has(.procurement-responsive-shell) #delivery>div[role='status']{padding:12px;line-height:20px;overflow-wrap:anywhere;text-align:left}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-receipts-body.payment-documents-inline{padding:0!important}
+ body:has(.procurement-responsive-shell) .payment-document-choices input{width:18px!important;height:18px!important;margin:1px 0 0!important;align-self:flex-start}
+}
+@media(max-width:767px){
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-payment-dialog [aria-label='Назначение оплаты'] button{border:0!important;border-radius:9px!important;background-image:none!important;box-shadow:none!important}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .payment-document-choices input{min-height:18px!important;max-height:18px!important;min-width:18px!important;padding:0!important}
+}
+/* Whole-screen density pass: flat supplier rows and readable, open balances. */
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-mobile-calendar{gap:10px}
+ .procurement-responsive-shell .procurement-mobile-actions .employee-attention-row{min-height:54px;padding:10px 12px!important}
+ .procurement-responsive-shell .procurement-mobile-actions{gap:8px;margin-bottom:0!important}
+ .procurement-responsive-shell .procurement-mobile-actions .employee-attention-row+.employee-attention-row{margin-top:0!important}
+ .procurement-responsive-shell .compact-payment-calendar>div:first-child{gap:16px}
+ .procurement-responsive-shell .procurement-mobile-calendar .compact-payment-list>div+div{margin-top:6px}
+ .procurement-responsive-shell .procurement-mobile-calendar .compact-payment-row{min-height:58px;padding:8px 0!important}
+ .procurement-responsive-shell .buyer-supplier-planning{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+ .procurement-responsive-shell .buyer-supplier-planning>div:first-child{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding-bottom:8px}
+ .procurement-responsive-shell .buyer-supplier-planning h2{font-size:13px;line-height:20px;font-weight:650}
+ .procurement-responsive-shell .buyer-supplier-planning>div:first-child>p{font-size:11px;font-weight:400}
+ .procurement-responsive-shell .buyer-supplier-planning>div:nth-child(2){margin-top:0}
+ .procurement-responsive-shell .buyer-supplier-planning article{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;gap:6px;align-items:center;min-height:64px;padding:10px 0}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:first-child{min-width:0}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:first-child>p:first-child{font-size:13px;line-height:19px;font-weight:650;overflow-wrap:anywhere}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:first-child>p+p{font-size:10px;line-height:15px;font-weight:400}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:nth-child(2){text-align:right}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:nth-child(2)>p:first-child{font-size:10px;line-height:15px;font-weight:400}
+ .procurement-responsive-shell .buyer-supplier-planning article>div:nth-child(2)>p+p{font-size:13px;line-height:19px;font-weight:650;white-space:nowrap}
+ .procurement-responsive-shell .buyer-supplier-plan-action{width:44px;min-height:44px;padding:0!important;border-radius:12px}
+ .procurement-responsive-shell .buyer-supplier-plan-action>span{display:none}
+ .procurement-responsive-shell .buyer-supplier-plan-action:disabled{opacity:.5}
+ .procurement-responsive-shell .procurement-mobile-accountable>.procurement-funds-summary{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+ .procurement-responsive-shell .procurement-funds-summary>h2{font-size:14px}
+ .procurement-responsive-shell .procurement-funds-summary>div:first-of-type>div{background:transparent!important;padding:0!important;box-shadow:none!important}
+ .procurement-responsive-shell .procurement-funds-summary>div:first-of-type>div>p:nth-child(2){font-size:20px}
+ .procurement-responsive-shell .procurement-funds-summary>div:last-child>div>div{padding:10px 0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;border-bottom:1px solid #e3ded4}
+ .procurement-responsive-shell .procurement-funds-summary>div:last-child>div{margin-top:0!important}
+ .procurement-responsive-shell .procurement-funds-summary>div:last-child>div>div+div{margin-top:0!important}
+ .procurement-responsive-shell .procurement-funds-summary>div:last-child>div>div>p{font-size:12px}
+}
+
+@media(max-width:767px){.procurement-responsive-shell .buyer-supplier-review{color:#98612e!important;font-size:11px!important;line-height:16px!important}}
+/* Compact payment form: same fields and financial scopes, less vertical bulk. */
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form{padding:12px 16px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form>*+*{margin-top:12px!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']{padding:10px;border-radius:12px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child>div>p:first-child{font-size:14px;line-height:20px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child>div>p+p{margin-top:2px;font-size:11px;line-height:16px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>div:first-child>button{min-height:32px;font-size:12px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Долг и суммы по 1С']{margin-top:8px;padding-top:8px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Долг и суммы по 1С'] dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:baseline}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Долг и суммы по 1С'] dt{font-size:11px;line-height:17px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Долг и суммы по 1С'] dd{font-size:12px;line-height:17px;font-weight:600;text-align:right;overflow-wrap:anywhere}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Долг и суммы по 1С']>div{margin-top:4px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>details{margin-top:8px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбранная оплата']>details>summary{min-height:36px;padding:8px 10px;font-size:11px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form :is(input:not([type='checkbox']),select,textarea){min-height:44px;padding:9px 10px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form label{font-size:12px;line-height:18px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>div{min-width:0}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>label,
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>div>label{display:grid;grid-template-rows:32px 44px;align-items:end;min-width:0;font-size:12px;line-height:16px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs input{margin:0!important;height:44px;min-width:0;font-size:16px!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>label>span{font-size:10px;line-height:15px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs button{min-height:32px;margin-top:0;font-size:11px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-fields>div:last-child:not(.procurement-fx-inputs){padding:8px 10px;margin-top:8px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-fields>div:last-child p{font-size:11px;line-height:17px}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>label,
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-fx-inputs>div>label{row-gap:6px}
+}
+/* Search keeps space for its leading icon and trailing picker toggle. */
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form input[aria-label='Поставщик или номер заказа']{padding-left:38px!important;padding-right:82px!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form div:has(>input[aria-label='Поставщик или номер заказа'])>svg{top:50%;transform:translateY(-50%)}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form div:has(>input[aria-label='Поставщик или номер заказа'])>button{top:0;bottom:0;min-height:44px;display:flex;align-items:center;margin:0}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form input[aria-label='Поставщик или номер заказа']::placeholder{font-size:12px!important}
+}
+.buyer-submit-hint{display:none}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form[data-mobile-picking='true']>:not([aria-label='Выбор оплаты']):not(.buyer-payment-submit){display:none!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form[data-mobile-picking='true']>.buyer-payment-submit>:not(button[type='button']){display:none!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form .buyer-payment-submit{flex-wrap:wrap}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog form .buyer-submit-hint{display:block;flex-basis:100%;margin:0 0 2px;font-size:11px;line-height:16px;font-weight:400;text-align:left;color:#797970}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбор оплаты']>div:first-child{flex-direction:column;align-items:stretch;gap:6px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog [aria-label='Выбор оплаты']>div:first-child>button{order:-1;align-self:flex-start;min-height:32px;font-size:12px}
+}
+
+@media(max-width:767px){
+ .procurement-responsive-shell .procurement-source-status{border:1px solid #e4ddd1;border-radius:12px;background:#faf8f2;color:#706047;overflow:hidden}
+ .procurement-source-status>summary{display:flex;align-items:center;gap:8px;min-height:44px;padding:10px 12px;list-style:none;cursor:pointer;font-size:12px;font-weight:500}
+ .procurement-source-status>summary::-webkit-details-marker{display:none}
+ .procurement-source-status>summary svg{flex-shrink:0;color:#a77a36}
+ .procurement-source-status>summary small{margin-left:auto;font-size:11px;font-weight:500;text-decoration:underline;text-underline-offset:3px}
+ .procurement-source-status>ul{margin:0;padding:0 12px 12px;list-style:none}
+ .procurement-source-status li+li{margin-top:10px}
+ .procurement-source-status li strong{font-size:12px;font-weight:600}
+ .procurement-source-status li p{margin:3px 0 0;font-size:12px;line-height:1.5;color:#756f66}
+}

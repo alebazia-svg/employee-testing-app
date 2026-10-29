@@ -1,13 +1,12 @@
 export const WORKDAY_QR_PREFIX = 'offonika-workday-start:';
-// Reserved for the procurement PWA being developed separately. Publishing this
-// QR does not enable it in parseWorkdayQrDepartment or the start-intent API.
+// Matches the procurement QR already published in ADMIN and on the approved A5 poster.
 export const PROCUREMENT_WORKDAY_QR_PAYLOAD = `${WORKDAY_QR_PREFIX}procurement`;
 export const WORKDAY_START_INTENT_TTL_MS = 15 * 60 * 1000;
 
-export type WorkdayQrDepartment = 'retail' | 'wholesale';
+export type WorkdayQrDepartment = 'retail' | 'wholesale' | 'procurement';
 
 export function parseWorkdayQrDepartment(value: string): WorkdayQrDepartment | null {
-  const match = value.trim().match(/^offonika-workday-start:(retail|wholesale)$/i);
+  const match = value.trim().match(/^offonika-workday-start:(retail|wholesale|procurement)$/i);
   return match ? (match[1].toLowerCase() as WorkdayQrDepartment) : null;
 }
 

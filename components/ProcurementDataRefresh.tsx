@@ -1,4 +1,5 @@
 'use client';
+import { procurementMobileFreshness } from '@/lib/procurement-mobile-view';
 
 import { useCallback, useEffect, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,6 +15,8 @@ export function ProcurementDataRefresh({
   refreshing = false,
   pauseWhileDialogOpen = false,
   compact = false,
+  mobileSummary = false,
+  unavailable = false,
 }: {
   checkedAt: string;
   label?: string;
@@ -21,6 +24,8 @@ export function ProcurementDataRefresh({
   refreshing?: boolean;
   pauseWhileDialogOpen?: boolean;
   compact?: boolean;
+  mobileSummary?: boolean;
+  unavailable?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -63,9 +68,10 @@ export function ProcurementDataRefresh({
       title={checkedAt ? `Данные на ${new Date(checkedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК. Обновить список` : 'Обновить список'}
     >
       <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isPending || refreshing ? 'animate-spin' : ''}`} />
-      <span>
+      <span className={mobileSummary ? 'hidden sm:inline' : undefined}>
         {label}: {checkedAt ? new Date(checkedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', ...(compact ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' } as const : {}) }) : 'данные недоступны'}
       </span>
+      {mobileSummary && <span className='sm:hidden'>{procurementMobileFreshness(checkedAt, new Date(), isPending || refreshing, unavailable)}</span>}
     </button>
   );
 }

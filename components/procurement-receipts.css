@@ -48,3 +48,30 @@
 .payment-history-money strong {display:block;font-size:20px;font-weight:750;color:#303438;margin-top:5px;font-variant-numeric:tabular-nums;}
 .payment-history-money p {font-size:13px;color:#626971;margin-top:4px;}
 @media(max-width:460px){.payment-history-money{gap:12px;padding:12px;}.payment-history-money strong{font-size:17px;}}
+
+/* Retain a chosen document while the open form retries the existing idempotent upload. */
+.receipt-upload-choice{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.receipt-upload-choice .procurement-receipt-button{min-height:44px}
+.receipt-upload-retained{margin-top:12px;padding:12px;border:1px solid #e3d9ce;border-radius:12px;background:#faf8f5}
+.receipt-upload-retained>p{font-size:13px!important;overflow-wrap:anywhere}
+.receipt-upload-retained [role=alert]{color:#9a3c24!important}
+@media(max-width:767px){
+  .compact-payment-calendar .compact-payment-row{cursor:pointer;padding-top:12px;padding-bottom:12px;gap:8px;grid-template-columns:minmax(0,1fr) auto}
+  .compact-payment-calendar .compact-payment-row>div:first-child h4{overflow-wrap:anywhere;font-size:14px;line-height:1.45}
+  .compact-payment-calendar .compact-payment-row .compact-payment-status{grid-column:1;grid-row:2}
+  .compact-payment-calendar .compact-payment-row .compact-payment-actions{grid-column:2;grid-row:2}
+  .compact-payment-calendar [data-payment-details]{cursor:default}
+}
+.procurement-needed-now{display:none}
+@media(max-width:767px){
+  .procurement-needed-now{display:block;padding:16px;border:1px solid #decab4;border-radius:20px;background:white;box-shadow:0 6px 18px #40281708}
+  .procurement-needed-now>div{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .procurement-needed-now h2{font-size:16px;font-weight:700;color:#252a2b}
+  .procurement-needed-now>div>span{padding:4px 8px;border-radius:8px;background:#f8ecde;color:#87542d;font-size:12px;font-weight:600}
+  .procurement-needed-now>p{margin:12px 0 8px;font-size:15px;font-weight:600}
+  .procurement-needed-now>ul{list-style:none;margin:0 0 14px;padding:0}
+  .procurement-needed-now li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:13px;color:#596064}
+  .procurement-needed-now li strong{font-weight:600;white-space:nowrap;color:#343a3d}
+  .procurement-needed-now>button{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:46px;padding:11px 15px;border-radius:14px;background:#23282b;color:white;font-size:14px;font-weight:600}
+  .procurement-shell .buyer-create-payment{background:white!important;color:#654c3a!important;border:1px solid #d9d0c6!important;box-shadow:none!important}
+}

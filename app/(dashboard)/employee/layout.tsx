@@ -13,6 +13,6 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
-  if (user.portalArea === 'PROCUREMENT') redirect('/procurement');
+  if (user.portalArea === 'PROCUREMENT' && user.department !== 'procurement') redirect('/procurement');
   return <><EmployeeInterfaceStyle copper /><Suspense fallback={null}><CashIssueProvider key={user.id}><EmployeeActivityTracker /><EmployeePayrollSnapshots><EmployeeActionReminderProvider>{children}</EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider></Suspense></>;
 }

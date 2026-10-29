@@ -35,9 +35,9 @@ export function ProcurementUsdtFields({amount,rate,reference,legacyRubles,multip
   // The buyer requests a transfer; the owner decides how to fund it.
   const change=(foreignAmount:string,exchangeRate:string)=>{setFinancialEdited(true);setRubles('');onChange({foreignAmount,exchangeRate,fundingSource:'',plannedAmount:String(plannedFxRubles(foreignAmount,exchangeRate)??'')});};
   const input='mt-1.5 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold';
-  return <div className="space-y-3">
+  return <div className="procurement-fx-fields space-y-3">
     {rublesOnly?<div><label className="block text-sm font-bold">Сумма заявки, ₽<input className={input} type="number" min="0.01" step="0.01" required value={rubles} onChange={e=>{setRubles(e.target.value);rublesEdited.current=true;setFinancialEdited(true);onChange({plannedAmount:e.target.value,foreignAmount:'',exchangeRate:'',fundingSource:''})}}/></label><button type="button" className="mt-1.5 text-xs font-semibold text-[#785537] underline underline-offset-4" onClick={toggle}>Указать в USDT</button></div>:<>
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="procurement-fx-inputs grid gap-3 sm:grid-cols-2">
       <div><label className="text-sm font-bold">{multipleOrders?'Общая сумма перевода, USDT':'Сумма перевода, USDT'}<input className={input} type="number" min="0.0001" step="0.0001" required={!legacy} value={amount} onChange={e=>change(e.target.value,displayRate)}/></label><button type="button" className="mt-1.5 text-xs font-semibold text-[#785537] underline underline-offset-4" onClick={toggle}>Указать в рублях</button></div>
       <label className="text-sm font-bold">Курс, ₽ / USDT<input aria-label="Курс, ₽ / USDT" className={input} type="number" min="0.000001" step="0.000001" required={!legacy} value={displayRate} onChange={e=>{setRateEdited(true);change(amount,e.target.value)}}/>
         {reference?.rate?<span className="mt-1.5 block text-xs font-normal text-slate-500">Последний курс из 1С{reference.conversionAt?' · '+new Date(reference.conversionAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}):''}{Number(displayRate)!==reference.rate?` · ${reference.rate.toLocaleString('ru-RU')} ₽`:''}</span>:null}

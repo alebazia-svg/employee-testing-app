@@ -17,7 +17,7 @@ export function ProcurementReceiptEvidence({ evidence, paymentClosure, noAcquisi
         // Never turn amount minus balance into an invented cash payment.
         // Show payment documents only when linked by the existing strict proof.
         const proof = 'payments' in receipt ? receipt : receipt.ref ? paymentClosure?.receipts.find(r => r.ref === receipt.ref) : undefined;
-        return <div key={receipt.ref || receipt.number} className="border-l-2 border-slate-200 pl-3">
+        return <div key={receipt.ref || receipt.number} className="procurement-evidence-document border-l-2 border-slate-200 pl-3">
           <p className="font-semibold">Приобретение №{receipt.number} · {money(receipt.amountRub)}</p>
           <p>Остаток: {money(receipt.remainingRub)}</p>
           {proof?.payments.length ? <p className="mt-2 font-medium">Связанные РКО</p> : null}
@@ -29,7 +29,7 @@ export function ProcurementReceiptEvidence({ evidence, paymentClosure, noAcquisi
       })}
       {checkedAt?<p>1С · {new Date(checkedAt).toLocaleString('ru-RU', {timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})}{paymentClosure?.recheckPending?' · обновление ожидается':''}</p>:null}
     </div>;
-  return <div className="mt-2 text-xs font-normal text-slate-600">
+  return <div className="procurement-receipt-evidence mt-2 text-xs font-normal text-slate-600">
     {documents ? inline ? documents : <details className="mt-1">
       <summary className="cursor-pointer underline">Приобретения по 1С</summary>
       {documents}

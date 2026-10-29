@@ -20,9 +20,9 @@ export function ProcurementCnyFields({amount,rate,reference,legacyRubles,multipl
     setRublesOnly(!rublesOnly);
   };
   const input='mt-1.5 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900';
-  return <div className="space-y-3">
+  return <div className="procurement-fx-fields space-y-3">
     {rublesOnly?<div><label className="block text-sm font-bold">Сумма заявки, ₽<input className={input} type="number" required min="0.01" step="0.01" value={rubles} onChange={e=>{setRubles(e.target.value);rublesEdited.current=true;onChange({foreignAmount:'',exchangeRate:'',plannedAmount:e.target.value})}}/></label><button type="button" className="mt-1.5 text-xs font-semibold text-[#785537] underline underline-offset-4" onClick={toggle}>Указать в юанях</button></div>:<>
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="procurement-fx-inputs grid gap-3 sm:grid-cols-2">
       <div><label className="text-sm font-bold">{multipleOrders?'Общая сумма перевода, CNY':'Сумма перевода, CNY'}<input className={input} type="number" required min="0.01" step="0.01" value={amount} onChange={e=>change(e.target.value,rate)}/></label><button type="button" className="mt-1.5 text-xs font-semibold text-[#785537] underline underline-offset-4" onClick={toggle}>Указать в рублях</button></div>
       <label className="text-sm font-bold">Курс, ₽ / CNY<input aria-label="Курс, ₽ / CNY" className={input} type="number" required min="0.000001" step="0.000001" value={rate} onChange={e=>change(amount,e.target.value)}/>
         {reference?.rate?<span className="mt-1.5 block text-xs font-normal text-slate-500">{reference.sourceLabel==='Комментарий заявки'?'Последний курс из заявки':'Последний курс из 1С'}{reference.conversionAt?' · '+new Date(reference.conversionAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}):''}{Number(rate)!==reference.rate?` · ${reference.rate.toLocaleString('ru-RU')} ₽ / CNY`:''}</span>:null}

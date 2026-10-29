@@ -15,9 +15,11 @@ export function employeeHeaderDateLabel(dateKey: string) {
 export function EmployeePortalHeader({
   name,
   meta,
+  procurement = false,
 }: {
   name: string;
   meta: string;
+  procurement?: boolean;
 }) {
   const [metaLead, ...metaRest] = meta.split(' · ');
   const metaTail = metaRest.join(' · ');
@@ -48,7 +50,7 @@ export function EmployeePortalHeader({
         </div>
       </div>
       <div className='employee-material-header-actions flex items-center gap-2'>
-        <WorkdayNotificationsClient />
+        <WorkdayNotificationsClient procurement={procurement} />
         <LogoutButton
           iconOnly
           iconStyle='outline'

@@ -92,7 +92,7 @@ test('QR dispatcher uses live copy, exact plan link and one delivery claim; defe
     let claimed=false;const sent:any[]=[];
     const row={id:1,userId:42,kind:'procurement_qr_check',fingerprint:qrCheckKey(plan,[file],'2026-10-25'),taskId:null,issueId:null,reviewId:null,task:null,issue:null,review:null,updatedAt:now,status:'pending',pushStatus:'pending',attemptCount:0,sentAt:null,user:{pushSubscriptions:[{id:1,endpoint:'https://push.invalid',p256dh:'mock',auth:'mock'}]}};
     const mocks:any={
-      '@/lib/prisma':{prisma:{workdayNotification:{findMany:async(a:any)=>a.include?[row]:[],update:async()=>{},updateMany:async(a:any)=>{if(a.data.pushStatus==='delivery_sending'){if(claimed)return{count:0};claimed=true;}return{count:1};}}}},
+      '@/lib/prisma':{prisma:{workDayEntry:{findMany:async()=>[]},workdayNotification:{findMany:async(a:any)=>a.include?[row]:[],update:async()=>{},updateMany:async(a:any)=>{if(a.data.pushStatus==='delivery_sending'){if(claimed)return{count:0};claimed=true;}return{count:1};}}}},
       '@/lib/terminal-fiscal-admin-gate':{TERMINAL_FISCAL_ADMIN_FIRST:false},
       '@/lib/procurement-notification-lifecycle':{inactiveProcurementNotifications:async()=>new Set()},
       './procurement-qr-check-notifications':{queueQrCheckPush:async()=>{},qrCheckPushDecision:async()=>decision==='send'?{state:'send',title:'Проверьте QR для оплаты',body:'Test · перед оплатой подтвердите актуальность QR у поставщика.'}:{state:decision,until:new Date(now.getTime()+60000)}},

@@ -1,4 +1,5 @@
 'use client';
+import { needsWorkdayEndReminder, toMoscowDateTimeInput, validateReportedWorkdayEnd } from '@/lib/workday-end-policy';
 
 import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import { HandoverAuditShown } from '@/components/HandoverAuditShown';
@@ -251,6 +252,7 @@ type UserSummary = {
   id: number;
   name: string;
   department: string;
+  portalArea?: string;
 };
 
 type ScheduleEntry = {
@@ -567,7 +569,7 @@ function WorkdayQrScanner({
         return;
       }
       if (department !== userDepartment) {
-        setError(department === 'retail' ? 'Этот QR-код для розницы. Отсканируйте QR своего отдела.' : 'Этот QR-код для опта. Отсканируйте QR своего отдела.');
+        setError(`Этот QR-код для отдела «${departmentLabel(department)}». Отсканируйте QR своего отдела.`);
         setState('error');
         stopCamera();
         return;
@@ -759,6 +761,7 @@ function factLabel(status: string | null | undefined) {
 }
 
 function departmentLabel(department: string | null | undefined) {
+  if (department === 'procurement') return 'Закупки';
   if (department === 'wholesale') return 'Опт';
   if (department === 'operations') return 'Операции';
   return 'Розница';
@@ -1324,6 +1327,7 @@ export function EmployeeTodayClient({
   const [shiftCorrectionHint, setShiftCorrectionHint] = useState('');
   const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
   const [comment, setComment] = useState('');
+  const [staleActualEndedAt, setStaleActualEndedAt] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
   const [staleCloseOpen, setStaleCloseOpen] = useState(false);
@@ -2393,8 +2397,8 @@ export function EmployeeTodayClient({
       setError('Сначала закройте предыдущий рабочий день');
       return;
     }
-    if (user.department !== 'retail' && user.department !== 'wholesale') {
-      setError('QR-старт доступен только для розницы и опта');
+    if (user.department !== 'retail' && user.department !== 'wholesale' && user.department !== 'procurement') {
+      setError('QR-старт доступен только для розницы, опта и закупок');
       return;
     }
     setQrDepartmentConfirmed(null);
@@ -2425,6 +2429,10 @@ export function EmployeeTodayClient({
         return;
       }
       if (typeof payload.startIntentId !== 'string') throw new Error('Сервер не подтвердил начало рабочего дня');
+      if (needsWorkdayEndReminder(user)) {
+        await startWorkDay('other', department, payload.startIntentId);
+        return;
+      }
       setQrDepartmentConfirmed(department);
       setWorkdayStartIntentId(payload.startIntentId);
       setStartShiftCodes(Array.isArray(payload.shiftSelection?.allowedShiftCodes) ? payload.shiftSelection.allowedShiftCodes : null);
@@ -2496,7 +2504,7 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function startWorkDay(shiftCodeOverride = selectedShift, qrDepartmentOverride = qrDepartmentConfirmed) {
+  async function startWorkDay(shiftCodeOverride = selectedShift, qrDepartmentOverride = qrDepartmentConfirmed, startIntentOverride = workdayStartIntentId) {
     if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
@@ -2512,7 +2520,7 @@ export function EmployeeTodayClient({
       setError('Выберите смену перед началом рабочего дня');
       return;
     }
-    if (!workdayStartIntentId) {
+    if (!startIntentOverride) {
       setError('QR-подтверждение не найдено. Отсканируйте код ещё раз.');
       return;
     }
@@ -2522,7 +2530,7 @@ export function EmployeeTodayClient({
       const response = await request('/api/employee/workday/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftCode: shiftCodeOverride, comment, startIntentId: workdayStartIntentId }),
+        body: JSON.stringify({ shiftCode: shiftCodeOverride, comment, startIntentId: startIntentOverride }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -2599,6 +2607,10 @@ export function EmployeeTodayClient({
       setError('Коротко опишите причину');
       return;
     }
+    if (needsWorkdayEndReminder(user)) {
+      const result = validateReportedWorkdayEnd(staleActualEndedAt, previousWorkDay.startedAt, new Date());
+      if (!result.ok) { setError(result.error); return; }
+    }
     setIsSaving(true);
     try {
       const response = await request('/api/employee/workday/finish', {
@@ -2609,6 +2621,7 @@ export function EmployeeTodayClient({
           closeStale: true,
           staleCloseReason,
           staleCloseComment,
+          actualEndedAt: staleActualEndedAt,
         }),
       });
       const payload = await response.json();
@@ -2623,6 +2636,7 @@ export function EmployeeTodayClient({
       }
       setUnfinished(null);
       setStaleCloseOpen(false);
+      setStaleActualEndedAt('');
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
@@ -4263,6 +4277,7 @@ export function EmployeeTodayClient({
         reason={staleCloseReason}
         comment={staleCloseComment}
         saving={isSaving}
+        actualEnd={needsWorkdayEndReminder(user) && previousWorkDay ? { value: staleActualEndedAt, min: toMoscowDateTimeInput(previousWorkDay.startedAt), max: toMoscowDateTimeInput(new Date()), error: staleActualEndedAt ? (() => { const result = validateReportedWorkdayEnd(staleActualEndedAt, previousWorkDay.startedAt, new Date()); return result.ok ? undefined : result.error; })() : undefined, onChange: setStaleActualEndedAt } : undefined}
         onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
         onCommentChange={setStaleCloseComment}
         onClose={() => setStaleCloseOpen(false)}
@@ -4517,13 +4532,13 @@ export function EmployeeTodayClient({
           ) : null}
           {activeTab === 'day' && previousWorkDay && !canResolvePreviousKkm && (
             <Card className='mb-4 space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
-              <h2 className='text-xl font-black text-slate-950'>Сдать смену · {formatDateLabel(previousWorkDay.date)}</h2>
+              <h2 className='text-xl font-black text-slate-950'>{needsWorkdayEndReminder(user) ? 'Завершить рабочий день' : 'Сдать смену'} · {formatDateLabel(previousWorkDay.date)}</h2>
               <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
-                <p className='text-base font-black text-amber-950'>Предыдущая смена не закрыта</p>
-                <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>Укажите причину, чтобы закрыть её.</p>
+                <p className='text-base font-black text-amber-950'>{needsWorkdayEndReminder(user) ? 'Предыдущий рабочий день не завершён' : 'Предыдущая смена не закрыта'}</p>
+                <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>{needsWorkdayEndReminder(user) ? 'Укажите фактическое окончание и причину поздней отметки.' : 'Укажите причину, чтобы закрыть её.'}</p>
               </div>
               <Button className='employee-material-primary-action min-h-12 w-full text-sm font-extrabold' onClick={() => setStaleCloseOpen(true)}>
-                Продолжить сдачу смены
+                {needsWorkdayEndReminder(user) ? 'Указать окончание дня' : 'Продолжить сдачу смены'}
               </Button>
             </Card>
           )}
@@ -4803,7 +4818,7 @@ export function EmployeeTodayClient({
 
               {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
                 <div className='pwa-composition-start-body'>
-                  <div><h2 id='pwa-composition-start-title'>Начать смену</h2><p id='pwa-start-qr-hint'>{usesWorkdayQrPhotoFallback(user) ? 'Сфотографируйте' : 'Отсканируйте'} <span className='whitespace-nowrap'>QR-код</span> в магазине.</p></div>
+                  <div><h2 id='pwa-composition-start-title'>{needsWorkdayEndReminder(user) ? 'Начать рабочий день' : 'Начать смену'}</h2><p id='pwa-start-qr-hint'>{usesWorkdayQrPhotoFallback(user) ? 'Сфотографируйте' : 'Отсканируйте'} <span className='whitespace-nowrap'>QR-код</span> {user.department === 'procurement' ? 'отдела закупок' : 'в магазине'}.</p></div>
                   <svg className='pwa-start-qr-scanner' width={48} height={48} viewBox='0 0 32 32' fill='none' aria-hidden='true'>
                     <path d='M3 10V5a2 2 0 0 1 2-2h5M22 3h5a2 2 0 0 1 2 2v5M29 22v5a2 2 0 0 1-2 2h-5M10 29H5a2 2 0 0 1-2-2v-5' stroke='currentColor' strokeWidth={1.8} strokeLinecap='round' />
                     <QrCode x={6} y={6} width={20} height={20} stroke='#794b30' strokeWidth={1.7} />
@@ -4859,8 +4874,8 @@ export function EmployeeTodayClient({
                   <div className='pwa-workday-summary-shell'>
                     <div className='pwa-studio-only pwa-workday-summary' style={{ display: 'none' }}>
                       <div className='pwa-workday-summary-top'>
-                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />На смене</strong>
-                        <span className='pwa-workday-summary-timer' aria-label={`В смене ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
+                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{needsWorkdayEndReminder(user) ? 'Рабочий день начат' : 'На смене'}</strong>
+                        <span className='pwa-workday-summary-timer' aria-label={`${needsWorkdayEndReminder(user) ? 'Рабочий день' : 'В смене'} ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
                       </div>
                       <div className='pwa-workday-summary-facts'>
                         <span>Начало {formatTime(workDay!.startedAt)} · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</span>
@@ -4958,7 +4973,7 @@ export function EmployeeTodayClient({
                     <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
-                    <p className='text-sm font-black text-slate-950'>Смена завершена</p>
+                    <p className='text-sm font-black text-slate-950'>{needsWorkdayEndReminder(user) ? 'Рабочий день завершён' : 'Смена завершена'}</p>
                     {workDay?.endedAt && <p className='pwa-shift-summary mt-1 text-lg font-extrabold text-slate-950'>{formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)} <span className='text-xs font-medium text-slate-600'>· фактическое время</span></p>}
                     {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
                     {closedWithoutEncashment ? (
@@ -5209,7 +5224,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {activeWorkDay && shiftCorrectionWindowOpen && <Card className='pwa-review-details bg-slate-50 p-4'>
+              {activeWorkDay && !needsWorkdayEndReminder(user) && shiftCorrectionWindowOpen && <Card className='pwa-review-details bg-slate-50 p-4'>
                 {shiftCorrectionWindowOpen && (
                   <button
                     type='button'
@@ -5528,7 +5543,7 @@ export function EmployeeTodayClient({
         </div>
       </div>
 
-        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
+        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation procurementEnabled={user.portalArea === 'PROCUREMENT'} active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
           if (section === 'schedule' && activeTab !== 'schedule') {
             setCalendarMonth(monthKeyFromDate(today));
             setSelectedScheduleDate(today);

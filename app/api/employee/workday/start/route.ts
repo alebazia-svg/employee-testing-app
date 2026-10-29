@@ -1,3 +1,4 @@
+import { needsWorkdayEndReminder, attendanceWorkdayDefinition } from '@/lib/workday-end-policy';
 import { Prisma, type WorkDayEntry } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const payload = await req.json().catch(() => ({}));
   const { shiftCode, comment, startIntentId } = payload;
-  const shift = getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
+  const shift = needsWorkdayEndReminder(user) ? attendanceWorkdayDefinition : getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
   const now = new Date();
   const hasShiftControl = usesWorkdayShiftControl(user);
 
@@ -161,7 +162,7 @@ export async function POST(req: Request) {
   if (!hasShiftControl) {
     try {
       const workDay = await serializableTransaction(async (tx) => {
-        await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
+        if (!needsWorkdayEndReminder(user)) await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
         const consumed = await tx.workdayStartIntent.updateMany({
           where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
           data: { consumedAt: now },

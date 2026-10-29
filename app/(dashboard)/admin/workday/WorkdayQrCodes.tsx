@@ -164,8 +164,8 @@ export function WorkdayQrCodes() {
               })}
               <div className='rounded-xl border border-slate-200 bg-slate-50 p-4'>
                 <p className='text-base font-extrabold text-slate-950'>Закупки</p>
-                <p className='mt-1 text-sm font-semibold text-[#975B36]'>Подключение в разработке</p>
-                <p className='mt-2 text-sm font-medium text-slate-500'>QR подготовлен. Отметка начала рабочего дня пока недоступна.</p>
+                <p className='mt-1 text-sm font-semibold text-[#975B36]'>Отметка рабочего дня подключена</p>
+                <p className='mt-2 text-sm font-medium text-slate-500'>Сотрудники отдела закупок сканируют этот QR для начала рабочего дня.</p>
                 <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-start'>
                   <a href='/print/portal-workday-procurement-a5.png' target='_blank' rel='noreferrer'
                     aria-label='Открыть макет Закупки'

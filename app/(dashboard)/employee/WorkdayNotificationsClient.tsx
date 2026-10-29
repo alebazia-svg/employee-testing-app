@@ -29,7 +29,7 @@ function urlBase64ToUint8Array(value: string) {
   return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
 
-export function WorkdayNotificationsClient() {
+export function WorkdayNotificationsClient({ procurement = false }: { procurement?: boolean } = {}) {
   const preview = useEmployeePreview();
   const audit = useInteractionAudit();
   const requestRead = preview?.request ?? fetch;
@@ -159,6 +159,7 @@ export function WorkdayNotificationsClient() {
     }
     setOpen(false);
     if(employeeNotificationOpening(notification)!=='page'){setSelected({...notification,audience:'employee'});return;}
+    if(notification.kind==='procurement_delivery_ready' && window.location.pathname==='/procurement')window.dispatchEvent(new Event('mobo:procurement-accountable'));
     router.push(safeNotificationHref(notification.href,'/employee'));
     if (notification.kind !== CASH_ISSUE_KIND) void dismiss(notification);
   }
@@ -185,7 +186,7 @@ export function WorkdayNotificationsClient() {
       {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
 {!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
-              <p className='text-sm font-semibold leading-snug text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
+              <p className='text-sm font-semibold leading-snug text-slate-800'>{procurement ? 'Включите напоминания, чтобы не пропустить важные действия по закупкам и рабочему дню.' : 'Включите напоминания, чтобы не пропустить действие по рабочему дню.'}</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-3 rounded-lg bg-green-700 px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>

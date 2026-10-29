@@ -125,6 +125,7 @@ export function getLateMinutes(shiftStartMinutes: number | null, actualMinutes: 
 }
 
 export function departmentLabel(department: string | null | undefined) {
+  if (department === 'procurement') return 'Закупки';
   if (department === 'wholesale') return 'Опт';
   if (department === 'operations') return 'Операции';
   return 'Розница';

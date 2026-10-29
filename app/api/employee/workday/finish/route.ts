@@ -1,3 +1,4 @@
+import { needsWorkdayEndReminder, validateReportedWorkdayEnd, WORKDAY_END_REMINDER_KIND, workdayEndReminderKey, WORKDAY_END_REMINDER_OFFSETS } from '@/lib/workday-end-policy';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
     : null;
   if (staleCloseInput && !staleCloseInput.ok) return Response.json({ error: staleCloseInput.error }, { status: 400 });
 
+  const now = new Date();
+  const reportedEnd = isStaleWorkDay && needsWorkdayEndReminder(user)
+    ? validateReportedWorkdayEnd(payload.actualEndedAt, activeWorkDay.startedAt, now)
+    : null;
+  if (reportedEnd && !reportedEnd.ok) return Response.json({ error: reportedEnd.error }, { status: 400 });
+
   if (usesWorkdayShiftControl(user)) {
     const shiftControlRun = await prisma.shiftControlRun.findUnique({
       where: { workDayEntryId: activeWorkDay.id },
@@ -68,15 +75,16 @@ export async function POST(req: Request) {
     }, { status: 409 });
   }
 
-  const now = new Date();
   const staleCloseViolationComment = staleCloseInput?.ok
-    ? staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment })
+    ? (reportedEnd?.ok
+      ? `Сотрудник указал фактическое окончание: ${payload.actualEndedAt.replace('T', ' ')} МСК. Записано: ${now.toISOString()}.\nПричина: ${staleCloseInput.reason.label}. ${staleCloseInput.comment}`
+      : staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment }))
     : '';
   const workDay = await prisma.$transaction(async (tx) => {
     const changed = await tx.workDayEntry.updateMany({
       where: { id: activeWorkDay.id, endedAt: null, status: { in: ['active', 'missing_checkout'] } },
       data: {
-        endedAt: now,
+        endedAt: reportedEnd?.ok ? reportedEnd.endedAt : now,
         status: 'completed',
         comment: closeStale && isStaleWorkDay
           ? [activeWorkDay.comment, staleCloseViolationComment].filter(Boolean).join('\n')
@@ -85,6 +93,7 @@ export async function POST(req: Request) {
     });
     const updatedWorkDay = await tx.workDayEntry.findUniqueOrThrow({ where: { id: activeWorkDay.id } });
     if (!changed.count) return updatedWorkDay;
+    await tx.workdayNotification.updateMany({ where: { userId: user.id, kind: WORKDAY_END_REMINDER_KIND, fingerprint: { in: WORKDAY_END_REMINDER_OFFSETS.map((_, slot) => workdayEndReminderKey(activeWorkDay.id, slot)) }, status: { in: ['pending', 'sent'] } }, data: { status: 'resolved', pushStatus: 'cancelled', nextPushAttemptAt: null } });
 
     if (closeStale && isStaleWorkDay) {
       await tx.shiftControlRun.updateMany({

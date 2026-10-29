@@ -37,3 +37,13 @@ test('partial and confirmed issue are distinct; stale approval hidden', () => {
   assert.match(render({ ...base, state: 'issued', issued: 15000, remaining: 0 }), /Пополнение выдано/);
   const stale = render({ ...base, checkedAt: '2020-01-01' }); assert.match(stale, /временно недоступен/); assert.doesNotMatch(stale, /К выдаче|Касса тест/);
 });
+
+test('mobile completion confirms exact paid amount and request without changing desktop or collection permission', () => {
+ const completed={...base,state:'issued' as const,issued:15000,remaining:0};
+ const mobile=(status:DeliveryNativeStatus,failed=false)=>renderToStaticMarkup(<ProcurementDeliveryNativeStatus audience="buyer" showCompleted failed={failed} view={{state:'linked',status}}/>);
+ assert.equal(buyer(completed),'');
+ const html=mobile(completed);assert.match(html,/Выдано 15\s000/);assert.match(html,/test-1/);assert.doesNotMatch(html,/Можно получить|Касса тест/);
+ for(const row of [{...completed,remaining:1},{...completed,issued:1},{...completed,state:'review' as const}])assert.doesNotMatch(mobile(row),/Выдано/);
+ assert.doesNotMatch(mobile({...completed,checkedAt:'2020-01-01'}),/Выдано/);
+ assert.doesNotMatch(mobile(completed,true),/Выдано/);
+});

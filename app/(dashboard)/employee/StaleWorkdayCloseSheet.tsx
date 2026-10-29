@@ -18,6 +18,7 @@ export function StaleWorkdayCloseSheet(props: {
   reason: string;
   comment: string;
   saving: boolean;
+  actualEnd?: { value: string; min: string; max: string; error?: string; onChange: (value: string) => void };
   onReasonChange: (reason: string) => void;
   onCommentChange: (comment: string) => void;
   onClose: () => void;
@@ -30,7 +31,7 @@ export function StaleWorkdayCloseSheet(props: {
         <div className='mx-auto mb-4 h-1 w-12 rounded-full bg-slate-300' aria-hidden='true' />
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <h2 className='text-2xl font-black leading-tight text-slate-950'>Предыдущая смена</h2>
+            <h2 className='text-2xl font-black leading-tight text-slate-950'>{props.actualEnd ? 'Предыдущий рабочий день' : 'Предыдущая смена'}</h2>
             <p className='mt-2 text-sm font-semibold leading-snug text-slate-500'>
               {props.shiftLabel && <>{props.shiftLabel} · </>}<span className='text-amber-800'>Не закрыта</span>
             </p>
@@ -40,6 +41,11 @@ export function StaleWorkdayCloseSheet(props: {
           </button>
         </div>
         <div className='mt-5 grid gap-3'>
+          {props.actualEnd && <label className='grid gap-2 text-sm font-bold text-slate-800'>Когда фактически закончили работу? (МСК)
+            <input type='datetime-local' required value={props.actualEnd.value} min={props.actualEnd.min} max={props.actualEnd.max} onInput={event => props.actualEnd?.onChange(event.currentTarget.value)} onChange={event => props.actualEnd?.onChange(event.target.value)} className='h-12 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 text-base' />
+            <span className='text-xs font-medium text-slate-500'>Укажите реальное окончание. День не закрывается автоматически.</span>
+            {props.actualEnd.error && <span role='alert' className='text-sm text-red-700'>{props.actualEnd.error}</span>}
+          </label>}
           <fieldset className='employee-material-form rounded-xl p-3'>
             <legend className='px-1 text-sm font-extrabold text-slate-800'>Почему не завершили день?</legend>
             <div className='mt-1 grid grid-cols-2 gap-2'>
@@ -49,8 +55,8 @@ export function StaleWorkdayCloseSheet(props: {
             </div>
             {props.reason === 'other' && <textarea value={props.comment} onChange={(event) => props.onCommentChange(event.target.value)} maxLength={1000} rows={2} className='mt-3 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100' placeholder='Коротко опишите причину' />}
           </fieldset>
-          <Button type='button' className='employee-material-green-action h-14 w-full rounded-xl text-base font-black' disabled={props.saving || !props.reason || (props.reason === 'other' && !props.comment.trim())} onClick={props.onSubmit}>
-            {props.saving ? 'Закрываем…' : 'Закрыть смену'}
+          <Button type='button' className='employee-material-green-action h-14 w-full rounded-xl text-base font-black' disabled={props.saving || Boolean(props.actualEnd && (!props.actualEnd.value || props.actualEnd.error)) || !props.reason || (props.reason === 'other' && !props.comment.trim())} onClick={props.onSubmit}>
+            {props.saving ? 'Сохраняем…' : props.actualEnd ? 'Сохранить окончание дня' : 'Закрыть смену'}
           </Button>
         </div>
       </div>

@@ -23,6 +23,8 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
   const fx=method==='CNY'||method==='USDT';
   const total=method==='USDT'?Number(usdtRubles):method==='CNY'?(amount?plannedFxRubles(amount,rate):Number(cnyRubles)):Number(amount);
   const hasDraft=Boolean(date||amount||usdtRubles||comment||method!=='CASH');
+  const missingInput=[!date?'дату подготовки':null,(!total||total<=0)?(fx?'сумму / курс':'сумму'):null].filter(Boolean);
+  const submitHint=saving?'':blocked?'Отправка недоступна: проверьте актуальность данных.':missingInput.length?`Укажите ${missingInput.join(' и ')}.`:'';
   useEffect(()=>{onDraftStateChange({hasDraft,saving})},[hasDraft,saving,onDraftStateChange]);
   async function submit(event:React.FormEvent){
     event.preventDefault();setError('');
@@ -59,7 +61,8 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
     }}/></label>
     {method!=='CASH'?<p className="text-xs text-slate-500">После перевода прикрепите чек.</p>:null}
     {error?<p role="alert" className="text-sm text-red-700">{error}</p>:null}
-    <div className="sticky bottom-0 z-10 -mx-4 flex justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:-mx-5 sm:px-5">
+    <div className="buyer-payment-submit sticky bottom-0 z-10 -mx-4 flex justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:-mx-5 sm:px-5">
+      {submitHint?<p className="buyer-submit-hint" role="status">{submitHint}</p>:null}
       <button type="button" disabled={saving} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" onClick={onCancel}>Отмена</button>
       <button disabled={saving||blocked||!date||!total||total<=0} className="admin-material-primary rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{saving?'Отправка…':'Отправить заявку'}</button>
     </div>

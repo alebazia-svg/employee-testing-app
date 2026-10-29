@@ -35,6 +35,7 @@ const departmentLabels: Record<string, string> = {
   retail: 'Розница',
   wholesale: 'Опт',
   operations: 'Операции',
+  procurement: 'Закупки',
 };
 
 const payrollRuleLabels: Record<string, string> = {
@@ -199,7 +200,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
             <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.department} onChange={(event) => setDraft((value) => ({ ...value, department: event.target.value }))}>
               <option value='retail'>Розница</option>
               <option value='wholesale'>Опт</option>
-              <option value='operations'>Операции</option>
+              <option value='operations'>Операции</option><option value='procurement'>Закупки</option>
             </select>
             {draft.role === 'EMPLOYEE' ? <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.portalArea} onChange={(event) => setDraft((value) => ({ ...value, portalArea: event.target.value }))}>
               <option value='WORKDAY'>Рабочий день розницы</option>

@@ -6,7 +6,7 @@ import {build} from 'esbuild';
 // Uses an isolated browser context and bundled component, never a portal or DB.
 // Set PROCUREMENT_TEST_PLAYWRIGHT to a Playwright module path; optionally set
 // PROCUREMENT_TEST_BROWSER to a locally installed Chromium executable.
-test('receipt picker: direct upload, exact links, cancellation, retry and multiple payments', {
+test('receipt picker: camera/file choice, exact links, cancellation, retained retry and multiple payments', {
   skip: !process.env.PROCUREMENT_TEST_PLAYWRIGHT,
 }, async () => {
   const {chromium} = createRequire(import.meta.url)(process.env.PROCUREMENT_TEST_PLAYWRIGHT!);
@@ -39,12 +39,13 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
   });
   const browser = await chromium.launch({headless:true, ...(process.env.PROCUREMENT_TEST_BROWSER?{executablePath:process.env.PROCUREMENT_TEST_BROWSER}:{})});
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({viewport:{width:390,height:844}});
     await page.setContent('<div id="root"></div>');
     await page.addScriptTag({content:bundle.outputFiles[0].text});
     const mount = (options:Record<string,unknown>)=>page.evaluate((o:unknown)=>(window as any).mount(o),options);
     const saved = ()=>page.evaluate(()=>(window as any).saved);
     const picker = async(name='Добавить чек')=>{
+      if(name==='Добавить чек'){await page.getByRole('button',{name,exact:true}).click();name='Выбрать файл';}
       const event=page.waitForEvent('filechooser');
       await page.getByRole('button',{name,exact:true}).click();
       return event;
@@ -63,8 +64,9 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
       assert.equal((await saved()).length,1);
       await page.evaluate(()=>(window as any).uploadOk=false);
       await (await picker()).setFiles(file);
+      assert.equal(await page.getByRole('button',{name:'Повторить отправку',exact:true}).count(),1);
       await page.evaluate(()=>(window as any).uploadOk=true);
-      await (await picker()).setFiles(file);
+      await page.getByRole('button',{name:'Повторить отправку',exact:true}).click();
       assert.equal((await saved()).length,3);
     }
     await mount({count:0,method:'ACCOUNTABLE_QR'});
@@ -73,10 +75,10 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
     await mount({count:2});
     await page.getByRole('button',{name:'Добавить чек',exact:true}).click();
     assert.equal(await page.getByRole('checkbox').count(),2);
-    assert.equal(await page.getByRole('button',{name:'Выбрать чек',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'Выбрать файл',exact:true}).isDisabled(),true);
     await page.getByRole('checkbox').nth(1).check();
     const multiple=page.waitForEvent('filechooser');
-    await page.getByRole('button',{name:'Выбрать чек',exact:true}).click();
+    await page.getByRole('button',{name:'Выбрать файл',exact:true}).click();
     await (await multiple).setFiles(file);
     assert.deepEqual((await saved())[0].refs,['cash:payment-1']);
     for(const admin of [true,false])for(const method of ['USDT','CNY','BANK']){

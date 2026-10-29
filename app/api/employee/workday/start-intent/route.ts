@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey, departmentLabel } from '@/lib/workday';
 import { parseWorkdayQrDepartment, workdayStartIntentExpiresAt } from '@/lib/workday-qr';
 import { loadWorkdayShiftSelection, workdayShiftSelectionHint } from '@/lib/workday-shift-selection';
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Это не QR-код начала рабочего дня.' }, { status: 400 });
   }
   if (department !== user.department) {
-    return Response.json({ error: department === 'retail' ? 'Этот QR-код для розницы.' : 'Этот QR-код для опта.' }, { status: 400 });
+    return Response.json({ error: `Этот QR-код для отдела «${departmentLabel(department)}».` }, { status: 400 });
   }
 
   const now = new Date();

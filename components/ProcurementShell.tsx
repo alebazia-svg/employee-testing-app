@@ -1,12 +1,33 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { ProcurementNotificationsButton } from '@/components/ProcurementNotificationsButton';
+import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
+import { EmployeeInterfaceStyle } from './EmployeeInterfaceStyle';
+import { EmployeeNavigation } from './EmployeeNavigation';
+import './procurement-mobile-shell.css';
 import { ReleaseLabel } from '@/components/ReleaseLabel';
 
-export function ProcurementShell({ userName, children }: { userName: string; children: React.ReactNode }) {
+export function ProcurementShell({ userName, children, workdayEnabled = false }: { userName: string; children: React.ReactNode; workdayEnabled?: boolean }) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => setMobile(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  if (mobile) return <main className='portal-neutral-design employee-material-ui procurement-shell procurement-responsive-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
+    <EmployeeInterfaceStyle copper />
+    <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'>
+      <EmployeePortalHeader name={userName} meta='Закупки' procurement />
+      <div className='flex-1 procurement-mobile-content min-w-0 px-4'>{children}</div>
+    </div>
+    <EmployeeNavigation active='procurement' payrollEnabled={false} procurementEnabled />
+  </main>;
   return <main className='portal-neutral-design procurement-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
     <section className='admin-workspace min-h-[100dvh] min-w-0 px-3 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-6'>
       <div className='mx-auto w-full max-w-[1320px]'>

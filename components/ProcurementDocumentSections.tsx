@@ -1,9 +1,11 @@
 'use client';
 import React,{useRef,useState} from 'react';
+import {useProcurementMobilePresentation} from './ProcurementMobilePresentation';
+import {procurementFileSize} from '@/lib/procurement-file-size';
 import {Paperclip} from 'lucide-react';
 import type {Receipt,ReceiptPlan} from './ProcurementReceipts';
 import {isPaymentReceipt,qrIsConfirmed,receiptCoverageCount,pendingQrCoversPayment,paymentRequisites,type DocumentPurpose} from '@/lib/procurement-document-policy';
-import {canCollectQrReceiptBeforePayment,hasConfirmedReceiptPayment,needsProcurementReceipt} from '@/lib/procurement-receipt-policy';
+import {canCollectQrReceiptBeforePayment,hasConfirmedReceiptPayment,needsProcurementReceipt,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
 import {paymentDeferral} from '@/lib/procurement-schedule';
 
 type Props={plan:ReceiptPlan;files:Receipt[];admin:boolean;disabled:boolean;today:string;
@@ -12,11 +14,33 @@ type Props={plan:ReceiptPlan;files:Receipt[];admin:boolean;disabled:boolean;toda
   onChange:(file:Receipt,action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT',purpose?:DocumentPurpose,refs?:string[])=>Promise<boolean>;
   onOpen:(file:Receipt,button:HTMLButtonElement)=>void};
 export function ProcurementDocumentSections({plan,files,admin,disabled,today,onAdd,onChange,onOpen,onRequestQr}:Props){
+  const mobile=!!useProcurementMobilePresentation();
   const [panel,setPanel]=useState<string>('');
   const [purpose,setPurpose]=useState<DocumentPurpose>('QR');
   const [selected,setSelected]=useState<string[]>([]);
   const [replacement,setReplacement]=useState<Receipt>();
   const input=useRef<HTMLInputElement>(null);
+  const cameraInput=useRef<HTMLInputElement>(null);
+  type PendingUpload={file:File;purpose:DocumentPurpose;replacement?:Receipt;refs?:string[]};
+  const [pendingUpload,setPendingUpload]=useState<PendingUpload|null>(null);
+  const [uploadError,setUploadError]=useState('');
+  const [sending,setSending]=useState(false);
+  const sendLock=useRef(false);
+  async function sendSelected(upload:PendingUpload){
+    if(disabled||sendLock.current)return;
+    sendLock.current=true;setSending(true);setUploadError('');
+    try {
+      if(await onAdd([upload.file],upload.purpose,upload.replacement,upload.refs)) { setPendingUpload(null);setPanel(''); }
+      else setUploadError('Отправка не подтверждена. Файл остаётся в этой форме — можно повторить отправку.');
+    }catch{setUploadError('Отправка не подтверждена. Файл остаётся в этой форме — можно повторить отправку.');}
+    finally{sendLock.current=false;setSending(false);}
+  }
+  async function selectedFile(file:File|undefined){
+    if(!file)return;
+    if(!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)||file.size<=0||file.size>RECEIPT_MAX_BYTES){setUploadError('Выберите фото JPG, PNG, WebP или PDF до 10 МБ.');return;}
+    const upload:PendingUpload={file,purpose,replacement,refs:purpose==='RECEIPT'?(payments.length?[...selected]:['pending-qr']):undefined};
+    setPendingUpload(upload);setPanel('upload');await sendSelected(upload);
+  }
   const requisitesOptions=paymentRequisites(plan.paymentMethod);
   const defaultRequisitesPurpose:DocumentPurpose=requisitesOptions?.qr?'QR':'REQUISITES';
   const receipts=files.filter(isPaymentReceipt),requisites=files.filter(f=>f.purpose&&f.purpose!=='RECEIPT'&&!f.replacedById),old=files.filter(f=>f.replacedById);
@@ -41,9 +65,7 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
     setSelected(refsDefault);
     setPurpose('RECEIPT');
     setReplacement(undefined);
-    // A single payment (or the existing early QR receipt) needs no extra form.
-    // Keep the native picker in this click event so mobile browsers allow it.
-    if(payments.length<=1){setPanel('');input.current?.click();}
+    if(payments.length<=1&&!mobile){setPanel('');input.current?.click();}
     else setPanel('receipt');
   };
   const paymentChoices=<fieldset className="payment-document-choices"><legend>Чек за оплату</legend>{payments.map(row=><label key={row.ref}><input type="checkbox" checked={selected.includes(row.ref)} disabled={disabled} onChange={e=>setSelected(prev=>e.target.checked?[...prev,row.ref]:prev.filter(ref=>ref!==row.ref))}/>Расходник {row.number||'без номера'}{row.date?` · ${row.date}`:''}</label>)}</fieldset>;
@@ -67,9 +89,21 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
     </section>:null}
     <section><div className="payment-document-heading"><h3>Чеки оплаты {needReceipt?<span className="payment-document-warning">Нужен чек</span>:null}</h3>{canAddReceipt?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={chooseReceipt}>Добавить чек</button>:null}</div>
       {receipts.length?list(receipts):<p className="payment-document-empty">{canAddReceipt?'Чек ещё не добавлен':'После оплаты здесь будет чек'}</p>}
-      {panel==='receipt'?<div className="payment-document-panel">{payments.length?paymentChoices:<p>Подтверждение перевода поставщику по QR</p>}<div><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>input.current?.click()}>Выбрать чек</button><button type="button" className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null}
+      {!mobile?panel==='receipt'?<div className="payment-document-panel">{payments.length?paymentChoices:<p>Подтверждение перевода поставщику по QR</p>}<div><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>input.current?.click()}>Выбрать чек</button><button type="button" className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null:panel==='receipt'?<div className="payment-document-panel">{payments.length>1?paymentChoices:!payments.length?<p>Подтверждение перевода поставщику по QR</p>:null}<div><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>cameraInput.current?.click()}>Сфотографировать</button><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>input.current?.click()}>Выбрать файл</button><button type="button" className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null}
     </section>
     {old.length?<details><summary>Прежние реквизиты · {old.length}</summary>{list(old,true)}</details>:null}
-    <input hidden type="file" ref={input} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={async event=>{const files=Array.from(event.currentTarget.files||[]);event.currentTarget.value='';if(files.length&&await onAdd(files,purpose,replacement,purpose==='RECEIPT'?(payments.length?selected:['pending-qr']):undefined))setPanel('');}}/>
+    {mobile&&uploadError&&!pendingUpload?<p role="alert" className="text-sm text-red-700">{uploadError}</p>:null}
+    {mobile&&pendingUpload && <div className="receipt-upload-retained" aria-live="polite">
+      <p>{pendingUpload.purpose==='RECEIPT'?'Чек оплаты':'Реквизиты для оплаты'}: <strong>{pendingUpload.file.name}</strong> · {procurementFileSize(pendingUpload.file.size)}</p>
+      {sending?<p role="status">Отправляем файл…</p>:uploadError?<>
+        <p role="alert">{uploadError}</p><div className="receipt-upload-choice">
+          <button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>void sendSelected(pendingUpload)}>Повторить отправку</button>
+          <button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>{setPurpose(pendingUpload.purpose);setReplacement(pendingUpload.replacement);setSelected(pendingUpload.refs??[]);input.current?.click();}}>Выбрать другой файл</button>
+          <button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>{setPendingUpload(null);setUploadError('');setPanel('');}}>Убрать файл</button>
+        </div><p>Файл хранится только в открытой форме. После обновления страницы потребуется выбрать его заново.</p>
+      </>:null}
+    </div>}
+    <input hidden type="file" ref={cameraInput} accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void selectedFile(file);}}/>
+    {mobile?<input hidden type="file" ref={input} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void selectedFile(file);}}/>:<input hidden type="file" ref={input} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={async event=>{const files=Array.from(event.currentTarget.files||[]);event.currentTarget.value='';if(files.length&&await onAdd(files,purpose,replacement,purpose==='RECEIPT'?(payments.length?selected:['pending-qr']):undefined))setPanel('');}}/>}
   </div>;
 }

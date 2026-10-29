@@ -1,4 +1,6 @@
 import { reconcileCashInventoryIssues } from './cash-inventory-reconciliation';
+import { activeWorkdayEndReminders, queueWorkdayEndReminders, workdayEndReminderDelivery } from './workday-end-notifications';
+import { WORKDAY_END_REMINDER_KIND } from './workday-end-policy';
 import { SCHEDULE_NEAR_KIND, scheduleNearNoticeRef, scheduleCalendarHref } from './schedule-near-reminder';
 import { schedulePushAt } from './schedule-coverage-question';
 import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
@@ -58,6 +60,7 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
 }
 
 export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const activeEndReminders = await activeWorkdayEndReminders(db, rows, new Date());
   const routing = rows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadExpenseRouting().catch(() => null) : null;
   const expenseKeys = new Set(routing?.items.map(expenseRouteKey));
   const activeSchedule = await activeScheduleNotices(db, rows);
@@ -89,6 +92,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
 
   return rows.filter((notification) => {
+    if (notification.kind === WORKDAY_END_REMINDER_KIND && !activeEndReminders.has(notification.id)) return false;
     if (notification.kind === EMPLOYEE_EXPENSE_KIND && routing?.state === 'ready' && !routing.unavailableRefs.includes(notification.fingerprint?.split(':')[3] ?? '') && !expenseKeys.has(notification.fingerprint ?? '')) return false;
     if (inactiveProcurement.has(notification.id)) return false;
     if (scheduleNoticeKinds.includes(notification.kind) && !activeSchedule.has(notification.id)) return false;
@@ -385,6 +389,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
+  await queueWorkdayEndReminders(prisma, now);
   await queueScheduleFillQuestions(prisma, now).catch(() => undefined);
   await queueDeliveryReadyPush(now).catch(() => undefined);
   await queueCashIssuePush(now).catch(() => undefined);
@@ -421,6 +426,17 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
+    if (notification.kind === WORKDAY_END_REMINDER_KIND) {
+      const endReminder = await workdayEndReminderDelivery(prisma, notification, dispatchTime());
+      if (endReminder.state === 'defer') {
+        await prisma.workdayNotification.updateMany({ where: { id: notification.id, status: { in: ['pending', 'sent'] } }, data: { scheduledAt: endReminder.until, nextPushAttemptAt: endReminder.until } });
+        continue;
+      }
+      if (endReminder.state === 'cancel') {
+        await prisma.workdayNotification.updateMany({ where: { id: notification.id, status: { in: ['pending', 'sent'] } }, data: { status: 'resolved', pushStatus: 'cancelled', nextPushAttemptAt: null } });
+        continue;
+      }
+    }
     const delivery = notification.kind === EMPLOYEE_EXPENSE_KIND ? await expensePushDecision(notification, dispatchTime())
       : notification.kind === QR_CHECK_KIND ? await qrCheckPushDecision(notification,dispatchTime())
       : notification.kind === CASH_ISSUE_KIND ? await cashIssuePushDecision(notification, dispatchTime())
