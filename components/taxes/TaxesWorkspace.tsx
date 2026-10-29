@@ -239,14 +239,14 @@ function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
 function GapDetails({ issue }: { issue: TaxesWorkspaceProps['issues'][number] }) {
   const gaps = issue.operations!;
   const date = (value: string) => value.split('-').reverse().slice(0, 2).join('.');
-  return <div className='basis-full'>
+  return <div className='min-w-0 basis-full'>
     <p className='tax-small mt-1 leading-relaxed text-[#5f564e]'>{issue.text}</p>
-    {issue.action && <p className='tax-small mt-1 leading-relaxed font-semibold text-[#4c443c]'>{issue.action}</p>}
+    {issue.action && <p className='tax-small mt-1 font-semibold leading-relaxed text-[#4c443c]'>{issue.action}</p>}
     <details className='tax-details group mt-2'>
       <summary className='tax-link text-[13px]'>Показать операции</summary>
-      {gaps.missingInFns.length > 0 && <><p className='tax-small mt-2 font-semibold'>Есть у нас, нет у налоговой — {rub(gaps.missingInFnsTotal)}</p><div className='tax-table-wrap mt-1'><table className='tax-table tax-ops'><thead><tr><th>Дата</th><th className='num'>Сумма</th><th>Вид</th><th>Плательщик и назначение</th></tr></thead><tbody>{gaps.missingInFns.map((item, row) => <tr key={row}><td className='whitespace-nowrap'>{date(item.date)}</td><td className='num whitespace-nowrap'>{rub(item.amount)}</td><td className='whitespace-nowrap'>{item.kind}{item.account && <small>{item.account}</small>}</td><td>{item.payer}{item.purpose && <small>{item.purpose}</small>}</td></tr>)}</tbody></table></div></>}
-      {gaps.missingInOurs.length > 0 && <><p className='tax-small mt-3 font-semibold'>Есть у налоговой, нет в 1С — {rub(gaps.missingInOursTotal)}</p><div className='tax-table-wrap mt-1'><table className='tax-table tax-ops'><thead><tr><th>Дата</th><th className='num'>Сумма</th><th>Операция в выгрузке налоговой</th></tr></thead><tbody>{gaps.missingInOurs.map((item, row) => <tr key={row}><td className='whitespace-nowrap'>{date(item.date)}</td><td className='num whitespace-nowrap'>{rub(item.amount)}</td><td>{item.operation}</td></tr>)}</tbody></table></div></>}
-      {gaps.cashDays.length > 0 && <><p className='tax-small mt-3 font-semibold'>Касса по дням</p><div className='tax-table-wrap mt-1'><table className='tax-table tax-ops'><thead><tr><th>День</th><th className='num'>Чеки у нас</th><th className='num'>У налоговой</th></tr></thead><tbody>{gaps.cashDays.map((item, row) => <tr key={row}><td>{date(item.date)}</td><td className='num'>{rub(item.ours)}</td><td className='num'>{rub(item.fns)}</td></tr>)}</tbody></table></div></>}
+      {gaps.missingInFns.length > 0 && <><p className='tax-small mt-2 font-semibold'>Есть у нас, нет у налоговой — {rub(gaps.missingInFnsTotal)}</p><ul className='tax-ops'>{gaps.missingInFns.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)} · {item.kind}{item.account ? ` · ${item.account}` : ''}</span></span>{item.payer && item.payer !== item.kind && <span>{item.payer}</span>}{item.purpose && <small>{item.purpose}</small>}</li>)}</ul></>}
+      {gaps.missingInOurs.length > 0 && <><p className='tax-small mt-3 font-semibold'>Есть у налоговой, нет в 1С — {rub(gaps.missingInOursTotal)}</p><ul className='tax-ops'>{gaps.missingInOurs.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{rub(item.amount)}</b><span>{date(item.date)}</span></span>{item.operation && <small>{item.operation}</small>}</li>)}</ul></>}
+      {gaps.cashDays.length > 0 && <><p className='tax-small mt-3 font-semibold'>Касса по дням: чеки у нас / у налоговой</p><ul className='tax-ops'>{gaps.cashDays.map((item, row) => <li key={row}><span className='tax-ops-head'><b>{date(item.date)}</b><span>{rub(item.ours)} / {rub(item.fns)}</span></span></li>)}</ul></>}
     </details>
   </div>;
 }

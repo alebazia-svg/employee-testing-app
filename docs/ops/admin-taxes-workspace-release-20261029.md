@@ -102,3 +102,8 @@ Restore the preceding verified image and source commit; disable
   the same month's income difference is folded into that item; upload hints no longer
   ask for a whole-year export (uploads accumulate). Status of non-processed archive
   documents is «done» at once.
+
+## 1.19.6 — operations list readable on a phone
+
+- «Показать операции» is a stacked list (amount, date, kind, account, purpose) instead
+  of a wide table that pushed the item past the screen edge; «за N дней» wording.

@@ -66,7 +66,7 @@ function explainFnsDifference(difference: number, gaps: FnsMonthGaps | undefined
     actions.push('Проверьте, загружены ли в 1С выписки по всем счетам за эти дни.');
   }
   if (gaps.cashDays.length && Math.abs(gaps.cashDifference) > tolerance) {
-    parts.push(`Касса: в ${plural(gaps.cashDays.length, 'день', 'дня', 'дней')} чеки расходятся с налоговой на ${signed(gaps.cashDifference)}.`);
+    parts.push(`Касса: за ${plural(gaps.cashDays.length, 'день', 'дня', 'дней')} чеки расходятся с налоговой на ${signed(gaps.cashDifference)}.`);
     actions.push('По кассе сверьте чеки за эти дни: личный кабинет налоговой → АУСН → Доходы, источник ККТ.');
   }
   const explained = gaps.missingInFnsTotal - gaps.missingInOursTotal + gaps.cashDifference;

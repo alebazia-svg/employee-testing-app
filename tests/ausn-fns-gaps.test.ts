@@ -34,7 +34,7 @@ test('an income difference is explained by operations and carries the list', () 
   const issue = issues.find((item) => item.kind === 'fns' && item.periodKey === '2026-08')!;
   assert.equal(august.fnsDifference, 15_000);
   assert.match(issue.text, /Налоговая не видит 1 поступление на 12\s000,00\s₽ \(кредит\/рассрочка\)/);
-  assert.match(issue.text, /Касса: в 1 день/);
+  assert.match(issue.text, /Касса: за 1 день/);
   assert.doesNotMatch(issue.text, /Не разобрано/); // 12 000 + 3 000 = 15 000
   assert.match(issue.action || '', /бухгалтеру/);
   assert.equal(issue.operations?.missingInFns[0].account, 'ВТБ КБР');
