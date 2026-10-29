@@ -63,3 +63,19 @@ Restore the preceding verified image and source commit; disable
 - Full suite on Mac: 1998 tests, 62 failures — identical set to unmodified 1.18.27
   (pre-existing, outside taxes); 36 new tax tests pass. `next build` passes.
 - Runner: `ausn_portal_process_test.py` 5/5.
+
+## Production (29.10.2026)
+
+- 1.19.0 `ddc555b`: deployed; refresh script failed (top-level await in CJS tsx).
+- Runner: first installed `9e49f5b` (based on c9e9637) by mistake — production was
+  already `e6d4241`. Replaced before any report run by `0913c10` = e6d4241 + REFRESH
+  (branch `codex/ausn-portal-refresh-on-e6d4241`). Previous: `e6d4241`.
+- 1.19.1 `7f4a3a7`: refresh script fixed; forced refresh completed 21:51 MSK.
+- 1.19.2: no false alarms on real data — open month is never an FNS discrepancy,
+  the full report does not search ENP payments (shown as «не сверялись», not
+  «не оплачено»), one item per missing FNS source.
+- Two stale intake requests (ENS uploads of 25.10, already superseded) parked in
+  `/var/lib/ausn-report/portal-intake/parked-20261029/`.
+- `TAX_CONTROL_ALERT_LOGINS=admin` (the only ADMIN account, used by Бэла).
+- Known dependency: Platforma OFD is read through the Mac tunnel; when the Mac
+  sleeps, refresh fails and the hourly timer retries.

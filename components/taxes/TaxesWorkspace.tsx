@@ -138,8 +138,8 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
     </section>
 
     <section className='tax-panel' aria-label='Налоги коротко'>
-      <SummaryRow title='Налог' tone={unpaidDue.length ? 'error' : underpaid.length ? 'warn' : 'ok'} status={unpaidDue.length ? 'Не оплачен' : underpaid.length ? 'Недоплата' : 'Оплачивается'} href={`${withTab(base)}reconciliation`}>
-        {full?.available ? <>С апреля {mln(full.estimatedTax)}, оплачено {mln(paid)}{underpaid.length ? ` · недоплата за ${underpaid.map((month) => monthName(month.periodKey)).join(', ')}` : ''}{unpaidDue.length ? ` · не найдена оплата за ${unpaidDue.map((month) => monthName(month.periodKey)).join(', ')}` : ''}</> : 'Появится после пересчёта'}
+      <SummaryRow title='Налог' tone={unpaidDue.length ? 'error' : underpaid.length ? 'warn' : paid > 0 ? 'ok' : 'muted'} status={unpaidDue.length ? 'Не оплачен' : underpaid.length ? 'Недоплата' : paid > 0 ? 'Оплачивается' : 'Оплаты не сверялись'} href={`${withTab(base)}reconciliation`}>
+        {full?.available ? <>С апреля {mln(full.estimatedTax)}{paid > 0 ? `, оплачено ${mln(paid)}` : ' (8% от дохода)'}{underpaid.length ? ` · недоплата за ${underpaid.map((month) => monthName(month.periodKey)).join(', ')}` : ''}{unpaidDue.length ? ` · не найдена оплата за ${unpaidDue.map((month) => monthName(month.periodKey)).join(', ')}` : ''}</> : 'Появится после пересчёта'}
       </SummaryRow>
       <SummaryRow title='Сверка с налоговой' tone={diffs ? 'error' : closed.length && reconciled === closed.length ? 'ok' : 'warn'} status={diffs ? `Расхождения: ${diffs}` : closed.length && reconciled === closed.length ? 'Совпадает' : 'Не всё проверено'} href={`${withTab(base)}reconciliation`}>
         {closed.length ? `Совпадает ${reconciled} из ${closed.length} месяцев` : 'Нет данных'}

@@ -77,3 +77,16 @@ test('health flags a stale report, failed processing and missing permanent docum
   assert.equal(blocked[0].id, 'report-missing');
   assert.match(blocked[0].text, /чеки кассы/);
 });
+
+test('no false alarms from production data: open month, unsearched payments, one item per missing source', () => {
+  const open = ownerFullReport.replace('| 2026-09 · Принято ФНС | 7 169 708,73 ₽ |', '| 2026-09 · Принято ФНС | 7 169 708,73 ₽ |\n| 2026-10 · Принято ФНС | 1 000 000,00 ₽ |\n| 2026-10 · Разница с ФНС | +3 817 602,12 ₽ |')
+  const parsed = parsePortalReport(open, 'ausn-executive-full-20261025T074847.md');
+  const months = reviewMonths({ report: parsed, plan, today: '2026-11-30' });
+  const october = months.find((month) => month.periodKey === '2026-10')!;
+  assert.equal(october.checks.find((check) => check.key === 'fns')?.state, 'not_due');
+  assert.equal(october.checks.find((check) => check.key === 'payment')?.state, 'unknown');
+  const issues = reviewIssues({ report: parsed, months });
+  assert.ok(!issues.some((issue) => issue.kind === 'payment' && /не найдена/.test(issue.title)));
+  assert.ok(!issues.some((issue) => issue.periodKey === '2026-10' && issue.kind === 'fns' && issue.severity === 'high'));
+  assert.equal(issues.filter((issue) => issue.kind === 'ens' && issue.severity === 'medium').length, 1);
+});
