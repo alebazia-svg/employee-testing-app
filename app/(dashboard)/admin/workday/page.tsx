@@ -1504,7 +1504,7 @@ export default async function AdminWorkdayPage(
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
   const googleSnapshot = await getTeamGoogleSnapshot();
   const employeeControlRows = employees
-    .filter(employee => employee.department === 'retail' || employee.department === 'wholesale')
+    .filter(employee => employee.department === 'retail' || employee.department === 'wholesale' || employee.department === 'procurement')
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
       const vacation = vacationByUser.get(employee.id) ?? null;

@@ -16,7 +16,7 @@ export function TeamDailyControl({rows,controls,planControls=[],departmentAction
  const ownCount=ownerActions.length+departmentActions.filter(action=>action.kind!=='employee').length+summaries.reduce((sum,summary)=>sum+summary.breakdown.decision+summary.breakdown.check,0);
  const decisionCount=ownerActions.filter(action=>action.kind==='decision').length+departmentActions.filter(action=>action.kind==='decision').length+summaries.reduce((sum,summary)=>sum+summary.breakdown.decision,0);
  const matches=(r:TeamDayRow)=>filter==='all'||filter==='attention'&&(teamControlSummary(r,date,ownerActions).items.length>0||r.timing.length>0)||filter==='started'&&r.start!=='—'||filter==='late'&&r.late>0||teamRowStatus(r)===filter;
- const visibleRows=['wholesale','retail'].flatMap(department=>rows.filter(row=>row.department===department&&matches(row)).sort(compareTeamRows));
+ const visibleRows=['wholesale','retail','procurement'].flatMap(department=>rows.filter(row=>row.department===department&&matches(row)).sort(compareTeamRows));
  const navigation=visibleRows.map(row=>({employeeId:row.id,name:row.name}));
  const hasAttention=ownerActions.length>0||departmentActions.length>0||summaries.some(summary=>summary.items.length>0||summary.timing.length>0);
  return <section className="team-control" id="employees-control"><TeamSourceRefresh/>
@@ -27,11 +27,11 @@ export function TeamDailyControl({rows,controls,planControls=[],departmentAction
    <section className="team-panel"><div className="team-panel-title team-panel-title-compact"><h2>Команда сегодня</h2><span className="team-presence-note" title="Отметка начала не является независимым подтверждением присутствия.">Начало — по отметке сотрудника</span></div>
    <div className="team-filters team-filters-compact" role="group" aria-label="Показать сотрудников">{[['all','Все'],['working','Работает'],['missing','Не отметились'],['attention','С замечаниями']].map(([id,label])=><button type="button" key={id} aria-pressed={filter===id} onClick={()=>{setFilter(id);}}>{label}</button>)}<select aria-label="Статус сотрудника" value={filter==='all'||filter==='attention'?'':filter} onChange={event=>{setFilter(event.target.value||'all');}}><option value="">Все статусы</option><optgroup label="Состояние">{teamStatusFilters.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup><optgroup label="Дополнительно"><option value="started">Есть начало</option><option value="late">Опоздания</option></optgroup></select></div>
    <div className="team-column-head" aria-hidden="true"><span>Сотрудник / источник</span><span>План</span><span>Начало</span><span>Состояние</span><span>Контроль</span></div>
-   {['wholesale','retail'].map(department=>{
+   {['wholesale','retail','procurement'].map(department=>{
     const all=rows.filter(r=>r.department===department),shown=visibleRows.filter(row=>row.department===department);
 
     return shown.length>0?<section key={department}>
-     <div className="team-department"><div className="team-department-name"><b>{department==='wholesale'?'Опт':'Розница'}</b><span>{shown.length===all.length?`${all.length} чел.`:`${shown.length} из ${all.length} чел.`}</span></div>
+     <div className="team-department"><div className="team-department-name"><b>{department==='wholesale'?'Опт':department==='retail'?'Розница':'Закупки'}</b><span>{shown.length===all.length?`${all.length} чел.`:`${shown.length} из ${all.length} чел.`}</span></div>
 </div>
      {shown.map(r=>{
       const summary=teamControlSummary(r,date,ownerActions);
