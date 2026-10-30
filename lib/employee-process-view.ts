@@ -85,7 +85,7 @@ export function buildProcessView(data:EmployeeActivityReport):ProcessItem[] {
   item.hasProblems=problems.length>0||!!item.currentProblem;
   // Ordinary confirmation prompts are not evidence of a failure.
   const reviewProblems=problems.filter(p=>!['confirmation','kkm_question'].includes(p.stage||''));
-  const unresolvedProblems=reviewProblems.filter(p=>!item.steps.some(s=>s.at>p.at&&(s.id.startsWith('result:')||s.id.startsWith('cash-posted:')||s.id.startsWith('fact:start:')||s.id.startsWith('fact:end:')||(!!p.target&&s.target===p.target&&s.period===p.period&&(s.stage==='completed'||s.stage==='accepted')))));
+  const unresolvedProblems=reviewProblems.filter(p=>!item.steps.some(s=>s.at>p.at&&(s.id.startsWith('result:')||s.id.startsWith('cash-posted:')||s.id.startsWith('fact:start:')||s.id.startsWith('fact:end:')||(!!p.target&&s.target===p.target&&s.period===p.period&&(s.stage==='completed'||s.stage==='accepted'||s.stage==='duplicate_cleared')))));
   item.unresolved=!!item.currentProblem||unresolvedProblems.length>0;
   if(item.currentProblem)item.attentionReason=item.outcome;
   else if(unresolvedProblems.length)item.attentionReason=problemReason(unresolvedProblems.at(-1)!);
@@ -114,6 +114,8 @@ export function buildProcessView(data:EmployeeActivityReport):ProcessItem[] {
    const lostConnection=reviewProblems.some(p=>p.note?.includes('отсутствии сети')||p.stage==='network_error');
    item.summary.push(lostConnection?'После потери связи получен результат':'После затруднения получен результат');
   }
+  const clearedDuplicate=[...item.steps].reverse().find(s=>s.stage==='duplicate_cleared');
+  if(clearedDuplicate&&!item.confirmed&&!item.currentProblem&&!item.unresolved){item.outcome='Повторная отправка снята сотрудником';item.outcomeAt=clearedDuplicate.at;}
   if(!item.outcome||item.outcome==='Выполнение не подтверждено'){
    const last=item.steps.at(-1);
    item.outcome=last?.stage==='queued'?'Сохранена на телефоне; отправка не подтверждена':last?.stage==='confirmation'?'Ожидает подтверждения изменения':last?.stage==='completed'||last?.stage==='accepted'?'Ответ приложения получен; итог операции не подтверждён':'Результат не подтверждён';

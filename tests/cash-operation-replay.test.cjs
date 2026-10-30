@@ -12,7 +12,7 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
     amount: 123, direction: 'deposit_safe', comment: '', status,
     oneCDocumentRef: status === 'posted_1c_pair' ? 'rko' : null, oneCReceiptDocumentRef: status === 'posted_1c_pair' ? 'pko' : null,
     createdAt: new Date('2026-09-03T15:00:00Z'), updatedAt: new Date() };
-  const prisma = { workDayEntry: { findUnique: async ({where}) => {
+  const prisma = { $executeRaw:async()=>1, workDayEntry: { findUnique: async ({where}) => {
     if (where.id) return {id:where.id,userId:sourceOwner,date:sourceDate,status:sourceStatus,endedAt:sourceEndedAt};
     if (noCurrentDay) return null;
     const date = where.userId_date.date;
@@ -20,7 +20,7 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
       ? { id: 20, userId: 7, date, status: 'active', endedAt: null }
       : { id: 19, userId: 7, date, status: 'completed', endedAt: new Date(`${date}T15:00:00Z`) };
   } }, cashOperation: {
-    findUnique: async () => missing ? null : row, findUniqueOrThrow: async () => row,
+    findFirst:async()=>null, findUnique: async () => missing ? null : row, findUniqueOrThrow: async () => row,
     update: async ({data}) => (row = {...row, ...data}),
     create: async ({data}) => {
       assert.equal(missing, true, 'a replay must never create another record');
@@ -29,6 +29,8 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
   }, userOneCCashboxMapping: {findUnique: async () => ({isActive: true,oneCCashboxRef:'source'})} };
   prisma.$transaction = async fn => fn(prisma);
   const mocks = {
+    '@/lib/cash-operation-duplicate': { CASH_DUPLICATE_CODE:'CASH_OPERATION_DUPLICATE' },
+    '@/lib/cash-operation-submission': { claimCashOperationSubmission: async(db,input,savePhoto)=>({kind:'created',operation:await db.cashOperation.create({data:{...input,photoPath:await savePhoto()}})}) },
     '@/lib/auth': {getCurrentUser: async () => ({ id:7, department:'retail', name:'QA' })},
     '@/lib/prisma': {prisma},
     '@/lib/workday': {getMoscowDateKey: date => date ? date.toISOString().slice(0,10) : '2026-09-04', usesWorkdayShiftControl: () => true},
@@ -44,7 +46,7 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
     if (['crypto','path'].includes(name)) return require(name);
     if(name === 'fs/promises') return {mkdir:async()=>{},writeFile:async()=>{photoWrites++;}};
     throw new Error(`Unexpected import ${name}`);
-  }, Response, Request, FormData, File, Date, Buffer, process: {cwd: () => '/tmp'} });
+  }, console:{info:()=>{}}, Response, Request, FormData, File, Date, Buffer, process: {cwd: () => '/tmp'} });
   const form = new FormData();
   form.set('direction',direction);form.set('amount',amount);form.set('idempotencyKey','c3564726-5261-45ce-b080-4fe68782b1e2');form.set('photo',new File(['qa'],'qa.jpg',{type:'image/jpeg'}));
   if(sourceWorkday){form.set('workDayEntryId','19');form.set('workDayDate',sourceDate);}

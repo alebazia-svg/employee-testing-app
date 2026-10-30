@@ -20,6 +20,8 @@ const actualFunctions = compile([
   section('function uploadFormData<T>(', 'async function submitFormData<T>('),
   section('class EmployeeApiError extends Error', 'type UserSummary ='),
   section('  async function submitCashOperation(', '  async function saveHandoverDraft('),
+  section('  const refreshCashOutboxCount = useCallback(', '  const uploadCashItem = useCallback('),
+  section('  const uploadCashItem = useCallback(', '  const flushCashOutbox = useCallback('),
   section('  const flushCashOutbox = useCallback(', '  useEffect(() => {\n    const updateConnection'),
 ].join('\n'));
 
@@ -34,7 +36,10 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
   const stored = new Map();
   const requests = [];
   const messages = [];
+  const auditStages = [];
   let response = {status:200,body:JSON.stringify({operation:row})};
+  const duplicateContext={exports:{}};
+  vm.runInNewContext(compile(fs.readFileSync(path.join(root,'lib/cash-operation-duplicate.ts'),'utf8')),duplicateContext);
   const outboxContext = {exports:{},Blob,File,FormData,Date};
   vm.runInNewContext(compile(outboxSource),outboxContext);
   class FakeXHR {
@@ -45,11 +50,19 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
       if(response.event) {this[response.event]();return;}
       this.status=response.status;
       this.responseText=response.body;
+      this.upload.onload?.();
       this.onload();
     }
   }
   const context = {File,Blob,FormData,Date,XMLHttpRequest:FakeXHR,
-    beginEmployeeOperation:()=>()=>{}, // Collector is covered separately; never changes the cash workflow.
+    cashDuplicateResult:duplicateContext.exports.cashDuplicateResult,
+    readEmployeeCashReceipt:async()=>null,
+    setCashDuplicateItem:x=>{context.cashDuplicateItem=typeof x==='function'?x(context.cashDuplicateItem):x;},
+    cashDuplicateItem:null, setCashPhotoUploaded:()=>{},
+    resetCashOperationDraft:()=>{context.cashOperationDraft={direction:null,amount:'',comment:'',idempotencyKey:''};},
+    cashTransferInFlightRef:{current:false},cashRetryAfterRef:{current:0},cashRetryDelayRef:{current:0},document:{visibilityState:'visible'},
+    sendEmployeeActivity:()=>{},createIdempotencyKey:()=> 'audit-key-12345',
+    beginEmployeeOperation:()=>stage=>auditStages.push(stage), // Collector is covered separately; never changes the cash workflow.
     preview: null, // Real employee mode; the current component also supports read-only ADMIN preview.
     isRecord:x=>x!==null && typeof x==='object',useCallback:fn=>fn,
     cashOperationDraft:{...item,idempotencyKey:item.id},user:{id:7},activeWorkDay:{id:19,date:'2026-09-04'},
@@ -59,7 +72,7 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
     saveEmployeeCashOutboxItem:async x=>{if(storageFails)throw Error('storage unavailable');stored.set(x.id,x);},
     removeEmployeeCashOutboxItem:async id=>{if(removalFails)throw Error('delete failed');stored.delete(id);},
     listEmployeeCashOutboxItems:async()=>[...stored.values()],
-    refreshCashOutboxCount:async()=>{},syncCurrentWorkdayState:async()=>{if(refreshFails)throw Error('refresh failed');},
+    setCashOutboxCount:()=>{},syncCurrentWorkdayState:async()=>{if(refreshFails)throw Error('refresh failed');},
     setError:x=>messages.push(x),setMessage:x=>messages.push(x),setCashOutboxError:x=>messages.push(x),
     setIsSaving:()=>{},setUploadProgress:()=>{},setCashOutboxSyncing:()=>{},
     setCashOperationDraft:x=>{context.cashOperationDraft=x;},setCashOperationsState:()=>{},
@@ -68,9 +81,9 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
   };
   vm.createContext(context);
   vm.runInContext(actualFunctions+'\nthis.flush = flushCashOutbox;',context);
-  return {item,row,stored,requests,messages,
+  return {item,row,stored,requests,messages,auditStages,
     respond:x=>{response=x;},
-    submit:()=>context.submitCashOperation(photo),flush:()=>context.flush(),
+    submit:()=>context.submitCashOperation(photo),flush:()=>context.flush(true),autoFlush:()=>context.flush(),resolve:same=>context.resolveCashDuplicate(same),context,
     acknowledges:outboxContext.exports.cashOutboxResponseAcknowledges,
   };
 }
@@ -123,17 +136,18 @@ for(const status of [200,202]) {
 }
 test('storage unavailable and network failure never claim the photo is saved',async()=>{
   const s=setup({storageFails:true});s.respond({event:'onerror'});await s.submit();
-  assert.equal(s.stored.size,0);assert.ok(!s.messages.some(x=>/сохранена на телефоне/.test(x)));
+  assert.equal(s.stored.size,0);assert.ok(!s.messages.some(x=>/сохранена на телефоне/.test(x)));assert.equal(s.auditStages.at(-1),'failed');
 });
 test('failed local deletion retains the same retry key',async()=>{
   const s=setup({removalFails:true});await s.submit();await s.flush();
   assert.equal(s.stored.size,1);
   assert.ok(s.requests.every(x=>x.get('idempotencyKey')===s.item.id));
 });
-test('UI refresh failure after acceptance does not falsely claim local retention',async()=>{
+test('UI refresh failure after acceptance never changes a successful save into an error',async()=>{
   const s=setup({refreshFails:true});await s.submit();
   assert.equal(s.stored.size,0);
-  assert.ok(!s.messages.some(x=>/сохранена на телефоне/.test(x)));
+  assert.ok(!s.messages.some(x=>/сохранена на телефоне|refresh failed/.test(x)));
+  assert.ok(s.messages.some(x=>/Зафиксировано/.test(x)));
 });
 test('recovery after reopening reads stored records and isolates users',async()=>{
   const s=setup();
@@ -147,4 +161,40 @@ test('acknowledgement for another workday never deletes the retained operation',
   s.respond({status:202,body:JSON.stringify({operation:{...s.row,workDayEntryId:20,date:'2026-09-05'}})});
   await s.submit();
   assert.equal(s.stored.size,1);
+});
+
+
+test('a different draft for the same transfer stays in review and is not retried in the background',async()=>{
+ const s=setup();const previous={...s.row,id:75,idempotencyKey:'original-key',createdAt:'2026-09-04T10:00:00Z'};
+ s.respond({status:409,body:JSON.stringify({code:'CASH_OPERATION_DUPLICATE',requestedIdempotencyKey:s.item.id,operation:previous})});
+ await s.submit();assert.equal(s.stored.size,1);assert.equal(s.stored.get(s.item.id).duplicateOf.id,75);
+ await s.flush();assert.equal(s.requests.length,1);
+ await s.resolve(true);assert.equal(s.stored.size,0);assert.equal(s.requests.length,1,'acknowledging the first transfer must not create another request');
+});
+test('another actual transfer needs an explicit answer and reuses the retained photo/key',async()=>{
+ const s=setup();const previous={...s.row,id:75,idempotencyKey:'original-key',createdAt:'2026-09-04T10:00:00Z'};
+ s.respond({status:409,body:JSON.stringify({code:'CASH_OPERATION_DUPLICATE',requestedIdempotencyKey:s.item.id,operation:previous})});await s.submit();
+ s.respond({status:200,body:JSON.stringify({operation:s.row})});await s.resolve(false);
+ assert.equal(s.requests.length,2);assert.equal(s.requests[1].get('distinctFromOperationId'),'75');
+ assert.equal(s.requests[1].get('idempotencyKey'),s.item.id);assert.equal(await s.requests[1].get('photo').text(),'photo-bytes');assert.equal(s.stored.size,0);
+});
+test('duplicate review survives a refresh when local photo storage is unavailable',async()=>{
+ const s=setup({storageFails:true});
+ const previous={...s.row,id:75,idempotencyKey:'original-key',createdAt:'2026-09-04T10:00:00Z'};
+ s.respond({status:409,body:JSON.stringify({code:'CASH_OPERATION_DUPLICATE',requestedIdempotencyKey:s.item.id,operation:previous})});
+ await s.submit();assert.equal(s.stored.size,0);assert.equal(s.context.cashDuplicateItem.duplicateOf.id,75);
+ await s.resolve(true);assert.equal(s.context.cashDuplicateItem,null);assert.equal(s.requests.length,1);
+});
+test('automatic retries back off and neither hidden app nor simultaneous form upload starts another request',async()=>{
+ const s=setup();s.respond({event:'onerror'});await s.submit();await s.autoFlush();assert.equal(s.requests.length,1);
+ s.context.cashRetryAfterRef.current=0;s.context.document.visibilityState='hidden';await s.autoFlush();assert.equal(s.requests.length,1);
+ s.context.document.visibilityState='visible';s.context.cashTransferInFlightRef.current=true;await s.flush();assert.equal(s.requests.length,1);
+ s.context.cashTransferInFlightRef.current=false;await s.flush();assert.equal(s.requests.length,2);
+});
+
+
+test('a lost response is recovered by the lightweight receipt without another photo upload',async()=>{
+ const s=setup();s.respond({event:'onerror'});await s.submit();assert.equal(s.requests.length,1);
+ s.context.readEmployeeCashReceipt=async()=>({operation:s.row});await s.flush();
+ assert.equal(s.requests.length,1);assert.equal(s.stored.size,0);
 });

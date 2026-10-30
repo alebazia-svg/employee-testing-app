@@ -8,21 +8,24 @@ export const operationActions = {
 } as const;
 export const operationStages = {
   started: 'Начал действие', completed: 'Приложение получило ответ', failed: 'Не удалось завершить действие',
+  duplicate_cleared: 'Повторная отправка снята',
   queued: 'Операция осталась на телефоне', confirmation: 'Требуется подтверждение изменения',
 } as const;
 export type OperationContext = {
   action: keyof typeof operationActions; stage: keyof typeof operationStages; attemptId: string;
-  period?: string; ref?: string; durationMs?: number; reason?: 'network' | 'request' | 'unavailable' | 'incomplete' | 'prerequisite';
+  period?: string; ref?: string; duplicateOfOperationId?: number; durationMs?: number; reason?: 'network' | 'request' | 'unavailable' | 'incomplete' | 'prerequisite';
 };
 export function readOperationContext(value: unknown): OperationContext | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const p = value as Record<string, unknown>;
-  if (!Object.keys(p).every(k => ['action','stage','attemptId','period','ref','durationMs','reason'].includes(k))) return null;
+  if (!Object.keys(p).every(k => ['action','stage','attemptId','period','ref','duplicateOfOperationId','durationMs','reason'].includes(k))) return null;
   if (typeof p.action !== 'string' || !Object.hasOwn(operationActions,p.action) || typeof p.stage !== 'string' || !Object.hasOwn(operationStages,p.stage)) return null;
   if (typeof p.attemptId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(p.attemptId)) return null;
   if (p.period !== undefined && (typeof p.period !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$/.test(p.period))) return null;
   if (typeof p.period === 'string' && p.period.length === 10 && new Date(`${p.period}T12:00:00Z`).toISOString().slice(0,10)!==p.period) return null;
   if (p.ref !== undefined && (p.action !== 'cash_send' || typeof p.ref !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(p.ref))) return null;
+  if (p.stage === 'duplicate_cleared' && (p.action !== 'cash_send' || !Number.isSafeInteger(p.duplicateOfOperationId) || Number(p.duplicateOfOperationId) <= 0 || !p.ref)) return null;
+  if (p.duplicateOfOperationId !== undefined && p.stage !== 'duplicate_cleared') return null;
   if (p.durationMs !== undefined && (p.stage === 'started' || !Number.isSafeInteger(p.durationMs) || Number(p.durationMs)<0 || Number(p.durationMs)>21600000)) return null;
   if (p.reason !== undefined && (!['network','request','unavailable','incomplete','prerequisite'].includes(String(p.reason)) || !['failed','queued'].includes(p.stage))) return null;
   if (p.reason === 'prerequisite' && p.action !== 'day_end') return null;

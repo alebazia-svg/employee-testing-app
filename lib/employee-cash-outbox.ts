@@ -1,4 +1,5 @@
 'use client';
+import type { CashDuplicateSummary } from './cash-operation-duplicate';
 
 export type EmployeeCashOutboxItem = {
   id: string;
@@ -14,6 +15,8 @@ export type EmployeeCashOutboxItem = {
   photoName?: string;
   photoType?: string;
   lastError: string;
+  duplicateOf?: CashDuplicateSummary;
+  distinctFromOperationId?: number;
 };
 
 const databaseName = 'offonika-workday-safety';
@@ -101,6 +104,7 @@ export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
   formData.append('amount', item.amount);
   formData.append('comment', item.comment);
   formData.append('idempotencyKey', item.id);
+  if (Number.isSafeInteger(item.distinctFromOperationId) && item.distinctFromOperationId! > 0) formData.append('distinctFromOperationId', String(item.distinctFromOperationId));
   // Records created by the previous PWA version do not have these fields.
   // Keep them retryable on the same day, while every new record is pinned to
   // the exact workday that was active when the employee took the photo.
