@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import XLSX from 'xlsx-js-style';
+import { payrollDisplayName } from '../lib/payroll-display-name';
 import * as helpers from '../lib/payroll-workbook';
 
 test('actual workbook generator preserves totals, advance provenance and manual fallback', async () => {
@@ -11,7 +12,7 @@ test('actual workbook generator preserves totals, advance provenance and manual 
   const source = text.slice(text.indexOf('async function downloadPayrollWorkbook('),text.indexOf('\nfunction getSavedRunReviewReasons('))
     .replace("const XLSX = (await import('xlsx-js-style')).default;", 'const XLSX = testXLSX;');
   let workbook: XLSX.WorkBook | null = null;
-  const context = vm.createContext({ ...helpers,
+  const context = vm.createContext({ ...helpers, payrollDisplayName,
     formatMoney: (n: number) => `${n.toLocaleString('ru-RU',{minimumFractionDigits:2})} ₽`,
     testXLSX: { ...XLSX, writeFile: (value: XLSX.WorkBook) => { workbook = value; } },
   });
@@ -38,4 +39,10 @@ test('actual workbook generator preserves totals, advance provenance and manual 
   await context.downloadPayrollWorkbook({...model,oneCAdvanceEmployees:[]});
   const manual=XLSX.utils.sheet_to_json<(string|number)[]>((workbook as unknown as XLSX.WorkBook).Sheets['Расшифровка'],{header:1});
   assert.equal(manual.find(r=>r[5]==='Аванс')![7],'Ручной ввод в портале');
+  const legacyName = 'Кумыков Мухаммед';
+  await context.downloadPayrollWorkbook({...model, oneCAdvanceEmployees:[legacyName], employeeRows:model.employeeRows.map(r=>({...r,employeeName:legacyName})), accrualRows:model.accrualRows.map(r=>[legacyName,...r.slice(1)])});
+  const renamed = XLSX.utils.sheet_to_json<(string|number)[]>((workbook as unknown as XLSX.WorkBook).Sheets['Итоги'],{header:1});
+  assert.ok(renamed.some(r=>r[0]==='Кумыков Мухамед' && r[7]===15000 && r[8]===20490));
+  assert.ok(!renamed.some(r=>r.includes(legacyName)));
+
 });

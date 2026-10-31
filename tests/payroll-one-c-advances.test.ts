@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyPayrollOneCAdvances, parsePayrollAdvanceComment, parsePayrollAdvanceResponse } from '../lib/payroll-one-c-advances';
 import { FILM_TRAINEE_NAME } from '../lib/payroll-trainee';
+import { buildPayrollEmployeeDirectory } from '../lib/payroll-calculation-engine';
+import { prepareDailyPayrollInputs, buildDailyPayrollBase } from '../lib/payroll-daily-calculation';
+import { resolvePayrollEmployeeSalaryType } from '../lib/payroll-employee-rules';
 import { payrollPaymentMonth } from '../lib/payroll-settlement-month';
 
 const expected = { periodKey: '2026-09', dateFrom: '2026-09-01', dateTo: '2026-09-17', checkedAt: '2026-09-17T12:00:00Z' };
@@ -116,4 +119,34 @@ test('trainee advances continue after September without matching Magomed', () =>
   assert.equal(applied.issues.length, 0);
   assert.equal(applied.rows[0].advance, 15000);
   assert.equal(applied.rows[0].netPay, 20490);
+});
+
+test('legacy procurement rule retains Muhammad in October and applies his approved advance', () => {
+  const name = 'Кумыков Мухаммед';
+  const user = { id: 100, department: 'procurement', name: 'Кумыков Мухамед', payrollName: name, role: 'EMPLOYEE', isActive: true,
+    payrollSalaryType: 'purchase_manager', payrollReportGroup: 'Закупки', payrollFixedSalary: null,
+    payrollRuleFrom: null, payrollRuleThrough: null };
+  const directory = buildPayrollEmployeeDirectory([user], '2026-10');
+  assert.equal(directory[name]?.salaryType, 'purchase_daily');
+  const manual = prepareDailyPayrollInputs({directory, manual: {}, attendance: null, periodKey: '2026-10', finboxAmount: null});
+  const rows = buildDailyPayrollBase({periodKey: '2026-10', directory, users: [user], summaries: [], manual, fixed: {},
+    purchase: {advance: '', deduction: '', comment: ''}, purchaseBase: 0});
+  const window = {periodKey: '2026-10', dateFrom: '2026-10-01', dateTo: '2026-10-31', checkedAt: '2026-10-31T12:00:00Z'};
+  const trainee = {...row, employee_ref: '70dbcdd8-ce99-11f0-a343-002590803daf', employee_name: 'СтажерЗакупка',
+    document_number: '00OF-001901', document_date: '16.10.2026 16:57:07', amount: 7500, document_comment: ''};
+  const read = parsePayrollAdvanceResponse({...payload([trainee]),date_from: window.dateFrom,date_to: window.dateTo},window);
+  const applied = applyPayrollOneCAdvances(rows,read);
+  assert.deepEqual(applied.issues, []);
+  const muhammad = applied.rows.find(employee => employee.manager === name)!;
+  assert.equal(muhammad.grossPay,24000); assert.equal(muhammad.advance,7500); assert.equal(muhammad.netPay,16500);
+  assert.equal(muhammad.salesBonus,0); assert.equal(muhammad.disciplineBonus,0);
+  assert.equal(muhammad.advanceDocuments.length,1);
+  assert.equal(applyPayrollOneCAdvances(applied.rows,read).rows.find(employee => employee.manager === name)!.netPay,16500);
+  assert.equal(buildPayrollEmployeeDirectory([user],'2026-09')[name],undefined);
+  assert.equal(buildPayrollEmployeeDirectory([{...user,payrollRuleFrom:'2026-11'}],'2026-10')[name],undefined);
+  assert.equal(buildPayrollEmployeeDirectory([{...user,payrollRuleThrough:'2026-09'}],'2026-10')[name],undefined);
+  assert.equal(buildPayrollEmployeeDirectory([{...user,isActive:false}],'2026-10')[name],undefined);
+  assert.equal(resolvePayrollEmployeeSalaryType('Тохов Астемир','purchase_manager'),'purchase_manager');
+  assert.equal(resolvePayrollEmployeeSalaryType(name,'fixed_salary'),'fixed_salary');
+  assert.equal(resolvePayrollEmployeeSalaryType(name,'purchase_manager','2026-09'),'purchase_manager');
 });

@@ -1,4 +1,6 @@
 'use client';
+import { payrollDisplayName } from '@/lib/payroll-display-name';
+import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 
 import { CellValue, SalesRow, Department, CalculationType, ClassifiedSalesRow, BonusManagerSummary, PayrollManualInput, PayrollDaysSource, ConfiguredSalaryType, SalaryType, PayrollEmployee, PayrollDirectoryUser, FixedPayrollInput, PurchasePayrollInput, PurchaseReportState, FullPayrollRow, PayrollAttendanceSourceType, PayrollAttendanceConfig, payrollEmployees, isConfiguredSalaryType, buildPayrollEmployeeDirectory, buildUnconfiguredPayrollRows, payrollAttendanceConfig, PayrollAttendanceFormSummary, PayrollAttendanceScheduleSummary, PayrollAttendancePreviewResponse, purchaseManagerName, purchaseTargetSalary, purchaseStandardWorkedDays, purchaseDayRate, purchasePercent, agentCreditCommissionEmployee, retailTraineePayrollName, payrollExcludedEmployeeNames, payrollManagerAliases, calculationFormulas, normalizeText, getPayrollManagerName, mapLegacyRetailTraineeRowsForPeriod, isCreditSale, isAccessoryBonusRow, getAccessoryCalculationRows, getAccessoryCalculationBase, parseManualNumber, normalizePersonName, isBelaManager, isNoDayPayManager, getDayRate, getDefaultPayrollDepartment, isPayrollEmployeeActiveForPeriod, buildEmptyManagerSummary, mergeBonusManagerSummaries, buildSalesPayrollSummaries, applyRetailAccessoryTier, buildFullPayrollRow, getPayrollManualInput, applyBelaPercentRule, applyPayrollBonuses, buildFixedPayrollRows, buildPurchasePayrollRow, findAttendanceMatches, applyAutomaticAttendanceInputs } from '@/lib/payroll-calculation-engine';
 
@@ -436,7 +438,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     ...tableRows.map((row) => row.values),
     totalRow,
   ];
-  const summarySheet = XLSX.utils.aoa_to_sheet(sheetRows);
+  const summarySheet = XLSX.utils.aoa_to_sheet(sheetRows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
   for (let rowNumber = 1; rowNumber <= totalRowNumber; rowNumber += 1) {
     setRowStyle(summarySheet, rowNumber, 0, 9, { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { color: { rgb: '0F172A' } } });
   }
@@ -488,7 +490,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   const addTableSheet = (name: string, subtitle: string, header: string[], rows: Array<Array<string | number | null>>, widths: number[], moneyColumns: number[] = [], collapsedRows: Set<number> = new Set()) => {
     const safeRows = rows.length ? rows : [['—', 'Данных для отображения нет']];
     const statusColumn = header.indexOf('Статус');
-    const sheet = XLSX.utils.aoa_to_sheet([[`${name} — ${model.periodLabel}`], [subtitle], [], header, ...safeRows]);
+    const sheet = XLSX.utils.aoa_to_sheet([[`${name} — ${model.periodLabel}`], [subtitle], [], header, ...safeRows].map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
     const lastColumn = header.length - 1;
     const headerRowNumber = 4;
     const firstDataRowNumber = 5;
@@ -713,6 +715,12 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   addTableSheet('Источники и правила', 'Использованные данные и действующие правила расчёта зарплаты.', ['Что рассчитываем', 'Источник', 'Какие показатели берём', 'Как данные попали в расчёт', 'Период', 'Для чего используется'], workbookSourceRows, [34, 28, 52, 38, 18, 72]);
 
   XLSX.writeFile(workbookExport, model.fileName, { bookType: 'xlsx' });
+}
+
+function getSavedPayrollVerifiedThrough(summary: unknown) {
+  if (!summary || typeof summary !== 'object' || !('verifiedThrough' in summary)) return undefined;
+  const value = summary.verifiedThrough;
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatPayrollControlDate(value) : undefined;
 }
 
 function getSavedRunReviewReasons(run: { sourceSummary?: unknown }) {
@@ -3223,6 +3231,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
   const [oneCAdvances, setOneCAdvances] = useState<PayrollAdvanceRead | null>(null);
   const [oneCAdvancesError, setOneCAdvancesError] = useState('');
+  const [advancesRefresh, setAdvancesRefresh] = useState(0);
   const [isAutomaticExporting, setIsAutomaticExporting] = useState(false);
   const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
   const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
@@ -3282,7 +3291,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     void refresh();
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 5 * 60 * 1000);
     return () => { cancelled = true; controller.abort(); window.clearInterval(timer); };
-  }, [isSelectedPayrollPeriodAvailable, selectedPayrollPeriodKey]);
+  }, [isSelectedPayrollPeriodAvailable, selectedPayrollPeriodKey, advancesRefresh]);
   const bonusesReady = bonusState.periodKey === selectedPayrollPeriodKey;
   const bonusDrafts = bonusesReady ? bonusState.drafts : [];
   const handleOneCShadowDataChange = useCallback((data: DailyControlResponse | null, state: { isStale: boolean }) => {
@@ -6165,13 +6174,17 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       {!settlementRows && !workspaceFinalRun && (!visualPreview || !oneCShadowCalculation) && <div className="mb-4">{periodPicker}</div>}
 
       <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
-        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} />}
+        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} />}
         {workspaceFinalRun && showCurrentComparison && !oneCShadowCalculation && <p role='status' className='rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600'>Текущие данные для сверки ещё недоступны. Утверждённые суммы выше сохранены и не изменяются. Состояние загрузки можно посмотреть в «Источниках и настройках».</p>}
         {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
           periodPicker={settlementRows || workspaceFinalRun ? <></> : periodPicker}
           period={`${months[Number(month)]} ${year}`}
           date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
+          costVerified={Boolean(oneCShadowSource?.close.ready && !oneCShadowCalculation.payrollCostPendingRows && !oneCShadowSource.blockingIssues.some(issue => /себестоим/i.test(issue)))}
+          advancesLoading={!oneCAdvances && !oneCAdvancesError}
+          attendanceLoading={isAttendancePreviewRefreshing}
+          advanceDocuments={oneCAdvances?.documents}
           preliminary={oneCShadowCalculation.mode === 'preliminary'}
           stale={oneCShadowSourceIsStale}
           columns={oneCShadowCalculation.comparisonColumns}
@@ -6179,6 +6192,57 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
           employeeIssues={oneCShadowCalculation.reviewEmployees}
           advancesValid={!oneCShadowCalculation.advanceIssues.length}
           saveDisabled={!draftSync.ready || draftSync.saving || isSavingPayroll || isCurrentPeriodClosed || oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          saveReasons={[
+            !draftSync.ready ? 'Сначала загрузите или выберите сохранённые правки.' : '',
+            draftSync.saving ? 'Дождитесь сохранения ручных правок.' : '',
+            draftSync.dirty ? 'Сохраните ручные правки перед формированием ведомости.' : '',
+            isSavingPayroll ? 'Идёт подготовка ведомости.' : '',
+            isCurrentPeriodClosed ? 'Месяц закрыт: новые версии сохранять нельзя.' : '',
+            oneCShadowCalculation.mode !== 'preliminary' ? 'Открыта сверка с финальной ведомостью. Утверждённый расчёт доступен выше.' : '',
+            !finboxRead.data ? (finboxRead.error ? `Не удалось прочитать Finbox: ${finboxRead.error}` : 'Дождитесь загрузки агентских Finbox.') : '',
+            ...oneCShadowCalculation.advanceIssues,
+            isPayrollDirectoryLoading ? 'Загружается список сотрудников.' : '',
+            payrollDirectoryError, bonusValidation.error || '',
+          ].filter(Boolean)}
+          exportReasons={[
+            !draftSync.ready ? 'Сначала загрузите или выберите сохранённые правки.' : '',
+            draftSync.saving ? 'Дождитесь сохранения ручных правок.' : '',
+            ...(currentFinalRun ? [isSavedRunExporting ? 'Excel формируется.' : '', !oneCShadowBaseline || oneCShadowBaseline.id !== currentFinalRun.id ? 'Загружается утверждённая ведомость.' : ''] : [
+              oneCShadowCalculation.mode !== 'preliminary' ? 'Дождитесь загрузки рабочего расчёта.' : '',
+              !finboxRead.data ? (finboxRead.error ? `Не удалось прочитать Finbox: ${finboxRead.error}` : 'Дождитесь загрузки агентских Finbox.') : '',
+              isAutomaticExporting ? 'Excel формируется.' : '', ...oneCShadowCalculation.advanceIssues,
+              isPayrollDirectoryLoading ? 'Загружается список сотрудников.' : '', payrollDirectoryError, bonusValidation.error || '',
+            ]),
+          ].filter(Boolean)}
+          reviewExporting={isAutomaticExporting}
+          onReviewExport={() => {
+            if (isAutomaticExporting) return;
+            setIsAutomaticExporting(true); setSaveError('');
+            void (async () => {
+              const XLSX = (await import('xlsx-js-style')).default;
+              const book = XLSX.utils.book_new();
+              const rows = [
+                ['Отчёт для проверки зарплаты', selectedPayrollPeriodKey],
+                ['Статус', 'Предварительный. Не является ведомостью для выплаты.'],
+                ['Данные 1С по', oneCShadowSource?.period.verifiedThrough ?? 'неизвестно'],
+                ['Обновление данных (МСК)', oneCShadowSource?.snapshot.storedAt ? new Date(oneCShadowSource.snapshot.storedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : 'неизвестно'],
+                ['Источник', oneCShadowSourceIsStale ? 'Предыдущие сохранённые данные; обновление не подтверждено' : 'Сохранённые данные 1С'],
+                [], ['Сотрудник', 'Начислено, руб.', 'Замечания'],
+                ...oneCShadowCalculation.shadowRows.map(row => [row.manager, payrollMoney(row.grossPay), row.payrollReasons.join('; ')]),
+              ];
+              const sheet = XLSX.utils.aoa_to_sheet(rows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
+              sheet['!cols'] = [{ wch: 45 }, { wch: 40 }, { wch: 100 }];
+              XLSX.utils.book_append_sheet(book, sheet, 'Начисления для проверки');
+              const checks = XLSX.utils.aoa_to_sheet([
+                ['Вопрос', 'Что делать'],
+                ...oneCShadowCalculation.blockingIssues.map(issue => [issue, payrollReviewPresentation(issue).hint]),
+                ...oneCShadowCalculation.reviewEmployees.flatMap(employee => employee.reasons.map(reason => [`${employee.employeeName}: ${reason}`, 'Проверьте подтверждённые данные в карточке сотрудника.'])),
+              ]);
+              checks['!cols'] = [{ wch: 90 }, { wch: 120 }];
+              XLSX.utils.book_append_sheet(book, checks, 'Проверки');
+              XLSX.writeFile(book, `payroll-review-${selectedPayrollPeriodKey}.xlsx`, { bookType: 'xlsx' });
+            })().catch(() => setSaveError('Не удалось сформировать отчёт для проверки. Повторите скачивание.')).finally(() => setIsAutomaticExporting(false));
+          }}
           onSave={() => void prepareAutomaticSave()}
           exportLabel={currentFinalRun ? 'Скачать финальную ведомость' : 'Скачать Excel'}
           exportDisabled={!draftSync.ready || draftSync.saving || (currentFinalRun ? isSavedRunExporting || !oneCShadowBaseline || oneCShadowBaseline.id !== currentFinalRun.id : oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error))}
@@ -6215,6 +6279,9 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
             setSaveError(''); setIsAutomaticExporting(true); void exportCurrentPayrollWorkbook('oneC').catch(() => setSaveError('Не удалось сформировать Excel.')).finally(() => setIsAutomaticExporting(false));
           }}
           onSource={(target) => {
+            if (target === 'finbox') { void openOneCManagerDetails(agentCreditCommissionEmployee); return; }
+            if (target === 'advances') { setAdvancesRefresh(value => value + 1); return; }
+            if (target === 'attendance') { void loadAttendancePreview(); return; }
             const source = document.getElementById('payroll-source-panel');
             if (source instanceof HTMLDetailsElement) source.open = true;
             const panel = target === 'suppliers' ? document.getElementById('payroll-suppliers-panel') : source;
@@ -7601,12 +7668,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         )}
 
             {selectedManagerStatus && selectedManagerPayroll && typeof document !== 'undefined' && createPortal(
-              <EmployeeCardOverlay modal={modernManagerCard} name={selectedManagerPayroll.manager} onClose={() => setSelectedManager(null)}>
+              <EmployeeCardOverlay modal={modernManagerCard} name={payrollDisplayName(selectedManagerPayroll.manager)} onClose={() => setSelectedManager(null)}>
                 <aside className={modernManagerCard ? 'admin-dialog-panel settlement-employee-card bg-white p-4 shadow-2xl' : 'admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'}>
                   <div className='mb-4 border-b border-border pb-4'>
                     <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0'>
-                      <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{selectedManagerPayroll.manager}</h2>
+                      <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{payrollDisplayName(selectedManagerPayroll.manager)}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
                       {selectedManagerSource === 'oneC' && (
                         <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? 'Согласованное начисление за месяц' : 'Автоматический расчёт по данным 1С'}</p>
@@ -7682,6 +7749,38 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                     {!savedCardRun && isAttendancePreviewPeriodCurrent && attendancePreview?.attendanceSources
                       ?.filter((source) => normalizePersonName(source.employee) === normalizePersonName(selectedManagerPayroll.manager))
                       .map((source) => <PayrollAttendanceSourceNote key={source.userId} source={source} />)}
+                    {!savedCardRun && selectedManagerSource === 'oneC' && oneCShadowCalculation?.mode === 'preliminary' && (selectedManagerPayroll.payrollReasons.some(reason => /опоздан|не заполнены.*дни|отработанн.*дн/i.test(reason)) || manualPayroll[selectedManagerPayroll.manager]?.source === 'manualCorrection') && <section className='rounded-xl border border-amber-200 bg-amber-50 p-4' aria-label='Исправить данные сотрудника'>
+                      <h3 className='font-semibold'>Дни и опоздания</h3>
+                      <div className='mt-3 grid gap-3 sm:grid-cols-2'>
+                        {selectedManagerPayroll.salaryRule !== 'daily' && <label className='grid gap-1 text-sm'>Опоздания
+                          <Input aria-label={`Опоздания: ${selectedManagerPayroll.manager}`} type='number' min='0' step='1' disabled={!draftSync.ready || draftSync.saving || draftSync.locked} value={manualPayroll[selectedManagerPayroll.manager]?.lateCount ?? (selectedManagerPayroll.lateCount === null ? '' : String(selectedManagerPayroll.lateCount))} onChange={event => {
+                            const value = event.target.value;
+                            const row = selectedManagerPayroll;
+                            setManualPayroll(current => ({ ...current, [row.manager]: {
+                              ...current[row.manager], workedDays: String(row.workedDays ?? ''), lateCount: value,
+                              advance: current[row.manager]?.advance ?? '', comment: current[row.manager]?.comment ?? '', source: 'manualCorrection',
+                            } }));
+                          }} />
+                        </label>}
+                        <label className='grid gap-1 text-sm'>Отработанные дни
+                          <Input aria-label={`Дни: ${selectedManagerPayroll.manager}`} type='number' min='0' max='31' step='1' disabled={!draftSync.ready || draftSync.saving || draftSync.locked} value={manualPayroll[selectedManagerPayroll.manager]?.workedDays ?? (selectedManagerPayroll.workedDays === null ? '' : String(selectedManagerPayroll.workedDays))} onChange={event => {
+                            const value = event.target.value;
+                            const row = selectedManagerPayroll;
+                            setManualPayroll(current => ({ ...current, [row.manager]: {
+                              ...current[row.manager], workedDays: value, lateCount: row.lateCount === null ? '' : String(row.lateCount),
+                              advance: current[row.manager]?.advance ?? '', comment: current[row.manager]?.comment ?? '', source: 'manualCorrection',
+                            } }));
+                          }} />
+                        </label>
+                      </div>
+                      <div className='mt-3 flex flex-wrap items-center gap-3'><PayrollDraftStatus sync={draftSync} compact />
+                        {draftSync.dirty && <button type='button' disabled={!draftSync.ready || draftSync.saving} className='min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold disabled:opacity-50' onClick={() => {
+                          const name = selectedManagerPayroll.manager;
+                          const saved = draftSync.state.record?.payload?.manual[name];
+                          setManualPayroll(current => { const next = { ...current }; if (saved) next[name] = saved; else delete next[name]; return next; });
+                        }}>Отменить правки</button>}
+                      </div>
+                    </section>}
                     {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
                     {selectedManagerPayroll.salaryType === 'purchase_daily' && (
                       <section className='rounded-xl border border-slate-200 bg-white p-4'>

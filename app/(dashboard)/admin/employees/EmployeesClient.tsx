@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { resolvePayrollEmployeeSalaryType } from '@/lib/payroll-employee-rules';
 import { useRouter } from 'next/navigation';
 import { Eye, KeyRound, Pencil, Search, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +41,7 @@ const departmentLabels: Record<string, string> = {
 
 const payrollRuleLabels: Record<string, string> = {
   purchase_manager: 'Закупки',
+  purchase_daily: 'Закупки · оплата по дням',
   wholesale_percent: 'Оптовые продажи',
   retail_sales_bonus: 'Розничные продажи',
   vl_percent: 'Операционное управление',
@@ -102,7 +104,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
     setDraft({
       ...user,
       payrollName: user.payrollName ?? '',
-      payrollSalaryType: user.payrollSalaryType ?? '',
+      payrollSalaryType: resolvePayrollEmployeeSalaryType(user.payrollName?.trim() || user.name, user.payrollSalaryType) ?? '',
       payrollReportGroup: user.payrollReportGroup ?? '',
       payrollFixedSalary: user.payrollFixedSalary === null ? '' : String(user.payrollFixedSalary),
       payrollRuleFrom: user.payrollRuleFrom ?? '',
@@ -210,6 +212,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
             <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.payrollSalaryType ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollSalaryType: event.target.value, payrollReportGroup: payrollRuleLabels[event.target.value] ?? '', payrollFixedSalary: event.target.value === 'fixed_salary' ? value.payrollFixedSalary : '' }))}>
               <option value=''>Зарплата: требует настройки</option>
               <option value='purchase_manager'>Закупки</option>
+              {((draft.payrollName?.trim() || draft.name.trim()) === 'Кумыков Мухаммед' || draft.payrollSalaryType === 'purchase_daily') && <option value='purchase_daily'>Закупки · оплата по дням</option>}
               <option value='wholesale_percent'>Оптовые продажи</option>
               <option value='retail_sales_bonus'>Розничные продажи</option>
               <option value='vl_percent'>Операционное управление</option>

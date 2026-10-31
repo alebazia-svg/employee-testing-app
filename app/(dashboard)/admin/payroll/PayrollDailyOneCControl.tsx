@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, RefreshCw } from 'lucide-react';
+import { requestPayrollControl } from '@/lib/payroll-control-request';
 import { Card } from '@/components/ui/card';
 import type { PayrollSalesCompactSnapshot } from '@/lib/payroll-sales-classification';
 
@@ -236,9 +237,12 @@ export function PayrollDailyOneCControl({
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         if (requestVersion.current !== version) return;
       }
-      const response = await fetch(`/api/admin/payroll/daily-control?${query}${force ? '&force=1' : ''}`, {
-        method: 'POST', cache: 'no-store',
-      });
+      const response = await requestPayrollControl(
+        () => fetch(`/api/admin/payroll/daily-control?${query}${force ? '&force=1' : ''}`, { method: 'POST', cache: 'no-store' }),
+        () => requestVersion.current === version,
+        milliseconds => new Promise<void>(resolve => window.setTimeout(resolve, milliseconds)),
+      );
+      if (!response) return;
       const body = await readControlResponse(response);
       if (!body) throw new Error('Не удалось получить ответ от 1С. Попробуйте повторить проверку позже.');
       if (!response.ok || !body.ok) {
@@ -283,6 +287,7 @@ export function PayrollDailyOneCControl({
     setIsStale(Boolean(cached));
     setError('');
     void load(false);
+    return () => { requestVersion.current += 1; };
   }, [belongsToSelectedPeriod, load, periodKey]);
 
   useEffect(() => {
@@ -395,9 +400,9 @@ export function PayrollDailyOneCControl({
                 {data.purchases.newSupplierCount > 0 && <p className='mt-1'>Новые поставщики: {data.purchases.newSupplierCount}.</p>}
               </div>
             ) : (
-              <div className='flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950'>
+              <div className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${isStale ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
                 <CheckCircle2 className='mt-0.5 h-4 w-4 shrink-0' />
-                <p><strong>Источник готов.</strong> Ошибок, требующих решения, нет.</p>
+                <p><strong>{isStale ? 'Последний сохранённый источник.' : 'Проверки продаж и закупок пройдены.'}</strong> {isStale ? 'Новое обновление не подтверждено.' : 'Авансы, дни и агентские проверяются отдельно в ведомости.'}</p>
               </div>
             )}
 

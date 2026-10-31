@@ -57,3 +57,8 @@ export function isPayrollEmployeeRuleActive(rule: { payrollRuleFrom?: string | n
   if (rule.payrollRuleThrough && periodKey > rule.payrollRuleThrough) return false;
   return true;
 }
+
+/** Legacy generic procurement selection must not replace Muhammad's agreed daily rule. */
+export function resolvePayrollEmployeeSalaryType(name: string, salaryType: string | null, periodKey?: string) {
+  return (!periodKey || periodKey >= '2026-10') && name.trim() === 'Кумыков Мухаммед' && salaryType === 'purchase_manager' ? 'purchase_daily' : salaryType;
+}

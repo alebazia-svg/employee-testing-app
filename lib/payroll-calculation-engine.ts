@@ -2,7 +2,7 @@ import type { PayrollAttendanceSourceSummary } from '@/lib/payroll-attendance-sn
 import { type PayrollAdvanceDocument } from '@/lib/payroll-one-c-advances';
 import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '@/lib/payroll-compensation';
 import { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookGroup, isPayrollWorkbookSalaryTypeConfigured } from '@/lib/payroll-workbook';
-import { isPayrollEmployeeRuleActive } from '@/lib/payroll-employee-rules';
+import { isPayrollEmployeeRuleActive, resolvePayrollEmployeeSalaryType } from '@/lib/payroll-employee-rules';
 import { getPayrollSalesManagerNameForPeriod } from '@/lib/payroll-sales-classification';
 import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee } from '@/lib/payroll-trainee';
 
@@ -294,7 +294,7 @@ export function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], per
   for (const user of users) {
     const name = user.payrollName?.trim() || user.name.trim();
     if (!name) continue;
-    const salaryType = user.payrollSalaryType;
+    const salaryType = resolvePayrollEmployeeSalaryType(name, user.payrollSalaryType, periodKey);
     const hasConfiguredRule = isConfiguredSalaryType(salaryType);
     const hasReportActivity = reportManagerNames.has(name);
     if ((hasConfiguredRule && !isPayrollEmployeeRuleActive(user, periodKey)) || (!user.isActive && !(hasConfiguredRule && hasReportActivity))) {
