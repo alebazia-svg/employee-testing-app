@@ -1,3 +1,9 @@
+import { departmentLabel } from '@/lib/workday';
+import { PayrollDayReviewEmployee } from '@/app/(dashboard)/employee/payroll/day-reviews/PayrollDayReviewEmployee';
+import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
+import { payrollDayReviewEnabled,validDayReviewPeriod } from '@/lib/payroll-day-review';
+import { employeePayrollMonthAt } from '@/lib/employee-payroll-view';
+import '@/app/(dashboard)/employee/payroll/payroll.css';
 import Link from 'next/link';
 import { EmployeeMobileStylePreload } from '@/components/EmployeeMobileStylePreload';
 import { Suspense } from 'react';
@@ -18,7 +24,7 @@ import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeAct
 import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 import { EmployeePreviewViewport } from '@/components/EmployeePreviewViewport';
 export const dynamic = 'force-dynamic';
-export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string }> }) {
+export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string; dayReview?: string }> }) {
   const admin = await getCurrentAdmin();
   if (!admin) notFound();
   const preview = await readEmployeePreview(admin.id, (await params).visitId);
@@ -36,6 +42,10 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
       <ProcurementHome user={preview.employee} readOnly />
     </ProcurementShell>
   </EmployeePreviewProvider></>;
+  if(query.dayReview){
+    if(procurement||tab!=='payroll'||!payrollDayReviewEnabled()||!validDayReviewPeriod(query.dayReview,employeePayrollMonthAt()))notFound();
+    return <><EmployeeInterfaceStyle copper/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}><CashIssueProvider><EmployeePayrollSnapshots><main className='portal-neutral-design employee-material-ui min-h-screen overflow-x-clip bg-[#151a1d] payroll-phone portal-palette-mobo portal-typography-refined'><div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'><EmployeePortalHeader name={preview.employee.name} meta={departmentLabel(preview.employee.department)}/><PayrollDayReviewEmployee month={query.dayReview}/></div></main></EmployeePayrollSnapshots></CashIssueProvider></EmployeePreviewProvider></>;
+  }
   const calendar = procurement && tab === 'procurement';
   return <>{!calendar && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} {...providerProps}>{calendar ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
 }

@@ -1,3 +1,5 @@
+import { overlayApprovedDays } from './payroll-day-review-store';
+import { readPayrollAttendanceSnapshotPayload } from './payroll-attendance-snapshot';
 import 'server-only';
 import { prisma } from './prisma';
 import type { PrismaClient } from '@prisma/client';
@@ -30,7 +32,9 @@ export async function readStoredPersonalCurrentPayroll(periodKey: string, userId
       tx.payrollClassificationRule.findMany({ orderBy: [{ priority: 'asc' }, { id: 'asc' }] }),
       tx.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] }),
     ]);
-    return { users, slices, attendance, draft,
+    const rawAttendance = attendance ? readPayrollAttendanceSnapshotPayload(attendance.payload, periodKey) : null;
+    const personalAttendance = attendance && rawAttendance ? { ...attendance, payload: await overlayApprovedDays(tx, rawAttendance, userId) } : attendance;
+    return { users, slices, attendance: personalAttendance, draft,
       finboxAmount: finbox ? (finbox.amountCents / 100).toFixed(2) : null,
       classificationRules: classificationRules as unknown as PayrollSalesClassificationRule[], supplierRules };
   }, { isolationLevel: 'RepeatableRead' });

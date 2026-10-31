@@ -16,7 +16,7 @@ function dateKey(value: string) {
 /** Only actual app starts and Google schedule cells; the editable PWA plan is not attendance. */
 export function mergeDianaPayrollDays(input: { googleRows: ScheduleRow[]; appUsers: AppUser[]; periodKey: string; throughDate: string }) {
   const summaries = buildScheduleSummaries(input.googleRows, input.periodKey);
-  if (input.periodKey < DIANA_DAY_SOURCE_FROM.slice(0, 7)) return { summaries, message: '' };
+  if (input.periodKey < DIANA_DAY_SOURCE_FROM.slice(0, 7)) return { summaries, message: '', dates: [] as string[] };
   if (input.appUsers.length !== 1 || normalize(input.appUsers[0].payrollName || input.appUsers[0].name) !== normalize(DIANA_DAY_SOURCE_NAME)) throw new Error('Не удалось однозначно подтвердить Диану для учёта рабочих дней.');
   const user = input.appUsers[0];
   const googleDays = new Map<string, boolean | null>();
@@ -37,6 +37,7 @@ export function mergeDianaPayrollDays(input: { googleRows: ScheduleRow[]; appUse
   const countedDates = new Set([...appDates, ...fallbackDates]);
   return {
     summaries: [...summaries.filter(row => !aliases.has(normalize(row.employee))), { employee: DIANA_DAY_SOURCE_NAME, scheduleDays: countedDates.size }].sort((a,b) => a.employee.localeCompare(b.employee, 'ru')),
+    dates: [...countedDates].sort(),
     message: `Диана: отметки приложения — ${[...appDates].sort().join(', ') || 'нет'}; резерв из графика Google — ${fallbackDates.join(', ') || 'нет'}.`,
   };
 }

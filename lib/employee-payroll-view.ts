@@ -1,6 +1,7 @@
+import type { PayrollRequiredAction } from './employee-payroll-access';
 import type { EmployeeEarning } from './employee-payroll-estimate';
 
-export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; daysUnmarked?: boolean; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
+export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed' | 'requires_action'; action?: PayrollRequiredAction; daysUnmarked?: boolean; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
 
 // A refresh failure belongs in the existing ADMIN operation audit. It must
 // not alarm an employee who already has a usable, dated salary projection.
@@ -22,6 +23,10 @@ export function validEmployeePayrollView(value: unknown, month: string): value i
     ? !/^20\d{2}-\d{2}-\d{2}$/.test(row.verifiedThrough ?? '') || !row.verifiedThrough?.startsWith(`${month}-`)
     : !row.checkedAt || !Number.isFinite(Date.parse(row.checkedAt)))) return false;
   if (row.state === 'unavailable') return true;
+  if(row.state==='requires_action')return !!row.action && ['schedule','start','finish','days_review'].includes(row.action.kind)
+    && ['title','message','label','href'].every(key=>typeof row.action![key as keyof PayrollRequiredAction]==='string')
+    && /^\/employee(?:[/?#]|$)/.test(row.action.href) && !/[\\\u0000-\u0020]/.test(row.action.href)
+    && row.estimatedAccrued===undefined&&row.accrued===undefined&&row.earnings===undefined;
   if (row.state === 'current_estimate') return finite(row.estimatedAccrued) && Array.isArray(row.earnings)
     && row.earnings.every(item => item && typeof item.label === 'string' && finite(item.amount))
     && row.earnings.reduce((sum, item) => sum + item.amount, 0) === row.estimatedAccrued

@@ -1,3 +1,4 @@
+import { payrollDayAccountingEnabled } from '@/lib/payroll-day-review';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
@@ -103,6 +104,10 @@ export async function POST(req: Request) {
       await tx.$queryRaw`SELECT id FROM "PayrollPeriod" WHERE id = ${period.id} FOR UPDATE`;
       const finbox = await tx.payrollFinboxRevision.findFirst({ where: { periodKey }, orderBy: { revision: 'desc' } });
       if ((finbox?.revision ?? 0) !== sourceSummary.finboxRevision || (finbox ? (finbox.amountCents / 100).toFixed(2) : null) !== sourceSummary.finboxAmount) throw new Error('PAYROLL_INPUT_CHANGED');
+      if(payrollDayAccountingEnabled()){
+        const approved=await tx.payrollDayReview.findMany({where:{periodKey,status:'approved',accessOnly:false},select:{id:true}});
+        if(JSON.stringify(approved.map(r=>r.id).sort())!==JSON.stringify(Array.isArray(sourceSummary.approvedDayReviewIds)?[...sourceSummary.approvedDayReviewIds].sort():[]))throw new Error('PAYROLL_INPUT_CHANGED');
+      }
       // Persist computed gates too: a client cannot approve a partial month by
       // clearing the visible warning list alone.
       sourceSummary.approvalIssues = automaticPayrollApprovalIssues(sourceSummary, asNumber(totals.reviewCount));

@@ -1,3 +1,4 @@
+import { validDaySources, type PayrollDaySource } from './payroll-day-review';
 export const PAYROLL_ATTENDANCE_SNAPSHOT_VERSION = 1;
 
 export type PayrollAttendanceFormSummary = {
@@ -36,6 +37,7 @@ export type PayrollAttendanceSnapshotPayload = {
   formSummaries: PayrollAttendanceFormSummary[];
   scheduleSummaries: PayrollAttendanceScheduleSummary[];
   attendanceSources?: PayrollAttendanceSourceSummary[];
+  dayReviewSources?: PayrollDaySource[];
 };
 
 export type PayrollAttendanceSnapshotResponse = Omit<PayrollAttendanceSnapshotPayload, 'version'> & {
@@ -109,6 +111,7 @@ export function readPayrollAttendanceSnapshotPayload(value: unknown, expectedPer
     || !payload.scheduleSummaries.every(isScheduleSummary)
     || (payload.attendanceSources !== undefined && (!Array.isArray(payload.attendanceSources)
       || !payload.attendanceSources.every((row) => isSourceSummary(row, expectedPeriodKey))))
+    || (payload.dayReviewSources !== undefined && !validDaySources(payload.dayReviewSources, expectedPeriodKey))
     || (payload.attendanceMode === 'google-sheets+pwa' && !payload.attendanceSources?.length)) return null;
   return payload as PayrollAttendanceSnapshotPayload;
 }

@@ -1,3 +1,4 @@
+import { payrollDayAccountingEnabled } from '@/lib/payroll-day-review';
 import { Prisma } from '@prisma/client';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import {
@@ -53,6 +54,14 @@ export async function PATCH(req: Request, props: RouteContext) {
 
       if (nextStatus === 'FINAL') {
         await tx.$queryRaw`SELECT id FROM "PayrollPeriod" WHERE id = ${run.periodId} FOR UPDATE`;
+        if(payrollDayAccountingEnabled()){
+          if(await tx.payrollDayReview.count({where:{periodKey:run.period.periodKey,status:'pending',accessOnly:false}}))return {error:'DAY_REVIEW_PENDING' as const};
+          const source=run.sourceSummary as Record<string,unknown>|null;
+          if(source?.kind==='automatic-1c-v1'){
+            const approved=await tx.payrollDayReview.findMany({where:{periodKey:run.period.periodKey,status:'approved',accessOnly:false},select:{id:true}});
+            if(JSON.stringify(approved.map(r=>r.id).sort())!==JSON.stringify(Array.isArray(source.approvedDayReviewIds)?[...source.approvedDayReviewIds].sort():[]))return {error:'DAY_REVIEW_CHANGED' as const};
+          }
+        }
         const review = payrollApprovalReview(run.sourceSummary, run.reviewCount, body.acceptedIssues, body.approvalComment);
         if (review.pending.length) return { error: 'REVIEW_REQUIRED' as const, issues: review.pending, reviewableIssues: review.reviewable };
         if (review.acceptedIssues.length) acceptance = {
@@ -106,6 +115,8 @@ export async function PATCH(req: Request, props: RouteContext) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if ('error' in outcome) {
+      if(outcome.error==='DAY_REVIEW_PENDING')return Response.json({error:'Сначала рассмотрите запросы сотрудников на подтверждение выходов.'},{status:409});
+      if(outcome.error==='DAY_REVIEW_CHANGED')return Response.json({error:'Подтверждённые выходы изменились. Обновите и сохраните расчёт заново.'},{status:409});
       if (outcome.error === 'REVIEW_REQUIRED') return Response.json({ error: `До утверждения: ${outcome.issues.join(' ')}`, reviewableIssues: outcome.reviewableIssues }, { status: 409 });
       if (outcome.error === 'NOT_FOUND') return Response.json({ error: 'Payroll run not found.' }, { status: 404 });
       if (outcome.error === 'PERIOD_CLOSED') return Response.json({ error: 'Период закрыт' }, { status: 409 });

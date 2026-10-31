@@ -3143,7 +3143,7 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   return { status: 'OK', reason: 'замечаний нет' };
 }
 
-export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, settlementRows, settlementEvidence }: { visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
+export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, dayReviewEnabled = false, settlementRows, settlementEvidence }: { visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; dayReviewEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
   const defaultPayrollPeriod = liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
   const modernManagerCard = liveWorkspace || Boolean(settlementRows);
   const [showCurrentComparison, setShowCurrentComparison] = useState(false);
@@ -3491,6 +3491,19 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     })();
     return () => { cancelled = true; };
   }, [isSelectedPayrollPeriodAvailable, isSelectedPayrollPeriodCurrent, month, selectedPayrollPeriodKey, year]);
+
+  useEffect(() => {
+    if(!dayReviewEnabled || !isSelectedPayrollPeriodAvailable)return;
+    let active=true,abort:AbortController|null=null,last=0;
+    const reload=async()=>{
+      if(Date.now()-last<3000)return;last=Date.now();abort?.abort();abort=new AbortController();
+      try {const response=await fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`,{cache:'no-store',signal:abort.signal});
+        if(response.ok&&active)setAttendancePreview(await response.json());
+      }catch {/* Existing saved attendance remains visible. */}
+    };
+    window.addEventListener('focus',reload);window.addEventListener('payroll-days-changed',reload);
+    return()=>{active=false;abort?.abort();window.removeEventListener('focus',reload);window.removeEventListener('payroll-days-changed',reload);};
+  },[dayReviewEnabled,isSelectedPayrollPeriodAvailable,month,year]);
 
   const parseResult = useMemo(() => mapLegacyRetailTraineeForPeriod(parsePayrollReport(rows), month, year), [rows, month, year]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -5913,6 +5926,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       verifiedThrough: body.period.verifiedThrough,
       approvalIssues,
       finboxRevision: finboxRead.data.revision,
+      approvedDayReviewIds: attendancePreview?.approvedDayReviewIds ?? [],
       finboxAmount: finboxRead.data.amount,
       advancesCheckedAt: calculation.advancesCheckedAt,
       // Preserve source provenance without depending on a later live 1C read.

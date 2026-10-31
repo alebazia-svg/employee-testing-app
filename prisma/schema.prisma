@@ -35,6 +35,8 @@ model User {
   finalizedPayrollRuns             PayrollRun[]                      @relation("PayrollRunFinalizedBy")
   supersededPayrollRuns            PayrollRun[]                      @relation("PayrollRunSupersededBy")
   payrollAdjustments               PayrollAdjustment[]               @relation("PayrollAdjustmentCreatedBy")
+  payrollDayRequests               PayrollDayReview[] @relation("PayrollDayReviewEmployee")
+  payrollDayDecisions              PayrollDayReview[] @relation("PayrollDayReviewAdmin")
   workSchedules                    WorkScheduleEntry[]
   workScheduleChanges              WorkScheduleChange[]
   workDays                         WorkDayEntry[]
@@ -1663,4 +1665,26 @@ model PortalActivityEvent {
 model PortalActivityCoverage {
   id Int @id
   startedAt DateTime @default(now())
+}
+
+model PayrollDayReview {
+  id              String   @id @default(cuid())
+  employeeId      Int
+  payrollName     String
+  periodKey       String
+  dates           Json
+  status          String   @default("pending")
+  submittedAt     DateTime @default(now())
+  dayRateCents    Int
+  accessOnly      Boolean  @default(false)
+  approvedAdditionalDays Int?
+  approvedAmountCents Int?
+  decidedAt       DateTime?
+  decidedById     Int?
+  decisionComment String   @default("")
+  employee        User     @relation("PayrollDayReviewEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  decidedBy       User?    @relation("PayrollDayReviewAdmin", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, periodKey, status])
+  @@index([status, submittedAt])
 }

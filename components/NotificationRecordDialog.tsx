@@ -1,4 +1,5 @@
 'use client';
+import { PayrollDayReviewDecision } from './PayrollDayReviewDecision';
 import { InteractionShown, useInteractionAudit } from './EmployeeInteractionAudit';
 import {FiscalNotificationDialog} from './FiscalNotificationDialog';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
@@ -99,6 +100,7 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
 }
 
 export function NotificationRecordDialog(props:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
+ if(props.item.audience==='admin'&&props.item.sourceType==='payroll_day_review'){const match=props.item.href.match(/^\/admin\/payroll\/day-reviews\/([a-zA-Z0-9_-]+)$/);if(match)return <PayrollDayReviewDecision id={match[1]} onClose={props.onClose} onViewed={props.onViewed} readOnly={props.readOnly}/>;}
  if(props.item.audience==='admin'&&props.item.sourceType==='terminal_fiscal_review')return <FiscalNotificationDialog {...props}/>;
  return <StandardNotificationRecordDialog {...props}/>;
 }

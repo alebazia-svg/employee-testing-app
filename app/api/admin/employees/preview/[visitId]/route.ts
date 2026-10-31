@@ -1,3 +1,5 @@
+import { readDayReview } from '@/lib/payroll-day-review-store';
+import { dayReviewFailure } from '@/lib/payroll-day-review-http';
 import { employeePreviewResources } from '@/lib/employee-preview-request';
 import { employeePayrollResponse } from '@/lib/employee-payroll-response';
 import { requireAdminApi } from '@/lib/admin-api-auth';
@@ -26,6 +28,10 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
   const allowed = employeePreviewResources(user);
   if (!resource || !allowed.includes(resource)) return Response.json({ error: 'Недоступно в режиме просмотра' }, { status: 400, headers });
   switch (resource) {
+    case 'payroll-days': {
+      if([...url.searchParams.keys()].some(k=>!['resource','month'].includes(k))||url.searchParams.getAll('month').length!==1)return Response.json({error:'Некорректный запрос.'},{status:400,headers});
+      try{return Response.json(await readDayReview(user.id,url.searchParams.get('month')!),{headers});}catch(e){return dayReviewFailure(e);}
+    }
     case 'payroll': {
       const query = new URLSearchParams(url.searchParams);
       query.delete('resource');

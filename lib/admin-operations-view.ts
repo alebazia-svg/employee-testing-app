@@ -14,6 +14,7 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'payroll.days_requested': {category:'decisions',typeLabel:'Выходы на подтверждение',actionLabel:'Посмотреть запрос'},
   'expense_request.cash_issue': { category: 'requests', typeLabel: 'Выдача денег', actionLabel: 'Открыть' },
   'procurement.receipt_added': {
     category: 'messages', typeLabel: 'Чек оплаты', actionLabel: 'Открыть чеки',
@@ -202,6 +203,10 @@ export function adminInboxSourceState(input: {
     if (input.businessStatus === 'admin_review') return { active: true, label: 'На контроле администратора', tone: 'active' };
     if (input.reasonCode === 'OWNER_ARCHIVED_UNRESOLVED') return { active: false, label: 'В истории · не исправлено', tone: 'history' };
     return { active: false, label: 'Закрыто', tone: 'resolved' };
+  }
+  if (input.sourceType === 'payroll_day_review') {
+    if(input.businessStatus==='pending')return {active:true,label:'Ожидает решения',tone:'attention'};
+    return {active:false,label:input.businessStatus==='approved'?'Выходы подтверждены':'В истории',tone:'resolved'};
   }
   if (input.sourceType === 'workday_close_exception') {
     if (input.sourceCompleted) return { active: false, label: 'Завершено', tone: 'resolved' };

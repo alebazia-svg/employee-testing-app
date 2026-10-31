@@ -1,3 +1,4 @@
+import { payrollDayReviewEnabled } from '@/lib/payroll-day-review';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import AdminPayrollPage from './PayrollClient';
@@ -10,5 +11,5 @@ export default async function PayrollPage() {
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');
-  return <AdminPayrollPage liveWorkspace serverDraftsEnabled={payrollFeatureState().draftsEnabled} testEnvironment={process.env.PAYROLL_SETTLEMENT_PREVIEW === '1'} />;
+  return <AdminPayrollPage liveWorkspace dayReviewEnabled={payrollDayReviewEnabled()} serverDraftsEnabled={payrollFeatureState().draftsEnabled} testEnvironment={process.env.PAYROLL_SETTLEMENT_PREVIEW === '1'} />;
 }

@@ -10,8 +10,8 @@ import { useProcurementMobileNavigation } from './ProcurementMobileNavigation';
 import { cn } from '@/lib/utils';
 
 const icons = { day: PremiumClockIcon, schedule: PremiumCalendarIcon, payroll: PremiumCardIcon };
-export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled = false, onSelect }: {
-  active: EmployeeSection | 'procurement'; payrollEnabled: boolean; procurementEnabled?: boolean; onSelect?: (section: EmployeeSection) => boolean;
+export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled = false, onSelect, activeHref }: {
+  active: EmployeeSection | 'procurement'; payrollEnabled: boolean; procurementEnabled?: boolean; activeHref?: string; onSelect?: (section: EmployeeSection) => boolean;
 }) {
   const router = useRouter();
   const mobileNavigation = useProcurementMobileNavigation();
@@ -30,7 +30,7 @@ export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled 
           'aria-busy': isPending && pendingSection === section.id || undefined,
           onClick: (event: MouseEvent<HTMLElement>) => {
             event.preventDefault();
-            if (selected) return;
+            if (selected) { if (activeHref) startTransition(() => router.push(activeHref)); return; }
             if (mobileNavigation && section.id !== 'payroll') { mobileNavigation.select(section.id); return; }
             if (section.id !== 'procurement' && onSelect?.(section.id)) return;
             setPendingSection(section.id);

@@ -1,3 +1,4 @@
+import { readPayrollAccess } from './employee-payroll-access-store';
 import 'server-only';
 import type { PayrollViewer } from './employee-payroll-read';
 import { prisma } from '@/lib/prisma';
@@ -28,6 +29,7 @@ export async function employeePayrollResponse(viewer: PayrollViewer | null, quer
   let historicalName: string | null = null;
   const result = await readEmployeePayroll(viewer, query, {
     currentPeriod: () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit' }).format(new Date()),
+    findAccess: readPayrollAccess,
     findCurrent: storedOnly ? (period, userId) => readStoredPersonalCurrentPayroll(period, userId, prisma, async () => null) : readStoredPersonalCurrentPayroll,
     findSettlement: async (period, userId) => {
       // First paint must not wait for 1C. No invented historical paid/accrued sum.

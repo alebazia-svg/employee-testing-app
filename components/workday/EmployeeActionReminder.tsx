@@ -121,7 +121,7 @@ export function usePublishAttentionReminder(items: EmployeeAttentionItem[], read
   useEffect(() => { if (ready || failed) publish?.(JSON.parse(signature), failed); }, [publish, signature, ready, failed]);
 }
 
-export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?: () => void }) {
+export function EmployeeActionReminder({ view, onOpen, hiddenTarget }: { view: string; onOpen?: () => void; hiddenTarget?: 'schedule' }) {
   const state = useContext(Context);
   const preview = useEmployeePreview();
   const cashIssue = useCashIssue();
@@ -141,7 +141,7 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
   // never turn a failed background read into a new scary action banner.
   const action = state.action;
   if (!action) return null;
-  if (view === 'schedule' && action.target === 'schedule') return null;
+  if ((view === 'schedule' || hiddenTarget === 'schedule') && action.target === 'schedule') return null;
   const href = preview ? `${preview.href('/employee')}${new URL(action.href, 'https://preview.invalid').search}${new URL(action.href, 'https://preview.invalid').hash}` : action.href;
   const open = () => {
     if (action.target === 'schedule') { const url=new URL(action.href,window.location.origin); window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:url.searchParams.get('date'),edit:url.searchParams.get('edit')==='1'}})); }

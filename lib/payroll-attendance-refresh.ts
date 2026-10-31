@@ -1,3 +1,6 @@
+import { overlayApprovedDays } from './payroll-day-review-store';
+import { payrollDayAccountingEnabled } from './payroll-day-review';
+import { buildReviewDaySources } from './payroll-day-review-sources';
 import { getAttendanceRows, getScheduleRows } from '@/lib/google-sheets';
 import { prisma } from '@/lib/prisma';
 import {
@@ -54,7 +57,7 @@ export async function readPayrollAttendance(request: Request) {
       return Response.json({ error: 'Сохранённых данных о рабочих днях за этот месяц пока нет.' }, { status: 404 });
     }
 
-    return Response.json(attachPayrollAttendanceSnapshotMeta(payload, {
+    return Response.json(attachPayrollAttendanceSnapshotMeta(await overlayApprovedDays(prisma, payload), {
       servedFrom: 'stored',
       sourceCheckedAt: saved.sourceCheckedAt.toISOString(),
       savedAt: saved.updatedAt.toISOString(),
@@ -106,6 +109,7 @@ export async function refreshPayrollAttendance(request: Request) {
     });
     let scheduleSummaries = buildScheduleSummaries(scheduleData.rows, period.periodKey);
     let scheduleMessage = scheduleData.message;
+    let dianaDates: string[] = [];
     if (period.periodKey >= DIANA_DAY_SOURCE_FROM.slice(0, 7)) {
       if (scheduleData.mode !== 'google-sheets') throw new Error('График Google недоступен.');
       const dianaUsers = await prisma.user.findMany({
@@ -117,8 +121,12 @@ export async function refreshPayrollAttendance(request: Request) {
       });
       const merged = mergeDianaPayrollDays({ googleRows: scheduleData.rows, appUsers: dianaUsers, periodKey: period.periodKey, throughDate });
       scheduleSummaries = merged.summaries;
+      dianaDates = merged.dates;
       scheduleMessage = `${scheduleMessage} ${merged.message}`;
     }
+    const dayReviewSources = payrollDayAccountingEnabled() ? buildReviewDaySources({ periodKey: period.periodKey, through: throughDate,
+      users: await prisma.user.findMany({select:{id:true,name:true,payrollName:true,role:true,isActive:true,portalArea:true}}),
+      googleRows: attendanceData.rows, formSummaries: attendance.formSummaries, appSources: attendance.sources, dianaDates }) : undefined;
     const payload = createPayrollAttendanceSnapshotPayload({
       period,
       attendanceMode: attendance.sources.length ? 'google-sheets+pwa' : attendanceData.mode,
@@ -127,6 +135,7 @@ export async function refreshPayrollAttendance(request: Request) {
       scheduleMessage,
       formSummaries: attendance.formSummaries,
       attendanceSources: attendance.sources,
+      ...(dayReviewSources ? { dayReviewSources } : {}),
       scheduleSummaries,
     });
     const replacementError = getPayrollAttendanceSnapshotReplacementError(payload, savedPayload);
@@ -146,7 +155,7 @@ export async function refreshPayrollAttendance(request: Request) {
       },
     });
 
-    return Response.json(attachPayrollAttendanceSnapshotMeta(payload, {
+    return Response.json(attachPayrollAttendanceSnapshotMeta(await overlayApprovedDays(prisma, payload), {
       servedFrom: 'refreshed',
       sourceCheckedAt: sourceCheckedAt.toISOString(),
       savedAt: stored.updatedAt.toISOString(),
@@ -155,7 +164,7 @@ export async function refreshPayrollAttendance(request: Request) {
     console.error('PAYROLL_ATTENDANCE_REFRESH_FAILED');
     const refreshError = 'Не удалось обновить источник рабочих дней. Сохранённые дни и опоздания оставлены без изменений.';
     if (saved && savedPayload) {
-      return Response.json(attachPayrollAttendanceSnapshotMeta(savedPayload, {
+      return Response.json(attachPayrollAttendanceSnapshotMeta(await overlayApprovedDays(prisma, savedPayload), {
         servedFrom: 'stored',
         sourceCheckedAt: saved.sourceCheckedAt.toISOString(),
         savedAt: saved.updatedAt.toISOString(),

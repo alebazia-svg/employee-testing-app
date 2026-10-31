@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { useEffect, useRef, useState } from 'react';
@@ -16,6 +17,13 @@ const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month:
 export function PersonalPayrollClient({ currentMonth, initialSalary = null, embedded = false, onOpenReminder }: { currentMonth: string; initialSalary?: Salary | null; embedded?: boolean; onOpenReminder?: () => void }) {
   const preview = useEmployeePreview();
   const request = preview?.request ?? fetch;
+  const actionHref = (href:string) => {
+    if(!preview)return href;
+    const url=new URL(href,'https://preview.invalid');
+    if(url.pathname==='/employee/payroll/day-reviews')return preview.href('/employee/payroll')+'&dayReview='+encodeURIComponent(url.searchParams.get('month')??currentMonth);
+    if(url.searchParams.get('tab')==='schedule')return preview.href('/employee?tab=schedule')+(url.searchParams.get('date')?'&date='+encodeURIComponent(url.searchParams.get('date')!):'');
+    return preview.href('/employee');
+  };
   const activeMonth = useEmployeePayrollMonth(currentMonth);
   const months = employeePayrollMonths(activeMonth);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
@@ -38,7 +46,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     const finishAudit = beginEmployeeOperation('payroll_load', {disabled:!!preview,period:month});
     lastStarted.current = Date.now();
     setUpdating(true); setError('');
-    void loadEmployeePayroll({ month, request, signal: controller.signal, hasSaved: !!salary,
+    void loadEmployeePayroll({ month, request, signal: controller.signal, hasSaved: !!salary && salary.state !== 'requires_action',
       onStored: result => { setSalary(result); remember?.(result, months); },
     })
       .then(result => {
@@ -65,7 +73,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     };
   }, []);
   return <div className='salary-content personal-payroll-content'>
-    <EmployeeActionReminder view='payroll' onOpen={onOpenReminder} />
+    <EmployeeActionReminder view='payroll' onOpen={onOpenReminder} hiddenTarget={salary?.state === 'requires_action' && salary.action?.kind === 'schedule' ? 'schedule' : undefined} />
     <div className='salary-heading'><h1>Моя зарплата</h1><label className='salary-month-picker'>
       <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
         {months.map(period => <option key={period} value={period}>{monthTitle(period)}</option>)}
@@ -74,6 +82,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     <div aria-live='polite' aria-busy={updating}>
       {errorNotice && <p role='alert' className='mb-3 text-sm text-amber-900'>{errorNotice}</p>}
       {!salary ? !error && <p className='py-8 text-base'>Обновляем расчёт…</p>
+        : salary.state === 'requires_action' ? <section className='salary-breakdown rounded-[22px] border border-[#e5e2da] bg-white p-5'><h2 className='text-xl font-bold'>{salary.action!.title}</h2><p className='my-4 text-base leading-relaxed text-[#60636a]'>{salary.action!.message}</p><Link href={actionHref(salary.action!.href)} onClick={() => { if (salary.action?.kind === 'start' || salary.action?.kind === 'finish') onOpenReminder?.(); }} className='flex min-h-[50px] items-center justify-center rounded-[14px] bg-[#272b30] px-4 font-semibold text-white'>{salary.action!.label}</Link></section>
         : salary.state === 'unavailable' ? !errorNotice && <div className='salary-hero pwa-review-task'><p>Расчёт временно недоступен.</p></div>
         : <>
           <section className='salary-hero pwa-review-task' aria-label='Начисленная зарплата'>

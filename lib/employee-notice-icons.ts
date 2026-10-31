@@ -15,6 +15,7 @@ export function employeeReminderIconKind(action: { target: string; href: string 
 }
 
 export function employeeInboxIconKind(item: { kind: string; taskId?: number | null; reviewId?: string | null; attentionKind?: string }): EmployeeNoticeKind {
+  if (item.kind === 'payroll_days_decision') return 'schedule';
   if (item.kind.endsWith('_reply')) return 'message';
   if (item.attentionKind) return employeeAttentionIconKind(item.attentionKind);
   if (item.reviewId || item.kind.startsWith('terminal_fiscal_review')) return 'receipt';

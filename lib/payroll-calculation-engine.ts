@@ -404,6 +404,7 @@ export type PayrollAttendanceScheduleSummary = {
 };
 
 export type PayrollAttendancePreviewResponse = {
+  approvedDayReviewIds?: string[];
   period: {
     monthIndex: number;
     year: number;

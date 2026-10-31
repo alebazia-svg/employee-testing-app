@@ -16,3 +16,9 @@ test('procurement preview maps only scoped receipt and delivery reads', () => {
   assert.equal(employeePreviewUrl('visit', '/api/procurement/delivery'), '/api/admin/employees/preview/visit?resource=delivery');
   for (const path of ['/api/procurement/payment-plans', '/api/procurement/payment-plans/one/receipts', '/api/procurement/delivery']) assert.throws(() => employeePreviewUrl('visit', path, { method: 'POST' }));
 });
+
+
+test('day review inspection is an employee-scoped read and never permits mutations', () => {
+  assert.equal(employeePreviewUrl('visit', '/api/employee/payroll/day-reviews?month=2026-10&userId=999'), '/api/admin/employees/preview/visit?resource=payroll-days&month=2026-10');
+  for (const method of ['POST', 'PATCH', 'DELETE', 'PUT']) assert.throws(() => employeePreviewUrl('visit', '/api/employee/payroll/day-reviews', { method }));
+});

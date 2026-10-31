@@ -1,3 +1,4 @@
+import { payrollDayReviewEnabled } from './payroll-day-review';
 import { loadExpenseRouting } from './employee-expense-routing-snapshot';
 import { adminExpenseRouteKey } from './employee-expense-routing';
 import { portalPersonName } from './portal-person';
@@ -56,6 +57,15 @@ export async function readNotificationDetail(user: { id: number; role: string; p
     if(!notification)return missing();
     kind=employeeNotificationOpening(notification);
     notificationFingerprint=notification.fingerprint;
+    if(kind==='notice' && notification.kind==='payroll_days_decision') {
+      if(!payrollDayReviewEnabled())return missing();
+      const match=/^payroll-days:([^:]+):(approved|rejected)$/.exec(notification.fingerprint);
+      if(!match)return missing();
+      const request=await prisma.payrollDayReview.findFirst({where:{id:match[1],employeeId:user.id,status:match[2]},include:{decidedBy:{select:{name:true,payrollName:true}}}});
+      if(!request?.decidedAt)return missing();
+      return Response.json({kind:'notice',body:request.status==='approved'&&request.accessOnly?'Зарплата закрытого месяца не изменена.':request.status==='approved'?`${request.periodKey} · выходы подтверждены. Учтено дополнительно ${((request.approvedAmountCents??0)/100).toLocaleString('ru-RU')} ₽.`:request.decisionComment,
+        ...(request.decidedBy?{decision:{label:request.status==='approved'?'Выходы подтверждены':'Нужно уточнить',name:portalPersonName(request.decidedBy),at:request.decidedAt.toISOString()}}:{})},{headers});
+    }
     if(kind==='notice') {
       const match=/^workday-close-exception:([^:]+):(approved|rejected)$/.exec(notification.fingerprint);
       if(!match)return missing();

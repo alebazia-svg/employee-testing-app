@@ -1,3 +1,4 @@
+import type { PayrollRequiredAction } from './employee-payroll-access';
 /** Private response boundary. Never serialize a payroll database row directly. */
 import type { PersonalCurrentPayroll } from './payroll-current-read';
 import type { PersonalSettlement } from './employee-payroll-history';
@@ -18,6 +19,7 @@ export type PersonalPayrollRun = {
 export type EmployeePayrollDependencies = {
   currentPeriod: () => string;
   findFinal: (period: string, userId: number) => Promise<PersonalPayrollRun | null>;
+  findAccess?: (userId:number) => Promise<PayrollRequiredAction|null>;
   findCurrent?: (period: string, userId: number) => Promise<PersonalCurrentPayroll | null>;
   findSettlement?: (period: string, userId: number) => Promise<PersonalSettlement | null>;
 };
@@ -45,6 +47,8 @@ export async function readEmployeePayroll(
     const unavailable = { status: 200, body: { month: period, state: 'unavailable' as const } };
     if (!run) {
       if (period !== current || !dependencies.findCurrent) return unavailable;
+      const action = await dependencies.findAccess?.(viewer.id);
+      if(action)return {status:200,body:{month:period,state:'requires_action' as const,action}};
       const daily = await dependencies.findCurrent(period, viewer.id);
       if (!daily || daily.userId !== viewer.id || daily.periodKey !== period || !Number.isFinite(daily.grossPay)
         || !/^\d{4}-\d{2}-\d{2}$/.test(daily.verifiedThrough) || !daily.verifiedThrough.startsWith(period + '-')) return unavailable;

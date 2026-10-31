@@ -1,3 +1,4 @@
+import { payrollDayReviewEnabled } from './payroll-day-review';
 import { loadScheduleCoverageQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
 import { loadExpenseRouting } from './employee-expense-routing-snapshot';
@@ -97,6 +98,9 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const currentReceipts=receiptIds.length?await prisma.supplierPaymentReceipt.findMany({where:{id:{in:receiptIds}},select:{id:true,purpose:true,replacedById:true}}):[];
   const activeReceiptIds=new Set(currentReceipts.filter(isPaymentReceipt).map(f=>f.id));
 
+  const dayReviewIds = rows.filter(row=>row.event.sourceType==='payroll_day_review').map(row=>row.event.sourceId);
+  const dayReviews = payrollDayReviewEnabled() && dayReviewIds.length ? await prisma.payrollDayReview.findMany({where:{id:{in:dayReviewIds}},select:{id:true,status:true}}) : [];
+  const dayReviewStatuses = new Map(dayReviews.map(row=>[row.id,row.status]));
   const expenseRefs = rows.filter((row) => row.event.sourceType === 'expense_request').map((row) => row.event.sourceId);
   const issueIds = rows.filter((row) => row.event.sourceType === 'workday_control_issue').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
   const reviewIds = rows.filter((row) => row.event.sourceType === 'terminal_fiscal_review').map((row) => row.event.sourceId);
@@ -252,7 +256,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),
-      businessStatus: plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
+      businessStatus: dayReviewStatuses.get(sourceId) ?? plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode ?? review?.reasonCode,
       sourceDate: exception?.workDayEntry.date,
       today,

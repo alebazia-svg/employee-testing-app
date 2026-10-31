@@ -6,6 +6,8 @@ import * as snapshots from '../lib/payroll-attendance-snapshot';
 import * as summaries from '../lib/payroll-attendance-summary';
 import * as sources from '../lib/payroll-attendance-source';
 import * as dianaSources from '../lib/payroll-diana-day-source';
+import { payrollDayAccountingEnabled } from '../lib/payroll-day-review';
+import { overlayApprovedDays } from '../lib/payroll-day-review-store';
 
 const source = readFileSync(new URL('../lib/payroll-attendance-refresh.ts', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../app/api/admin/payroll/attendance-preview/route.ts', import.meta.url), 'utf8');
@@ -20,7 +22,7 @@ async function run(options: { denied?: boolean; dianaError?: boolean; appError?:
   const saved = options.noSaved ? null : { payload: savedPayload, sourceCheckedAt: new Date('2026-10-18T06:00:00Z'), updatedAt: new Date('2026-10-18T06:00:00Z') };
   const dependencies = {
     withPayrollSourceLock: async (task: () => Promise<Response>) => task(),
-    ...snapshots, ...summaries, ...sources, ...dianaSources,
+    ...snapshots, ...summaries, ...sources, ...dianaSources, payrollDayAccountingEnabled, overlayApprovedDays,
     getMoscowDateKey: () => '2026-10-19',
     requireAdminApi: async () => options.denied ? { ok: false, response: Response.json({}, { status: 403 }) } : { ok: true },
     getAttendanceRows: async () => { calls.push('google'); if (options.googleError) throw Error('unavailable'); return { mode: 'google-sheets', message: '', rows: options.emptyGoogle ? [] : [{ timestamp: '18.10.2026 08:50:00', employee, date: '2026-10-18', action: 'Начало рабочего дня', time: '08:50', shift: '09:00–19:00', comment: '' }] }; },

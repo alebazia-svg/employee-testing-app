@@ -115,13 +115,14 @@ export function AdminInboxBell() {
     void connectPush(false);
     const changed = () => { void load(); };
     window.addEventListener('expense-status-changed', changed);
+    window.addEventListener('payroll-days-changed', changed);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     }
     function escape(event: KeyboardEvent) { if (event.key === 'Escape') setOpen(false); }
     document.addEventListener('keydown', escape);
     document.addEventListener('mousedown', close);
-    return () => { attentionSequence.current++;historySequence.current++;window.removeEventListener('expense-status-changed', changed); document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
+    return () => { attentionSequence.current++;historySequence.current++;window.removeEventListener('expense-status-changed', changed);window.removeEventListener('payroll-days-changed', changed); document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
   }, []);
 
   async function markRead(id:string) {
