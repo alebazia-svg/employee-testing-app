@@ -100,3 +100,23 @@ test('approval opens salary automatically without looping over an older partial 
  assert.equal(openPayrollAfterDayReview({latestId:'old',latestStatus:'approved',pendingId:'other',reviewRequired:true}),false);
  for(const latestStatus of ['pending','rejected','cancelled',undefined])assert.equal(openPayrollAfterDayReview({latestId:'request',latestStatus,pendingId:'request',reviewRequired:false}),false);
 });
+
+
+test('schedule message names only missing days and respects vacation across the month boundary',()=>{
+ const today='2026-10-31',tomorrow='2026-11-01';
+ const base={...input,today,tomorrow,planned:[] as {date:string;status:string}[]};
+ const both=payrollRequiredAction(base)!;
+ assert.equal(both.message,'Укажите рабочие и выходные дни на сегодня и завтра, чтобы посмотреть расчёт.');
+ assert.equal(both.href,'/employee?tab=schedule&date='+today);
+ for(const status of ['working','off']){
+  const missingTomorrow=payrollRequiredAction({...base,planned:[{date:today,status}]})!;
+  assert.equal(missingTomorrow.message,'Отметьте в графике завтрашний день: рабочий или выходной.');
+  assert.equal(missingTomorrow.href,'/employee?tab=schedule&date='+tomorrow);
+  const missingToday=payrollRequiredAction({...base,planned:[{date:tomorrow,status}]})!;
+  assert.equal(missingToday.message,'Отметьте в графике сегодняшний день: рабочий или выходной.');
+  assert.equal(missingToday.href,'/employee?tab=schedule&date='+today);
+ }
+ assert.equal(payrollRequiredAction({...base,vacationDates:[today]})?.message,'Отметьте в графике завтрашний день: рабочий или выходной.');
+ assert.equal(payrollRequiredAction({...base,vacationDates:[tomorrow]})?.message,'Отметьте в графике сегодняшний день: рабочий или выходной.');
+ assert.equal(payrollRequiredAction({...base,vacationDates:[today,tomorrow]}),null);
+});

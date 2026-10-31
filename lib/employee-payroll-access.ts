@@ -7,8 +7,13 @@ export function payrollRequiredAction(input:{today:string;tomorrow:string;planne
  const approved=new Set(input.approvedDates),vacation=new Set(input.vacationDates);
  const plans=new Map(input.planned.map(row=>[row.date,row.status]));
  const facts=new Map(input.workDays.filter(row=>Number.isFinite(row.startedAt.getTime())&&getMoscowDateKey(row.startedAt)===row.date&&['active','completed','missing_checkout'].includes(row.status)).map(row=>[row.date,row]));
- const missingPlan=[input.today,input.tomorrow].find(date=>!vacation.has(date)&&!['working','off'].includes(plans.get(date)??''));
- if(missingPlan)return {kind:'schedule',title:'Заполните график',message:'Укажите рабочие и выходные дни на сегодня и завтра, чтобы посмотреть расчёт.',label:'Открыть график',href:`/employee?tab=schedule&date=${missingPlan}`};
+ const missingPlans=[input.today,input.tomorrow].filter(date=>!vacation.has(date)&&!['working','off'].includes(plans.get(date)??''));
+ if(missingPlans.length){
+  const message=missingPlans.length===2
+   ?'Укажите рабочие и выходные дни на сегодня и завтра, чтобы посмотреть расчёт.'
+   :`Отметьте в графике ${missingPlans[0]===input.today?'сегодняшний':'завтрашний'} день: рабочий или выходной.`;
+  return {kind:'schedule',title:'Заполните график',message,label:'Открыть график',href:`/employee?tab=schedule&date=${missingPlans[0]}`};
+ }
  const missingPast=input.planned.filter(row=>row.date>=PAYROLL_ACCESS_FROM&&row.date<input.today&&row.status==='working'&&!vacation.has(row.date)&&!approved.has(row.date)).find(row=>!facts.has(row.date));
  if(missingPast)return {kind:'days_review',title:'Подтвердите прошлые выходы',message:'Есть рабочие дни без отметок. Отправьте отработанные дни администратору на подтверждение.',label:'Выбрать дни',href:`/employee/payroll/day-reviews?month=${missingPast.date.slice(0,7)}`};
  const unfinished=[...facts.values()].find(row=>row.date>=PAYROLL_ACCESS_FROM&&row.date<input.today&&!row.endedAt&&!approved.has(row.date));

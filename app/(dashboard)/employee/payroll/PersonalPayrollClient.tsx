@@ -73,7 +73,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     };
   }, []);
   return <div className='salary-content personal-payroll-content'>
-    <EmployeeActionReminder view='payroll' onOpen={onOpenReminder} hiddenTarget={salary?.state === 'requires_action' && salary.action?.kind === 'schedule' ? 'schedule' : undefined} />
+    <EmployeeActionReminder view='payroll' onOpen={onOpenReminder} />
     <div className='salary-heading'><h1>Моя зарплата</h1><label className='salary-month-picker'>
       <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
         {months.map(period => <option key={period} value={period}>{monthTitle(period)}</option>)}
