@@ -455,3 +455,10 @@ Owner-approved addition 2026-10-31: a missed date in a CLOSED/FINAL month may be
 confirmed for attendance/access only. Its approved salary and payouts stay
 unchanged, even if the month is later reopened. See the same candidate note;
 this policy is included in the verified production release.
+
+
+Payroll reminder correction released 1.20.1 / 19c216a on 2026-10-31. Compact
+outstanding-action banners are required on BOTH Schedule and My salary even
+when the calendar/access card repeats the action. Missing-day copy names only
+the actual missing day(s). Workday behavior and calendar dimensions unchanged.
+See payroll-day-review-candidate-20261031.md for production verification.

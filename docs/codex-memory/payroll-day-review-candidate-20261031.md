@@ -341,3 +341,57 @@ payroll-days-production-{version,access,september}-1.20.0.png. Unrelated AdminSh
 preview slot and old isolated prototype routes remain local, unstaged and excluded
 from the release. This completion update is documentation-only; no new runtime
 version or restart is required.
+
+
+## Owner correction after 1.20.0 — released 1.20.1
+
+On 2026-10-31 Bela explicitly required the compact outstanding-action banner on
+both Schedule and My salary, including schedule-fill actions. Do not suppress it
+because the calendar or salary access card repeats that requirement. The older
+suppression statements in this note describe 1.20.0, not the newly agreed target.
+Workday retains its existing current-actions block. Preserve icon animation,
+priority, deferral, action routing, completion checks and calendar dimensions.
+Only the banner exclusions and the missing-day payroll wording are changed.
+
+Implementation: removed the schedule-specific rendering exclusion and the
+salary hiddenTarget prop. Access message now names only today, only tomorrow or
+both missing days; vacations and first missing-date routing are respected.
+Files: components/workday/EmployeeActionReminder.tsx,
+app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx,
+lib/employee-payroll-access.ts, tests/payroll-day-review.test.ts.
+
+Checks: TypeScript/build; 78 payroll, 243 workday, 23 focused policy/reminder and
+39 PWA presentation checks pass. Real local UI exercised Workday → Schedule →
+Salary, the schedule notice's direct next-day editor, cancellation and return.
+At measured CSS viewports 390x844 and 375x812 the notice is 48px, calendar grid
+fits above the navigation with no horizontal overflow. The 375x812 six-row
+November grid also fits (bottom 643, navigation top 715). Selected-day colleague
+details below the grid remain scrollable; no whole-page fit claim is made.
+Temporary viewport override and guarded local QA attendance fixture restored.
+Owner explicitly approved this exact production release. Released 1.20.1 /
+19c216a87f929848d0bb0b45d9f3ed36c79ea3bc; builtAt 2026-10-31T17:25:18.558Z.
+Public metadata, server commit and authenticated ADMIN version label independently
+verified. Native Terminal deployment exited 0; container healthy. Current image:
+sha256:c7d7973afaea87792eb72d1980e195ff53a86ccd6b4fc8878102f598db0052cf.
+Verified reserves remain d2ce08b61a64 (1.20.0) and e442b44f5c33 (1.19.13).
+No new migration, production data write, formula, calendar layout or environment
+change. Runtime env, server.env hash and mounts match the pre-release baseline.
+
+Authenticated production inspection of Zalina verified Workday → Schedule →
+Salary → September → October → Workday. Compact schedule reminder appears on
+both off-workday tabs; tomorrow-only copy and date=2026-11-01 route are correct.
+September displays 129,000 accrued/received, remaining zero. Existing Workday
+current-actions block remains. All six current private-reader states valid;
+isolated historical stored-only limitation remains as documented above. Public
+health OK; unauthenticated salary/day-reviews endpoints return 401. No production
+request or schedule submitted. Physical iPhone not tested.
+
+Release evidence: /tmp/mobo-banner-release-1.20.1.log and .wip/artifacts/
+banner-production-{version,schedule,payroll}-1.20.1.png. Clean release archive
+build, 5 metadata tests and the suites listed above passed. Runtime release
+includes only the four files listed above and synchronized package versions.
+Unrelated dirty AGENTS.md, AdminShell and local prototype routes were excluded.
+
+Persistent owner rule is saved in global/project AGENTS.md: changing an already
+agreed element or behavior requires explaining the exact difference and explicit
+approval first. Apparent duplication is not permission to suppress reminders.
