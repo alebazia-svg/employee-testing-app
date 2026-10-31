@@ -1,8 +1,13 @@
 # Payroll day confirmation and current-estimate access — local candidate, 2026-10-31
 
-Status: owner approved production release and the exact PayrollDayReview migration on 2026-10-31. Runtime committed, release 1.20.0 prepared; deployment verification pending. Production baseline independently verified as 1.19.13 / 198996a. `PAYROLL_DAY_REVIEW_ENABLED` defaults off. Migration was applied only to
-`payroll_day_review_qa_20261031`, a disposable local clone. No production DB,
-Google, 1C, wage payout or QR fact was modified.
+Status: **released and independently verified as 1.20.0** on 2026-10-31.
+Server commit 02a0cd3cdc1af7d7351c1c2c18066892ff899898, runtime feature commit
+2fd24e4; production baseline 1.19.13 / 198996a retained. Owner explicitly approved
+release and the exact additive migration. Production compose enables review UI
+and accounting; helper defaults remain off outside that deployment configuration.
+Migration, source refresh and six private projections verified in production.
+No actual employee request, wage payout, Google cell or QR fact was written by
+the release. Earlier local-only entries below document the preparation history.
 
 ## Owner-approved policy
 
@@ -287,3 +292,52 @@ regression checks, 5 release metadata checks and 5 PostgreSQL scenarios pass.
 The same genuine local UI journeys were demonstrated to owner. Physical iPhone
 camera/push delivery remains untested. Production checks and image IDs will be
 recorded only after deployment, not inferred from local success.
+
+
+## Production completion — 2026-10-31
+
+Native Terminal release exited 0; separate read-only verification exited 0.
+Exact fresh dump restored successfully in payroll_day_release_qa_20261031; exact
+migration rehearsed there and test database removed before production migration.
+Production migration status is clean, exactly one new migration applied.
+
+Public metadata: 1.20.0, builtAt 2026-10-31T16:31:15.525Z (19:31 Moscow).
+Metadata generator lacks Docker Git context (revision null/source unknown), so
+server commit was independently read through SSH and the authenticated ADMIN
+footer separately confirmed version/build date. No hardcoded interface version.
+
+New image: sha256:d2ce08b61a64d6352bdaf86458ab93a12e6655a4fe5fe472f48b24df0f0246bc.
+Previous image: sha256:e442b44f5c332885a69a0a7e1c51f9cc6aa3942525f4283b7593b6feabc7bfdd.
+Second reserve: sha256:d961b9001fccd128c4135fb6255a70be6fd829061572a03c062cff8229283815.
+All three verified IDs exist and registry current equals new healthy container.
+Registration succeeded after the deployment lock was released. Old images are
+usable before financial day approvals; after approvals use compatible UI-off /
+accounting-on recovery as described above, not an old reader.
+
+Only the two approved feature flags changed in runtime environment. Existing
+runtime environment, server.env file hash and all mounts compare equal before
+and after deployment. Uploads and 1C connection unchanged. No 1C publication.
+Dated raw attendance sources prepared with the existing refresh helper for six
+managers before UI activation; all six stored current calculations available.
+
+Separate private-reader verification after activation: employees 3, 4, 5, 8 have
+current_estimate; employees 6 and 7 have the agreed schedule action. No current
+unavailable/error response. No test requests created (count 0 at verification).
+Isolated CLI historical stored-only reads have no warmed settlement cache and
+reported unavailable, not an attendance gate. Authenticated live UI separately
+verified Diana September: confirmed 22,800, received 22,800, remaining zero.
+Do not misreport the isolated CLI results as six confirmed historical projections.
+
+Actual production readonly inspection verified Workday, month-calendar transition,
+current salary schedule card, suppression of its duplicate reminder, and previous
+confirmed salary. Unauthenticated salary and day-request endpoints both return
+401. Request-send/approve/automatic-open transitions were exercised on the
+isolated QA database; no fabricated employee request was submitted in production.
+Physical iPhone camera and real push delivery were not tested by this release.
+
+Evidence: /tmp/mobo-payroll-days-release-1.20.0.log,
+/tmp/mobo-payroll-days-verify-1.20.0.log and .wip/artifacts/
+payroll-days-production-{version,access,september}-1.20.0.png. Unrelated AdminShell
+preview slot and old isolated prototype routes remain local, unstaged and excluded
+from the release. This completion update is documentation-only; no new runtime
+version or restart is required.

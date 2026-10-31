@@ -440,14 +440,18 @@ Completed-issue caption removed, collection action retained. Production Astemir,
 Zukhra and Diana checks passed; device/financial-write limits are explicit.
 Current plus two verified images registered; final healthhealthy, free26.53GiB.
 
-## Payroll day confirmations — local candidate, 2026-10-31
+## Payroll day confirmations — released 1.20.0, 2026-10-31
 
 See `payroll-day-review-candidate-20261031.md`: persisted employee requests,
 ADMIN decisions and date-union accounting; current-estimate access after QR
 start on a planned workday regardless of time. Others from October31; Diana's
-October separately. Default off, QA clone only, no production release.
+October separately. Owner-approved migration and release independently verified
+as 1.20.0 / 02a0cd3; both production feature flags enabled. Current and two
+preceding verified images registered. After any financial approval, emergency
+shutdown must retain accounting enabled in a compatible runtime; do not revert
+to a pre-feature binary that ignores approvals.
 
 Owner-approved addition 2026-10-31: a missed date in a CLOSED/FINAL month may be
 confirmed for attendance/access only. Its approved salary and payouts stay
 unchanged, even if the month is later reopened. See the same candidate note;
-this remains local and unreleased.
+this policy is included in the verified production release.
