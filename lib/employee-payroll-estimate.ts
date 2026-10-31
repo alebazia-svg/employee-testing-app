@@ -1,4 +1,4 @@
-export const employeeEarningLabels = ['Выходы', 'Телефоны и техника', 'Аксессуары', 'Поклейка и услуги', 'Оптовые продажи'] as const;
+export const employeeEarningLabels = ['Выходы', 'Телефоны и техника', 'Аксессуары', 'Поклейка и услуги', 'Оптовые продажи', 'Финбокс'] as const;
 export type EmployeeEarning = { label: typeof employeeEarningLabels[number]; amount: number };
 
 // Display-only rounding: preserve the rounded total across its components.

@@ -27,6 +27,7 @@ export type PersonalCurrentPayroll = {
   dayPay?: number;
   earnings?: EmployeeEarning[];
   sourceFallback?: boolean;
+  daysUnmarked?: boolean;
 };
 export type PersonalPayrollSourceMemo = Map<string, {
   combined: { sales: { summary: ReturnType<typeof aggregatePayrollOneCControlSlices>['sales']['summary'] }; purchases: ReturnType<typeof aggregatePayrollOneCControlSlices>['purchases'] };
@@ -97,7 +98,10 @@ export function calculatePersonalCurrentPayroll(periodKey: string, userId: numbe
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(periodKey) || evidence.slices.length > 31) return null;
   const name = getPrivatePayrollBinding(evidence.users, userId);
   if (!name || !evidence.draft || !evidence.attendance || !evidence.slices.length) return null;
-  if (name === agentCreditCommissionEmployee && evidence.finboxAmount === null) return null;
+  // Only Diana's current employee projection may omit unresolved personal inputs.
+  // Source completeness, ADMIN rules and FINAL snapshots remain strict.
+  const dianaEstimate = name === agentCreditCommissionEmployee && periodKey >= '2026-10';
+  if (name === agentCreditCommissionEmployee && !dianaEstimate && evidence.finboxAmount === null) return null;
   const slices = evidence.slices.map(row => {
     if (!isPayrollOneCControlSlice(row.payload)) throw Error('Invalid payroll source');
     if (row.dateFrom !== row.payload.dateFrom || row.dateTo !== row.payload.dateTo) throw Error('Source date mismatch');
@@ -145,24 +149,36 @@ export function calculatePersonalCurrentPayroll(periodKey: string, userId: numbe
   const bonuses = validatePayrollBonuses(draft.bonuses, base.map(row => row.manager));
   const allRows = applyPayrollBonuses(base, bonuses);
   const rows = allRows.filter(row => row.manager === name);
-  if (rows.length !== 1 || rows[0].payrollStatus !== 'OK' || rows[0].payrollReasons.length || !Number.isFinite(rows[0].grossPay)) return null;
+  if (rows.length !== 1 || !Number.isFinite(rows[0].grossPay)) return null;
+  const summary = rows[0];
+  const allowedMissing = new Set(['Не заполнены отработанные дни', 'Не указаны опоздания']);
+  if (dianaEstimate) {
+    if (directory[name].salaryType !== 'retail_sales_bonus'
+      || summary.payrollReasons.some(reason => !allowedMissing.has(reason))
+      || (summary.workedDays !== null && (!Number.isFinite(summary.workedDays) || summary.workedDays < 0 || summary.workedDays > 31))
+      || (evidence.finboxAmount !== null && (!evidence.finboxAmount.trim() || !Number.isFinite(Number(evidence.finboxAmount)) || Number(evidence.finboxAmount) < 0))) return null;
+  } else if (summary.payrollStatus !== 'OK' || summary.payrollReasons.length) return null;
+  // An explicit owner correction of zero remains authoritative. An empty
+  // automatic attendance month is missing marks, not evidence of days off.
+  const daysUnmarked = dianaEstimate && (summary.workedDays === null
+    || summary.workedDays === 0 && summary.daysSource !== 'manualCorrection');
   const advanceRead = verifiedAdvances(evidence.advances, periodKey, now);
   const applied = advanceRead ? applyPayrollOneCAdvances(allRows, advanceRead) : null;
   // A saved manual amount alone is not proof of money issued in 1C.
   const advance = rows[0].advance === 0 && applied && !applied.issues.length
     ? applied.rows.find(row => row.manager === name)?.advance ?? null : null;
-  const summary = rows[0];
   const earnings: EmployeeEarning[] | undefined = ['retail_sales_bonus', 'wholesale_percent'].includes(directory[name].salaryType) ? [
-    { label: 'Выходы', amount: rows[0].dayPay },
+    ...(!daysUnmarked ? [{ label: 'Выходы' as const, amount: summary.dayPay }] : []),
     ...(directory[name].salaryType === 'wholesale_percent'
       ? [{ label: 'Оптовые продажи', amount: summary.wholesaleBonus }]
       : [{ label: 'Телефоны и техника', amount: summary.techBonus + summary.creditBonus },
         { label: 'Аксессуары', amount: summary.accessoryBonus },
         { label: 'Поклейка и услуги', amount: summary.filmBonus + summary.plotterBonus }]),
   ] as EmployeeEarning[] : undefined;
-  // Day pay and sales only. Discipline and one-time bonuses remain in ADMIN.
+  if (dianaEstimate && evidence.finboxAmount !== null) earnings?.push({ label: 'Финбокс', amount: summary.agentCreditCommission });
+  // Day pay and sales, plus Diana’s entered Finbox. Discipline and one-time bonuses remain in ADMIN.
   // A changed compensation formula must not silently lose a sales component.
-  if (earnings && Math.abs(earnings.reduce((sum, row) => sum + row.amount, 0) - rows[0].dayPay - rows[0].salesBonus) > 0.005) return null;
+  if (earnings && Math.abs(earnings.reduce((sum, row) => sum + row.amount, 0) - rows[0].dayPay - rows[0].salesBonus - (dianaEstimate && evidence.finboxAmount !== null ? summary.agentCreditCommission : 0)) > 0.005) return null;
   return { userId, periodKey, grossPay: rows[0].grossPay, dayPay: rows[0].dayPay, earnings, verifiedThrough: through, advance,
-    attendanceCheckedAt: evidence.attendance.sourceCheckedAt.toISOString(), draftRevision: evidence.draft.revision };
+    attendanceCheckedAt: evidence.attendance.sourceCheckedAt.toISOString(), draftRevision: evidence.draft.revision, ...(daysUnmarked ? { daysUnmarked: true } : {}) };
 }

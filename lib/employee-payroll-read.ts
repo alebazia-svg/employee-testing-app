@@ -52,6 +52,7 @@ export async function readEmployeePayroll(
       if (!estimate) return unavailable;
       return { status: 200, body: { month: period, state: 'current_estimate' as const,
         ...estimate,
+        ...(daily.daysUnmarked ? { daysUnmarked: true } : {}),
         verifiedThrough: daily.verifiedThrough,
         ...(daily.sourceFallback ? { sourceFallback: true } : {}),
         // No zero or browser-local advance can masquerade as a verified payment.

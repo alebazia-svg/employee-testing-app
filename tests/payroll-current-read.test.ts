@@ -159,3 +159,52 @@ test('shared ADMIN/server assembly preserves the previous full component composi
   ], '2026-10');
   assert.deepEqual(buildDailyPayrollBase({ periodKey: '2026-10', directory, users: [], summaries, manual, fixed, purchase, purchaseBase: 1234567 }), expected);
 });
+
+function dianaEvidence() {
+  const input = evidence();
+  input.users[0].payrollName = 'Кумахова Диана';
+  (input.draft!.payload as any).manual = {};
+  const sales = (input.slices[0].payload as PayrollOneCControlSlice).sales;
+  sales.rows = [{ manager: 'Кумахова Диана', managerRef: 'manager', client: 'Кредит/Рассрочка', clientRef: 'client',
+    category: 'Смартфоны (хар-ки)', categoryRef: 'category', item: 'iPhone 17', productRef: 'product', article: '',
+    quantity: 1, revenue: 120000, cost: 100000, grossProfit: 20000, sourceRows: 1, costReviewRows: 0, costCalculationPendingRows: 0 }];
+  return input;
+}
+test('Diana sees only known earnings when personal inputs are missing; evidence and ADMIN stay unchanged', () => {
+  const input = dianaEvidence(); const before = JSON.stringify(input);
+  const result = calculatePersonalCurrentPayroll('2026-10', 7, input);
+  assert.ok(result); assert.equal(result.daysUnmarked, true);
+  assert.ok(!result.earnings?.some(row => row.label === 'Выходы' || row.label === 'Финбокс'));
+  assert.equal(result.earnings?.find(row => row.label === 'Телефоны и техника')?.amount, 1820);
+  assert.equal(result.advance, null); assert.equal(JSON.stringify(input), before);
+  assert.ok(calculateLastVerifiedPersonalPayroll('2026-10', 7, input));
+  input.users[0].payrollName = 'Абшаева Зухра';
+  assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input), null);
+});
+test('Diana recovered days, explicit owner zero and entered Finbox feed the same component calculation', () => {
+  const input = dianaEvidence();
+  const manual = (input.draft!.payload as any).manual;
+  manual['Кумахова Диана'] = { workedDays: '2', lateCount: '', advance: '', comment: '', source: 'manualCorrection' };
+  input.finboxAmount = '1234.56';
+  const result = calculatePersonalCurrentPayroll('2026-10', 7, input)!;
+  assert.equal(result.daysUnmarked, undefined);
+  assert.equal(result.earnings?.find(row => row.label === 'Выходы')?.amount, 1200);
+  assert.equal(result.earnings?.find(row => row.label === 'Финбокс')?.amount, 1234.56);
+  assert.equal(Math.round(result.earnings!.reduce((sum,row) => sum + row.amount,0) * 100), 425456);
+  manual['Кумахова Диана'].workedDays = '0';
+  assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input)?.daysUnmarked, undefined);
+  manual['Кумахова Диана'].source = 'schedule';
+  assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input)?.daysUnmarked, true);
+});
+test('Diana partial view never bypasses source, identity, attendance or invalid personal value checks', () => {
+  for (const mutate of [
+    (e: CurrentPayrollEvidence) => { e.attendance = null; },
+    (e: CurrentPayrollEvidence) => { e.draft = null; },
+    (e: CurrentPayrollEvidence) => { e.users[0].isActive = false; },
+    (e: CurrentPayrollEvidence) => { e.users.push({...e.users[0],id:8}); },
+    (e: CurrentPayrollEvidence) => { e.slices.push(e.slices[0]); },
+    (e: CurrentPayrollEvidence) => { (e.slices[0].payload as PayrollOneCControlSlice).close.blockingIssues.push('not closed'); },
+    (e: CurrentPayrollEvidence) => { e.finboxAmount = '-1'; },
+    (e: CurrentPayrollEvidence) => { e.finboxAmount = 'invalid'; },
+  ]) { const input = dianaEvidence(); mutate(input); assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input), null); }
+});
