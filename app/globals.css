@@ -267,6 +267,16 @@ select {
   transform: translateZ(0);
 }
 
+/* The keyboard owns the lower screen while typing; restore the unchanged dock
+   after it closes rather than leaving navigation above a dismissed keyboard. */
+@media (max-width: 767px), (pointer: coarse) {
+  .admin-mobile-nav[data-portal-keyboard='open'],
+  .employee-material-nav[data-portal-keyboard='open'] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
 .admin-mobile-nav-item { color: #778188; transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
 .admin-mobile-nav-item.is-active {
   color: #fff;

@@ -42,7 +42,7 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
     if(expense)return;
     const el=dialog.current!,opener=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
     el.showModal();document.body.style.overflow='hidden';
-    return()=>{el.close();document.body.style.overflow=overflow;requestAnimationFrame(()=>{if(opener?.isConnected&&!document.querySelector('dialog[open]'))opener.focus();});};
+    return()=>{el.close();document.body.style.overflow=overflow;requestAnimationFrame(()=>{if(opener?.isConnected&&!document.querySelector('dialog[open]'))opener.focus({preventScroll:true});});};
   },[expense]);
   async function decide(plan:NotificationPlan,action:string){
     if(readOnly||busy||!plan.revision)return;setSaving(true);setError('');

@@ -36,14 +36,22 @@ test('active indicators share a larger green dot and a quiet halo', () => {
   assert.ok(contrast('#159447', '#ffffff') >= 3);
 });
 
-test('motion is brief, has no loop, and respects reduced motion', () => {
+test('sheet motion is brief; only the approved QR scan cue loops and reduced motion disables both', () => {
   assert.match(css, /animation:pwa-sheet-enter 200ms/);
   assert.match(css, /transition:width 240ms ease-out/);
-  assert.doesNotMatch(css, /\binfinite\b/);
-  const media = root.nodes.find(node => node.type === 'atrule' && node.params.includes('prefers-reduced-motion'));
-  assert.match(media.toString(), /\.employee-material-sheet \{ animation:none !important/);
-  assert.match(media.toString(), /\.pwa-checklist-track > span \{ transition:none !important/);
-  assert.match(media.toString(), /transform:none !important/);
+  root.walkDecls('animation', declaration => {
+    if (/\binfinite\b/.test(declaration.value)) {
+      assert.match(declaration.value, /^pwa-qr-scan 2\.8s ease-in-out infinite$/);
+      assert.match(declaration.parent.selector, /\.pwa-qr-scan-line$/);
+    }
+  });
+  const reduced = [];
+  root.walkAtRules('media', media => { if (media.params.includes('prefers-reduced-motion')) reduced.push(media.toString()); });
+  const rules = reduced.join('\n');
+  assert.match(rules, /\.employee-material-sheet \{ animation:none !important/);
+  assert.match(rules, /\.pwa-qr-scan-line \{ animation:none;/);
+  assert.match(rules, /\.pwa-checklist-track > span \{ transition:none !important/);
+  assert.match(rules, /transform:none !important/);
 });
 
 test('checklist hierarchy separates the work card, disclosure row and colleagues', () => {
@@ -72,11 +80,17 @@ test('scanner retry and handover auxiliary actions use the shared theme', () => 
   assert.ok(contrast('#efbd93', '#24282d') >= 7);
 });
 
-test('all copper presentation rules remain test-marker scoped', () => {
+test('copper rules remain theme scoped or limited to the approved named employee schedule components', () => {
   root.walkRules(rule => {
     let ancestor = rule;
-    while (ancestor && !ancestor.selector?.includes('body:has(#pwa-copper-theme)')) ancestor = ancestor.parent;
-    assert.ok(ancestor, `Unscoped rule: ${rule.selector}`);
+    while (ancestor) {
+      if (ancestor.selector?.includes('#pwa-copper-theme')) return;
+      if (ancestor.type === 'atrule' && ancestor.name === 'keyframes') {
+        assert.equal(ancestor.params, 'pwa-qr-scan'); return;
+      }
+      ancestor = ancestor.parent;
+    }
+    assert.ok(rule.selectors.every(selector => /^(?:\.employee-material-ui\b|\.schedule-plan-(?:heading|check|editor)\b|\.pwa-schedule-savebar \.schedule-plan-exit\b)/.test(selector)), `Unscoped rule: ${rule.selector}`);
   });
 });
 
