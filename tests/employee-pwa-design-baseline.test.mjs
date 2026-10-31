@@ -179,7 +179,20 @@ test('other required issues keep the technical request in a sheet across re-entr
   assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
   assert.match(source, /Почему не получается\?/);
   assert.match(source, /Запрос на завершение смены с неисправленной ошибкой\./);
-  assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution/);
+  assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && !shiftControlEnabled/);
+});
+
+test('missing checklist never exposes the attendance-only finish card to a shift-controlled manager', async () => {
+  const source = await readFile(employeeSourcePath, 'utf8');
+  const beforeCard = source.slice(0, source.indexOf('>Отметка рабочего дня</h2>'));
+  const condition = [...beforeCard.matchAll(/\{(activeWorkDay &&[^\n]+) && \(/g)].at(-1)?.[1];
+  assert.ok(condition);
+  const visible = new Function('activeWorkDay', 'hasPreviousWorkday', 'showShiftControl', 'showCloseResolution', 'shiftControlEnabled', `return Boolean(${condition});`);
+  assert.equal(visible(true, false, false, false, true), false, 'manager without loaded run');
+  assert.equal(visible(true, false, true, false, true), false, 'manager with checklist');
+  assert.equal(visible(true, false, false, false, false), true, 'attendance-only role retains its own finish');
+  assert.equal(visible(false, false, false, false, false), false, 'no active day');
+  assert.equal(visible(true, true, false, false, false), false, 'previous day uses the existing recovery flow');
 });
 
 test('employee sheets reserve room for mobile browser chrome', async () => {

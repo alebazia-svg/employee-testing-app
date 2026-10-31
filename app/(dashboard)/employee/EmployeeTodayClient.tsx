@@ -5034,7 +5034,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && (
+              {activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && !shiftControlEnabled && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
                     <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'>
