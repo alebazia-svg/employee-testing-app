@@ -20,5 +20,7 @@ test('photo remains disabled while its explanatory helper can be hidden', () => 
 test('pending administrator decision has a separate resume action', () => {
   assert.match(source, /status === 'pending' && !encashmentResumePending/);
   assert.match(source, /Всё же выполнить инкассацию/);
-  assert.match(source, /Администратор получил запрос\. Смена пока открыта\./);
+  assert.match(source, /Смена пока открыта\./);
+  assert.match(source, /'Ожидает согласования' : showCashEncashmentExceptionForm/);
+  assert.match(source, /onClick=\{\(\) => setEncashmentResumePending\(true\)\}/);
 });

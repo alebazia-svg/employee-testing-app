@@ -5,8 +5,9 @@ import test from 'node:test';
 const source = readFileSync(new URL('../app/(dashboard)/employee/EmployeeTodayClient.tsx', import.meta.url), 'utf8');
 
 test('retry is available only for an online, failed, idle queued upload', () => {
-  assert.match(source, /isOnline && cashOutboxCount > 0 && !cashOutboxSyncing && cashOutboxError \? \(/);
-  assert.match(source, /onClick=\{\(\) => void flushCashOutbox\(\)\}>\s*Повторить отправку/);
+  assert.match(source, /isOnline && cashOutboxCount > 0 && !cashOutboxSyncing && cashOutboxError && !cashDuplicateItem \? \(/);
+  assert.match(source, /onClick=\{\(\) => void flushCashOutbox\(true\)\}>\s*Повторить отправку/);
+  assert.match(source, /cashDuplicateItem\?\.duplicateOf && <Button[^\n]+Проверить инкассацию/);
   assert.doesNotMatch(source, /\(!isOnline \|\| \(cashOutboxCount > 0 && !cashOutboxSyncing\)\)/);
 });
 
