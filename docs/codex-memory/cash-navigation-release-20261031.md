@@ -44,8 +44,25 @@ Public builtAt: 2026-10-31T13:50:15.657Z (16:50 Moscow).
 The deployment built and started successfully and public metadata switched.
 The post-start verification tail of the first temporary shell script had a
 heredoc delimiter typo and exited1 after APP_HEALTH_OK. This did not roll back or
-restart the new app. A separate read-only verification/registry script is pending
-owner sudo in native Terminal; release registration is not yet claimed complete.
+restart the new app. The initial verification SSH session then closed while
+waiting for sudo (exit255); its log was preserved. Owner explicitly requested
+finishing now, and the reviewed verification-only script was reopened in native
+Terminal. After owner sudo, it finished with **VERIFY_EXIT=0**.
+
+Final verification: all runtime environment values, server.env fingerprint and
+all mounted storage identities/paths/modes match the pre-release baseline.
+Container health is healthy. Public version/build time and server commit match
+the release above. No additional build/restart or production financial write was
+performed during this final step. Current plus two preceding verified images
+all exist and are registered:
+
+- Current1.19.13: `sha256:e442b44f5c332885a69a0a7e1c51f9cc6aa3942525f4283b7593b6feabc7bfdd`.
+- Previous1.19.12: `sha256:d961b9001fccd128c4135fb6255a70be6fd829061572a03c062cff8229283815`.
+- Second reserve1.19.11: `sha256:c4aaaa7fa4ac7780ef1b8b78723f9bf10d661caba120b4de2b2cc0586dfe4498`.
+
+Free space after verification:21.09GiB. Final log:
+`/tmp/mobo-cash-nav-verify-1.19.13.log`. Physical iPhone acceptance remains pending
+as explicitly agreed; no claim that its specific keyboard bug is proven fixed.
 
 ## Exact changed files relative to prior production
 
