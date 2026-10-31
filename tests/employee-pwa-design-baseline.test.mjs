@@ -110,7 +110,7 @@ test('personal salary keeps readable earnings and uses spacing-only compact adap
   const compact = css.slice(css.indexOf('@media (max-height: 820px)'));
   assert.ok(compact.length > 0);
   assert.doesNotMatch(compact, /font-size|transform|overflow:\s*hidden|display:\s*none/);
-  assert.match(client, /salary\.earnings!\.map/);
+  assert.match(client, /\(salary\.earnings \?\? \[\]\)\.map/);
   assert.doesNotMatch(client, /<details|<summary/);
 });
 
