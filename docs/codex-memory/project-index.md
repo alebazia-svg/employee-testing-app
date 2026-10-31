@@ -439,3 +439,15 @@ Desktop calendar, financial APIs, payroll formulas/bonuses and1C unchanged.
 Completed-issue caption removed, collection action retained. Production Astemir,
 Zukhra and Diana checks passed; device/financial-write limits are explicit.
 Current plus two verified images registered; final healthhealthy, free26.53GiB.
+
+## Payroll day confirmations — local candidate, 2026-10-31
+
+See `payroll-day-review-candidate-20261031.md`: persisted employee requests,
+ADMIN decisions and date-union accounting; current-estimate access after QR
+start on a planned workday regardless of time. Others from October31; Diana's
+October separately. Default off, QA clone only, no production release.
+
+Owner-approved addition 2026-10-31: a missed date in a CLOSED/FINAL month may be
+confirmed for attendance/access only. Its approved salary and payouts stay
+unchanged, even if the month is later reopened. See the same candidate note;
+this remains local and unreleased.
