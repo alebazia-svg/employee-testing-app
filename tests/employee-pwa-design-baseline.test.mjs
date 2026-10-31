@@ -22,8 +22,9 @@ test('QR start cue uses one scan line with a stationary code and reduced motion 
 test('prestart card exposes one native scan action without duplicated labels or a second button', async () => {
   const source = await readFile(employeeSourcePath, 'utf8');
   const card = source.slice(source.indexOf("<section className='pwa-composition-only pwa-composition-start'"), source.indexOf('</section>', source.indexOf("<section className='pwa-composition-only pwa-composition-start'")));
-  assert.match(card, />Начать смену<\/h2>/);
-  assert.match(card, /Отсканируйте <span className='whitespace-nowrap'>QR-код<\/span> в магазине\./);
+  assert.match(card, /needsWorkdayEndReminder\(user\) \? 'Начать рабочий день' : 'Начать смену'/);
+  assert.match(card, /usesWorkdayQrPhotoFallback\(user\) \? 'Сфотографируйте' : 'Отсканируйте'/);
+  assert.match(card, /<span className='whitespace-nowrap'>QR-код<\/span> \{user\.department === 'procurement' \? 'отдела закупок' : 'в магазине'\}\./);
   assert.match(card, /Открыть камеру/);
   assert.equal((card.match(/<button\b/g) ?? []).length, 1);
   assert.match(card, /aria-labelledby='pwa-composition-start-title' aria-describedby='pwa-start-qr-hint' onClick=\{openQrStart\}/);
@@ -109,7 +110,7 @@ test('personal salary keeps readable earnings and uses spacing-only compact adap
   const compact = css.slice(css.indexOf('@media (max-height: 820px)'));
   assert.ok(compact.length > 0);
   assert.doesNotMatch(compact, /font-size|transform|overflow:\s*hidden|display:\s*none/);
-  assert.match(client, /salary\.earnings!\.map/);
+  assert.match(client, /\(salary\.earnings \?\? \[\]\)\.map/);
   assert.doesNotMatch(client, /<details|<summary/);
 });
 
@@ -160,15 +161,16 @@ test('employee attestation status pictograms use the shared Solar duotone family
 test('KKM close failure uses the approved real-employee sheet, not the legacy inline form', async () => {
   const source = await readFile(employeeSourcePath, 'utf8');
 
-  assert.match(source, /closeResolutionOpen && showCloseResolution && kkmCloseIssue/);
+  assert.match(source, /closeResolutionOpen && showCloseResolution && showKkmConfirmation/);
+  assert.match(source, /const showKkmConfirmation = Boolean\(kkmCloseIssue\) \|\| kkmConfirmationRequired \|\| kkmFinishPending/);
   assert.match(source, /closeResolutionPath === null[\s\S]*?Чек распечатался[\s\S]*?Чек не распечатался/);
   assert.match(source, /Закрытие кассы не подтверждено/);
   assert.match(source, /Закройте смену на ККМ\. Если чек уже есть — приложите фото\./);
-  assert.match(source, /Чек закрытия распечатался\?/);
+  assert.match(source, /Чек закрытия смены распечатался\?/);
   assert.match(source, /Ожидает согласования\./);
   assert.match(source, /Продолжить сдачу смены/);
   assert.match(source, /currentCloseExceptionStatus === 'pending'[\s\S]*?currentCloseExceptionStatus === 'approved'[\s\S]*?currentCloseExceptionStatus === 'rejected'/);
-  assert.match(source, /showCloseResolution && !kkmCloseIssue/);
+  assert.match(source, /showCloseResolution && !showKkmConfirmation/);
   assert.match(source, /showShiftControl && !kkmCloseIssue/);
 });
 
@@ -176,10 +178,23 @@ test('other required issues keep the technical request in a sheet across re-entr
   const source = await readFile(employeeSourcePath, 'utf8');
 
   assert.match(source, /requiredIssuesState\.length > 0 && \(closeBlocked \|\| handoverWasBlocked \|\| Boolean\(kkmCloseIssue\) \|\| Boolean\(closeExceptionRequestState\)\)/);
-  assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
+  assert.match(source, /closeResolutionOpen && showCloseResolution && !showKkmConfirmation/);
   assert.match(source, /Почему не получается\?/);
   assert.match(source, /Запрос на завершение смены с неисправленной ошибкой\./);
-  assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution/);
+  assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && !shiftControlEnabled/);
+});
+
+test('missing checklist never exposes the attendance-only finish card to a shift-controlled manager', async () => {
+  const source = await readFile(employeeSourcePath, 'utf8');
+  const beforeCard = source.slice(0, source.indexOf('>Отметка рабочего дня</h2>'));
+  const condition = [...beforeCard.matchAll(/\{(activeWorkDay &&[^\n]+) && \(/g)].at(-1)?.[1];
+  assert.ok(condition);
+  const visible = new Function('activeWorkDay', 'hasPreviousWorkday', 'showShiftControl', 'showCloseResolution', 'shiftControlEnabled', `return Boolean(${condition});`);
+  assert.equal(visible(true, false, false, false, true), false, 'manager without loaded run');
+  assert.equal(visible(true, false, true, false, true), false, 'manager with checklist');
+  assert.equal(visible(true, false, false, false, false), true, 'attendance-only role retains its own finish');
+  assert.equal(visible(false, false, false, false, false), false, 'no active day');
+  assert.equal(visible(true, true, false, false, false), false, 'previous day uses the existing recovery flow');
 });
 
 test('employee sheets reserve room for mobile browser chrome', async () => {
@@ -188,7 +203,7 @@ test('employee sheets reserve room for mobile browser chrome', async () => {
     readFile(globalStylesPath, 'utf8'),
   ]);
 
-  for (const label of ['Выбор смены', 'Исправление смены', 'Изменение графика', 'Проверка графика', 'Выход из заполнения графика']) {
+  for (const label of ['Выбор смены', 'Исправление смены', 'Изменение графика', 'Проверка изменения рабочих дней', 'Выход из заполнения графика']) {
     assert.match(source, new RegExp(`employee-workday-sheet-overlay[^\\n]*role='dialog'[^\\n]*aria-label='${label}'`));
   }
   assert.match(css, /--employee-sheet-browser-clearance: 5rem;/);

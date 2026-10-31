@@ -99,7 +99,7 @@ export function CashIssueProvider({ children }: { children: ReactNode }) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKey);
-    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus(); };
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus({preventScroll:true}); };
   }, [openedRef, close]);
   const request = snapshot.request?.ref === openedRef ? snapshot.request : null;
   const unknown = snapshot.unavailable || Boolean(request && Date.now() - Date.parse(request.checkedAt) > DELIVERY_MAX_AGE_MS);

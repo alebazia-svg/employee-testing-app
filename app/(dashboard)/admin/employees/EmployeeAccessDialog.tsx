@@ -28,7 +28,7 @@ export default function EmployeeAccessDialog({ user, initialAccess, onIssued, on
     const overflow = document.body.style.overflow;
     element?.showModal();
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = overflow; element?.close(); previousFocus?.focus(); };
+    return () => { document.body.style.overflow = overflow; element?.close(); previousFocus?.focus({preventScroll:true}); };
   }, []);
 
   async function issue() {

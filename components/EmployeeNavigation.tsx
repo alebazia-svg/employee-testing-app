@@ -8,18 +8,20 @@ import { useEmployeePreview } from './EmployeePreviewProvider';
 import { employeeNavigation, type EmployeeSection } from '@/lib/employee-navigation';
 import { useProcurementMobileNavigation } from './ProcurementMobileNavigation';
 import { cn } from '@/lib/utils';
+import { useMobileNavigationViewport } from './useMobileNavigationViewport';
 
 const icons = { day: PremiumClockIcon, schedule: PremiumCalendarIcon, payroll: PremiumCardIcon };
 export function EmployeeNavigation({ active, payrollEnabled, procurementEnabled = false, onSelect, activeHref }: {
   active: EmployeeSection | 'procurement'; payrollEnabled: boolean; procurementEnabled?: boolean; activeHref?: string; onSelect?: (section: EmployeeSection) => boolean;
 }) {
   const router = useRouter();
+  const navRef = useMobileNavigationViewport();
   const mobileNavigation = useProcurementMobileNavigation();
   const preview = useEmployeePreview();
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const sections = [...employeeNavigation(procurementEnabled ? false : payrollEnabled), ...(procurementEnabled ? [{ id: 'procurement' as const, label: 'Закупки', href: '/procurement' }] : [])];
-  return <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+  return <nav ref={navRef} aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
     <div className='grid gap-1' style={{ gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))` }}>
       {sections.map(section => {
         const Icon = section.id === 'procurement' ? null : icons[section.id], selected = active === section.id;

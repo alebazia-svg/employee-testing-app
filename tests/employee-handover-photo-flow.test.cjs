@@ -7,7 +7,7 @@ const ts = require('typescript');
 // Execute the actual UI handler with isolated persistence boundaries.
 const source = fs.readFileSync('app/(dashboard)/employee/EmployeeTodayClient.tsx', 'utf8');
 const start = source.indexOf('  async function handleHandoverPhotoSelected(');
-const end = source.indexOf('  async function sendKkmClosePhotoToAdmin(', start);
+const end = source.indexOf('  async function confirmKkmClose(', start);
 assert.ok(start >= 0 && end > start);
 const code = ts.transpileModule(source.slice(start, end), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
@@ -83,11 +83,13 @@ test('lost finish response is recovered only from a confirmed completed snapshot
   const begin = source.indexOf('  async function submitHandover(');
   const finish = source.indexOf('\n  useEffect(', begin);
   const compiled = ts.transpileModule(source.slice(begin, finish), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  for (const completed of [true, false]) {
+  for (const [completed, snapshotDayId] of [[true, 19], [false, 19], [true, 20]]) {
     const state = { closed: false, message: '', error: '', calls: 0 };
     class EmployeeApiError extends Error {}
     const ctx = {
       preview: null, Error, TypeError, FormData, EmployeeApiError, EmployeeNetworkError: class extends Error {},
+      shiftControlState: { run: { workDayEntryId: 19 } }, closingWorkDay: { id: 19 },
+      kkmPhotoRetry: { current: null }, kkmCompletionErrorRef: { current: null },
       handoverAuditAttempt: { current: undefined },
       crypto: { randomUUID: () => 'local-handover-recovery-audit' },
       sendEmployeeActivity() {},
@@ -97,13 +99,17 @@ test('lost finish response is recovered only from a confirmed completed snapshot
       setActiveHandoverTaskId: () => { state.closed = true; },
       setMessage: value => { state.message = value; },
       submitFormData: async () => { state.calls++; throw new Error('Connection lost'); },
-      syncCurrentWorkdayState: async () => ({ workDay: { status: completed ? 'completed' : 'active' }, shiftControl: { tasks: [{ id: 1, status: completed ? 'done' : 'pending' }] } }),
+      syncCurrentWorkdayState: async (_, requestedId) => {
+        assert.equal(requestedId, 19, 'recovery must check the submitted shift, not simply the newest day');
+        return { workDay: { id: snapshotDayId, status: completed ? 'completed' : 'active' }, shiftControl: { tasks: [{ id: 1, status: completed ? 'done' : 'pending' }] } };
+      },
     };
     vm.createContext(ctx); vm.runInContext(compiled, ctx);
     await ctx.submitHandover({ id: 1 });
     assert.equal(state.calls, 1);
-    assert.equal(state.closed, completed);
-    assert.equal(state.message, completed ? 'Рабочий день завершён' : '');
-    assert.equal(state.error, completed ? '' : 'Connection lost');
+    const recovered = completed && snapshotDayId === 19;
+    assert.equal(state.closed, recovered);
+    assert.equal(state.message, recovered ? 'Рабочий день завершён' : '');
+    assert.equal(state.error, recovered ? '' : 'Connection lost');
   }
 });

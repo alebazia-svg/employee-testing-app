@@ -1,3 +1,5 @@
+import { claimCashOperationSubmission } from '@/lib/cash-operation-submission';
+import { CASH_DUPLICATE_CODE } from '@/lib/cash-operation-duplicate';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
@@ -70,7 +72,19 @@ async function savePhoto(file: File, workDayId: number, direction: string) {
   return path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
 }
 
+export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const idempotencyKey = new URL(req.url).searchParams.get('idempotencyKey') ?? '';
+  if (!/^[a-f0-9-]{36}$/i.test(idempotencyKey)) return Response.json({ error: 'Некорректная операция' }, { status: 400 });
+  const operation = await prisma.cashOperation.findFirst({ where: { idempotencyKey, userId: user.id } });
+  return operation
+    ? Response.json({ operation }, { headers: { 'Cache-Control': 'private, no-store' } })
+    : Response.json({ error: 'Операция не найдена' }, { status: 404, headers: { 'Cache-Control': 'private, no-store' } });
+}
+
 export async function POST(req: Request) {
+  const requestStartedAt = Date.now();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -142,23 +156,25 @@ export async function POST(req: Request) {
         error: submittedWorkDayId === null && date === currentDate ? 'Сначала начните рабочий день' : 'Исходная смена операции не найдена',
       }, { status: submittedWorkDayId === null && date === currentDate ? 400 : 409 });
     }
-    const operation = await (async () => {
-      const photoPath = await savePhoto(photo, workDay.id, direction);
-      return prisma.cashOperation.create({
-        data: {
-          userId: user.id,
-          workDayEntryId: workDay.id,
-          date,
-          department: user.department,
-          direction,
-          amount,
-          photoPath,
-          comment: readString(formData.get('comment')),
-          status: 'pending_1c',
-          idempotencyKey,
-        },
+    const claimed = await claimCashOperationSubmission(prisma, {
+      userId: user.id, workDayEntryId: workDay.id, date, department: user.department,
+      direction, amount, comment: readString(formData.get('comment')), idempotencyKey,
+      distinctFromOperationId: readPositiveInteger(formData.get('distinctFromOperationId')),
+    }, () => savePhoto(photo, workDay.id, direction));
+    if (claimed.kind === 'conflict') return Response.json({ error: 'Параметры операции изменились. Обновите экран.' }, { status: 409 });
+    const operation = claimed.operation;
+    if (claimed.kind === 'duplicate') {
+      return Response.json({
+        code: CASH_DUPLICATE_CODE, requestedIdempotencyKey: idempotencyKey,
+        operation, error: 'Такая инкассация уже сохранена. Деньги переданы ещё раз или это повтор?',
+      }, { status: 409 });
+    }
+    if (claimed.kind === 'replay') {
+      return Response.json({ operation, message: 'Инкассация уже сохранена в портале.' }, {
+        status: operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual' ? 200 : 202,
       });
-    })();
+    }
+    console.info('CASH_OPERATION_TIMING', JSON.stringify({ operationId: operation.id, phase: 'saved', elapsedMs: Date.now() - requestStartedAt, photoBytes: photo.size }));
 
     const deferToAdmin = async (message: string) => {
       const failedOperation = await prisma.$transaction(async (tx) => {
@@ -236,6 +252,7 @@ export async function POST(req: Request) {
       });
     }
 
+    console.info('CASH_OPERATION_TIMING', JSON.stringify({ operationId: operation.id, phase: 'finished', elapsedMs: Date.now() - requestStartedAt }));
     const savedOperation = await prisma.cashOperation.findUniqueOrThrow({ where: { id: operation.id } });
     await resolveCarriedCashEncashmentExceptions(prisma, {
       employeeId: user.id,

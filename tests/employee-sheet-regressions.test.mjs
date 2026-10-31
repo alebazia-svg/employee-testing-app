@@ -12,7 +12,9 @@ test('drag targets the whole sheet and cancelled gestures do not dismiss', () =>
 });
 
 test('stale-day dialog is outside the material shell and uses shared viewport clearance', () => {
-  assert.ok(source.indexOf('<StaleWorkdayCloseSheet') < source.indexOf("className='employee-material-shell"));
+  const materialShell = source.indexOf("'employee-material-shell ");
+  assert.ok(materialShell > 0, 'normal mobile shell must still exist beside the embedded procurement branch');
+  assert.ok(source.indexOf('<StaleWorkdayCloseSheet') < materialShell);
   assert.match(stale, /employee-workday-sheet-overlay fixed inset-0/);
   assert.match(source, /!staleCloseOpen && !deviationSheetKind/);
 });

@@ -8,7 +8,7 @@ export default function EmployeeActivityDialog({ user, onClose }: { user: { id: 
   const dialog = useRef<HTMLDialogElement>(null);
   const [date,setDate] = useState(today), [revision,setRevision] = useState(0);
   const [data,setData] = useState<EmployeeActivityReport | null>(null), [error,setError] = useState(''), [loading,setLoading] = useState(true);
-  useEffect(()=>{const focused=document.activeElement as HTMLElement|null; dialog.current?.showModal(); const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;focused?.focus();};},[]);
+  useEffect(()=>{const focused=document.activeElement as HTMLElement|null; dialog.current?.showModal(); const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;focused?.focus({preventScroll:true});};},[]);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');setData(null);
     void fetch(`/api/admin/employees/${user.id}/activity?date=${date}`,{cache:'no-store',signal:controller.signal})

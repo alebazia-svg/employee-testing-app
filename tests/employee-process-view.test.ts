@@ -131,3 +131,14 @@ test('payroll unavailable differs from a failed load; queued cash is explicit; p
  assert.equal(rows[2].attentionReason,'Ошибка передачи в 1С — нужна проверка');
  assert.equal(filterProcessView(rows,{query:'',section:'all',attentionOnly:true}).attentionCount,3);
 });
+
+
+test('acknowledging a duplicate retires its queued problem without inventing another 1C posting',()=>{
+ const cleared={ref:'cash-key-123',duplicateOfOperationId:75};
+ assert.ok(readOperationContext({action:'cash_send',stage:'duplicate_cleared',attemptId:'attempt-12345',...cleared}));
+ assert.equal(readOperationContext({action:'schedule_save',stage:'duplicate_cleared',attemptId:'attempt-12345',...cleared}),null);
+ assert.equal(readOperationContext({action:'cash_send',stage:'duplicate_cleared',attemptId:'attempt-12345',ref:cleared.ref}),null);
+ const audit=buildAuditTimeline([event('cash_send','queued',1,{ref:cleared.ref}),event('cash_send','duplicate_cleared',10,cleared)],[],'2026-10-26');
+ const [row]=buildProcessView(report(audit));assert.equal(row.unresolved,false);assert.equal(row.confirmed,false);assert.equal(row.outcome,'Повторная отправка снята сотрудником');
+ assert.match(row.steps.at(-1)?.note||'',/№ 75/);assert.equal(row.steps.some(s=>s.id.startsWith('cash-posted:')),false);
+});

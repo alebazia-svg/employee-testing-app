@@ -30,7 +30,7 @@ export function EmployeeNotificationInbox({ items, onClose, onChoose, permission
   useEffect(() => {
     const sheet = dialog.current!, previous = document.activeElement as HTMLElement, overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden'; sheet.showModal();
-    return () => { sheet.close(); document.body.style.overflow = overflow; previous?.focus(); };
+    return () => { sheet.close(); document.body.style.overflow = overflow; previous?.focus({preventScroll:true}); };
   }, []);
   return createPortal(<dialog ref={dialog} aria-labelledby="employee-inbox-title" className={`employee-inbox portal-neutral-design employee-material-ui${compact?' employee-inbox-compact':''}`} onCancel={event => { event.preventDefault(); back(); }}>
     <header className="employee-inbox-heading"><button type="button" onClick={back} aria-label={history ? 'К списку уведомлений' : showHistory?'К новым уведомлениям':'Вернуться на главный экран'}><ArrowLeft size={22}/></button><h2 id="employee-inbox-title">{history ? 'Сообщение' : showHistory?'История':'Уведомления'}</h2></header>

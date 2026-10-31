@@ -12,6 +12,7 @@ import { LogoutButton } from '@/components/LogoutButton';
 import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { cn } from '@/lib/utils';
 import { ReleaseLabel } from '@/components/ReleaseLabel';
+import { useMobileNavigationViewport } from './useMobileNavigationViewport';
 
 type NavigationItem = { href: string; label: string; icon: LucideIcon };
 
@@ -70,6 +71,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
   headerWidthClass?: string;
 }) {
   const pathname = usePathname();
+  const navRef = useMobileNavigationViewport();
   const accountName = useAdminIdentity();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -179,7 +181,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
         </div>
       </section>
 
-      <nav className='admin-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 md:hidden' aria-label='Основная навигация админки'>
+      <nav ref={navRef} className='admin-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 md:hidden' aria-label='Основная навигация админки'>
         {dailyNavigation.slice(0, 3).map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
@@ -189,7 +191,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
       </nav>
 
       {mobileMenuOpen ? (
-        <div className='fixed inset-0 z-50 flex items-end bg-slate-950/45 p-3 backdrop-blur-sm md:hidden' onClick={() => setMobileMenuOpen(false)}>
+        <div role='dialog' aria-modal='true' aria-label='Все разделы админки' className='fixed inset-0 z-50 flex items-end bg-slate-950/45 p-3 backdrop-blur-sm md:hidden' onClick={() => setMobileMenuOpen(false)}>
           <section className='admin-dialog-panel max-h-[86dvh] w-full overflow-y-auto rounded-3xl p-4' onClick={(event) => event.stopPropagation()} aria-label='Все разделы админки'>
             <div className='mb-4 flex items-center justify-between gap-3'>
               <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#263b5c]'>MOBO</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
