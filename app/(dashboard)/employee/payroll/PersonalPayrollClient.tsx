@@ -83,9 +83,11 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
               {salary.sourceFallback && salary.checkedAt && <p className='salary-through'>Выплаты проверены {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(salary.checkedAt))}</p>}
             </div>
           </section>
-          {salary.state === 'current_estimate' && !!salary.earnings?.length && <section className='salary-breakdown' aria-label='Состав зарплаты'>
+          {salary.state === 'current_estimate' && (!!salary.earnings?.length || salary.daysUnmarked) && <section className='salary-breakdown' aria-label='Состав зарплаты'>
             <h2>Из чего складывается</h2>
-            {salary.earnings!.map(row => <div key={row.label}><span>{row.label}</span><strong>≈ {money(row.amount)} ₽</strong></div>)}
+            {salary.daysUnmarked && <div><span>Выходы</span><strong style={{fontSize:16,color:'var(--portal-brand-strong)'}}>Не отмечены</strong></div>}
+            {(salary.earnings ?? []).map(row => <div key={row.label}><span>{row.label}</span><strong>≈ {money(row.amount)} ₽</strong></div>)}
+            {salary.daysUnmarked && <p className='mt-3 border-t border-[#e5e2da] pt-3 text-[14px] leading-[1.45] text-[#50585c]'>Заполняйте график в календаре. Каждый выход подтверждайте QR-кодом в начале смены и отмечайте её завершение в приложении.</p>}
           </section>}
           {salary.state === 'confirmed' ? <section className='salary-breakdown' aria-label='Выплата зарплаты'>
             <h2>Выплаты</h2>

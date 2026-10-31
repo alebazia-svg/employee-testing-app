@@ -89,3 +89,14 @@ test('verified earlier credit is disclosed, not added to cash paid or removed fr
     assert.equal((result.body as any).creditedFromEarlier, undefined);
   }
 });
+
+test('missing-day state is allowlisted only for the current projection; FINAL takes precedence', async () => {
+  const daily = {userId:7,periodKey:'2026-10',grossPay:1234.56,verifiedThrough:'2026-10-23',
+    attendanceCheckedAt:'2026-10-24T09:00:00Z',draftRevision:1,daysUnmarked:true,
+    earnings:[{label:'Финбокс' as const,amount:1234.56}]};
+  const result = await readEmployeePayroll(viewer,new URLSearchParams(),{...deps(null),findCurrent:async()=>daily});
+  assert.equal((result.body as any).daysUnmarked,true);
+  assert.equal((result.body as any).estimatedAccrued,1200);
+  const final = await readEmployeePayroll(viewer,query(),{...deps(),findCurrent:async()=>{throw Error('must not read');}});
+  assert.equal((final.body as any).state,'confirmed'); assert.equal((final.body as any).daysUnmarked,undefined);
+});

@@ -1,6 +1,6 @@
 import type { EmployeeEarning } from './employee-payroll-estimate';
 
-export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
+export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; daysUnmarked?: boolean; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
 
 // A refresh failure belongs in the existing ADMIN operation audit. It must
 // not alarm an employee who already has a usable, dated salary projection.
@@ -15,6 +15,8 @@ export function validEmployeePayrollView(value: unknown, month: string): value i
   const amount = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
   const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
   if (row.month !== month) return false;
+  if (row.daysUnmarked !== undefined && (row.daysUnmarked !== true || row.state !== 'current_estimate'
+    || !Array.isArray(row.earnings) || row.earnings.some(item => !item || item.label === 'Выходы'))) return false;
   if (row.sourceFallback !== undefined && typeof row.sourceFallback !== 'boolean') return false;
   if (row.sourceFallback && (row.state === 'current_estimate'
     ? !/^20\d{2}-\d{2}-\d{2}$/.test(row.verifiedThrough ?? '') || !row.verifiedThrough?.startsWith(`${month}-`)

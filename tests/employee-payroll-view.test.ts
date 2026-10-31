@@ -51,3 +51,9 @@ test('rollover uses Moscow midnight, not UTC or device timezone', () => {
   assert.equal(employeePayrollMonthAt(new Date(before.getTime() + 1000)), '2027-01');
   assert.equal(employeePayrollMonthDelay(new Date('2027-01-01T00:00:00Z')), 86400000);
 });
+
+test('unmarked days cannot coexist with a day amount or a confirmed historical salary', () => {
+  assert.equal(validEmployeePayrollView({...value(),daysUnmarked:true},periods[0]),false);
+  assert.equal(validEmployeePayrollView({...value(),daysUnmarked:true,earnings:[{label:'Финбокс',amount:30000}]},periods[0]),true);
+  assert.equal(validEmployeePayrollView({month:periods[1],state:'confirmed',accrued:30000,paid:30000,remaining:0,daysUnmarked:true},periods[1]),false);
+});
