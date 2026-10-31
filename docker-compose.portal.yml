@@ -51,6 +51,10 @@ services:
       PORTAL_ACCOUNTABLE_CREATE: ${PORTAL_ACCOUNTABLE_CREATE:-1}
       PORTAL_TEST_ACCOUNTABLE_CREATE: "0"
       PORTAL_ISOLATED_DEMO: "0"
+      # Owner-approved payroll day requests. Keep accounting enabled if the
+      # request UI is temporarily disabled after approvals have been recorded.
+      PAYROLL_DAY_REVIEW_ENABLED: ${PAYROLL_DAY_REVIEW_ENABLED:-1}
+      PAYROLL_DAY_REVIEW_ACCOUNTING_ENABLED: ${PAYROLL_DAY_REVIEW_ACCOUNTING_ENABLED:-1}
       # Both retail workplaces use the direct read-only aQsi API.  Keep the
       # historical cabinet mount only as an emergency artifact; never silently
       # fall back to it in production reconciliation.
