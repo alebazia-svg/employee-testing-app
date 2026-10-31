@@ -25,7 +25,7 @@ const actualFunctions = compile([
   section('  const flushCashOutbox = useCallback(', '  useEffect(() => {\n    const updateConnection'),
 ].join('\n'));
 
-function setup({ storageFails = false, removalFails = false, refreshFails = false } = {}) {
+function setup({ storageFails = false, removalFails = false, refreshFails = false, holdResponse = false } = {}) {
   const photo = new File(['photo-bytes'], 'cash.jpg', {type: 'image/jpeg'});
   const item = {id:'12345678-1234-4234-9234-123456789abc',userId:7,
     workDayEntryId:19,workDayDate:'2026-09-04',
@@ -38,6 +38,7 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
   const messages = [];
   const auditStages = [];
   let response = {status:200,body:JSON.stringify({operation:row})};
+  let pendingXHR, persistedCallback;
   const duplicateContext={exports:{}};
   vm.runInNewContext(compile(fs.readFileSync(path.join(root,'lib/cash-operation-duplicate.ts'),'utf8')),duplicateContext);
   const outboxContext = {exports:{},Blob,File,FormData,Date};
@@ -48,15 +49,21 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
     send(form) {
       requests.push(form);
       if(response.event) {this[response.event]();return;}
+      this.upload.onload?.();
+      if (holdResponse) { pendingXHR = this; return; }
+      this.complete();
+    }
+    complete() {
+      if(response.event) {this[response.event]();return;}
       this.status=response.status;
       this.responseText=response.body;
-      this.upload.onload?.();
       this.onload();
     }
   }
   const context = {File,Blob,FormData,Date,XMLHttpRequest:FakeXHR,
     cashDuplicateResult:duplicateContext.exports.cashDuplicateResult,
     readEmployeeCashReceipt:async()=>null,
+    watchEmployeeCashPersistence:(_, callback)=>{persistedCallback=callback;return()=>{persistedCallback=null;};},
     setCashDuplicateItem:x=>{context.cashDuplicateItem=typeof x==='function'?x(context.cashDuplicateItem):x;},
     cashDuplicateItem:null, setCashPhotoUploaded:()=>{},
     resetCashOperationDraft:()=>{context.cashOperationDraft={direction:null,amount:'',comment:'',idempotencyKey:''};},
@@ -74,7 +81,7 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
     listEmployeeCashOutboxItems:async()=>[...stored.values()],
     setCashOutboxCount:()=>{},syncCurrentWorkdayState:async()=>{if(refreshFails)throw Error('refresh failed');},
     setError:x=>messages.push(x),setMessage:x=>messages.push(x),setCashOutboxError:x=>messages.push(x),
-    setIsSaving:()=>{},setUploadProgress:()=>{},setCashOutboxSyncing:()=>{},
+    setIsSaving:x=>{context.saving=x;},setUploadProgress:()=>{},setCashOutboxSyncing:()=>{},
     setCashOperationDraft:x=>{context.cashOperationDraft=x;},setCashOperationsState:()=>{},
     formatCashOperationAmount:String,cashOperationDirectionLabel:String,
     navigator:{onLine:true},cashOutboxSyncingRef:{current:false},
@@ -82,6 +89,7 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
   vm.createContext(context);
   vm.runInContext(actualFunctions+'\nthis.flush = flushCashOutbox;',context);
   return {item,row,stored,requests,messages,auditStages,
+    persisted:()=>persistedCallback?.(row),complete:()=>pendingXHR.complete(),
     respond:x=>{response=x;},
     submit:()=>context.submitCashOperation(photo),flush:()=>context.flush(true),autoFlush:()=>context.flush(),resolve:same=>context.resolveCashDuplicate(same),context,
     acknowledges:outboxContext.exports.cashOutboxResponseAcknowledges,
@@ -197,4 +205,35 @@ test('a lost response is recovered by the lightweight receipt without another ph
  const s=setup();s.respond({event:'onerror'});await s.submit();assert.equal(s.requests.length,1);
  s.context.readEmployeeCashReceipt=async()=>({operation:s.row});await s.flush();
  assert.equal(s.requests.length,1);assert.equal(s.stored.size,0);
+});
+
+test('verified persistence closes the form while 1C waits, without unlocking another cash submission',async()=>{
+ const s=setup({holdResponse:true});const pending=s.submit();await new Promise(setImmediate);
+ assert.equal(s.context.saving,true);assert.equal(s.context.cashOperationDraft.direction,'deposit_safe');
+ s.persisted();await new Promise(setImmediate);
+ assert.equal(s.context.saving,false);assert.equal(s.context.cashOperationDraft.direction,null);
+ assert.equal(s.context.cashTransferInFlightRef.current,true);assert.equal(s.stored.size,0);
+ s.context.saving=true; // Another checklist action owns the general saving flag now.
+ s.complete();await pending;
+ assert.equal(s.context.saving,true,'late cash completion must not unlock a different checklist action');
+ assert.equal(s.requests.length,1);assert.ok(!s.messages.some(x=>/Зафиксировано/.test(x)));
+});
+test('a lost final response cannot turn a verified portal save back into a phone-only error',async()=>{
+ const s=setup({holdResponse:true});const pending=s.submit();await new Promise(setImmediate);
+ s.persisted();await new Promise(setImmediate);s.respond({event:'onerror'});s.complete();await pending;
+ assert.equal(s.stored.size,0);assert.ok(!s.messages.some(x=>/сохранена на телефоне|Связь прервалась/.test(x)));
+ assert.equal(s.auditStages.at(-1),'completed');
+});
+
+test('late completion of a confirmed second transfer leaves a newly opened draft intact',async()=>{
+ const s=setup({holdResponse:true});
+ s.context.cashDuplicateItem={...s.item,duplicateOf:{...s.row,id:75}};
+ const pending=s.resolve(false);await new Promise(setImmediate);
+ s.persisted();await new Promise(setImmediate);
+ assert.equal(s.context.cashOperationDraft.direction,null);
+ const nextDraft={direction:'deposit_safe',amount:'9000',comment:'next transfer',idempotencyKey:'next-key'};
+ s.context.cashOperationDraft=nextDraft;s.context.saving=true;
+ s.complete();await pending;
+ assert.equal(s.context.cashOperationDraft,nextDraft,'late response must not reset another form');
+ assert.equal(s.context.saving,true);assert.equal(s.requests.length,1);
 });

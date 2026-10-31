@@ -17,3 +17,21 @@ export async function readEmployeeCashReceipt<T>(item: EmployeeCashOutboxItem, f
     return payload as { operation: T };
   } finally { clearTimeout(timeout); }
 }
+
+/** Observe persistence while the original POST continues. This never creates or
+ * retries financial documents. A cancelled/late read cannot change a finished UI.
+ */
+export function watchEmployeeCashPersistence<T>(item: EmployeeCashOutboxItem, onSaved: (operation: T) => void,
+  read = () => readEmployeeCashReceipt<T>(item), intervalMs = 1000) {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const poll = async () => {
+    try {
+      const receipt = await read();
+      if (!stopped && receipt) { stopped = true; onSaved(receipt.operation); return; }
+    } catch { /* The original POST still owns the upload outcome. */ }
+    if (!stopped) timer = setTimeout(() => { void poll(); }, intervalMs);
+  };
+  void poll();
+  return () => { stopped = true; if (timer !== undefined) clearTimeout(timer); };
+}
