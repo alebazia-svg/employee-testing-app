@@ -114,7 +114,7 @@ const limitReport = (full?: PortalReport, current?: PortalReport) => full?.avail
 function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
   const { full, current, risk, forecast, outlook, months, base, missingTypes } = props;
   const report = limitReport(full, current);
-  if (!report) return <section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section>;
+  if (!report) return <><TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} /><section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section></>;
   const used = report.usedPercent ?? 0;
   const year = report.year || report.dataCutoff?.slice(0, 4) || '';
   const closed = months.filter((month) => !month.partial);
