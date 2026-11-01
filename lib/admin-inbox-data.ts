@@ -1,3 +1,4 @@
+import { syncWorkdayExtensionProposal } from './workday-extension';
 import { payrollDayReviewEnabled } from './payroll-day-review';
 import { loadScheduleCoverageQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
@@ -57,6 +58,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   if (!input.now) await refreshPendingExpenseStatuses().catch(() => null);
   const now = input.now ?? new Date();
   const today = attentionDay(now);
+  const extensionProposal = await syncWorkdayExtensionProposal(prisma,now).catch(()=>undefined);
   const [displayRows, unreadRows, lifecycleRows] = await Promise.all([
     prisma.adminInboxReceipt.findMany({
       where: { userId: input.userId, ...(input.view === 'history' ? { event: { sourceType: { notIn: ['dependency', 'infrastructure'] } } } : input.view === 'system' ? { event: { OR: [{ sourceType: { in: ['dependency', 'infrastructure'] } }] } } : {}) },
@@ -249,7 +251,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
+      current: sourceType === 'workday_shift_extension' ? (extensionProposal===undefined ? row.event.type==='workday.extension_requested' : String(extensionProposal?.workDayId??'')===sourceId) : sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
         : sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
         : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
         : sourceType === 'tax_freshness' || sourceType === 'tax_limit_decision' ? currentTaxAttentionKeys.has(row.event.eventKey)

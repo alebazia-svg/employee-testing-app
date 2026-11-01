@@ -38,3 +38,12 @@ test('replacement before click and completed handover reject stale approval with
  await assert.rejects(f.approve(),/Сдача смены уже началась/);assert.equal(await db.workdayShiftChange.count({where:{workDayEntryId:f.day.id}}),0);await clearDays();
 });
 test('non-admin and stale day cannot approve',async()=>{const f=await fixture();await assert.rejects(approveWorkdayExtension(db,{adminId:f.employee.id,proposal:f.proposal,now}),/Нет доступа/);await assert.rejects(approveWorkdayExtension(db,{adminId:f.admin.id,proposal:f.proposal,now:new Date('2026-11-02T10:00Z')}),/Состав смены изменился/);await clearDays();});
+
+test('proposal notification is idempotent and becomes inactive when replacement appears',async()=>{
+ const {syncWorkdayExtensionProposal}=await import('../lib/workday-extension');const f=await fixture();
+ const a=await syncWorkdayExtensionProposal(db,now),b=await syncWorkdayExtensionProposal(db,now);assert.deepEqual(a,b);assert.equal(a?.workDayId,f.day.id);
+ const key=`workday-extension:${f.day.id}:09_20:proposal`;assert.equal(await db.adminInboxEvent.count({where:{eventKey:key}}),1);
+ const event=await db.adminInboxEvent.findUniqueOrThrow({where:{eventKey:key}});assert.equal(await db.adminInboxReceipt.count({where:{eventId:event.id,userId:f.admin.id}}),1);
+ await db.workDayEntry.update({where:{id:f.departed.id},data:{endedAt:null,status:'active'}});assert.equal(await syncWorkdayExtensionProposal(db,now),null);
+ await db.adminInboxEvent.delete({where:{id:event.id}});await clearDays();
+});

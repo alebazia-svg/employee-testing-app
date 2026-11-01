@@ -1,3 +1,4 @@
+import { syncWorkdayExtensionProposal } from './workday-extension';
 import { reconcileCashInventoryIssues } from './cash-inventory-reconciliation';
 import { activeWorkdayEndReminders, queueWorkdayEndReminders, workdayEndReminderDelivery } from './workday-end-notifications';
 import { WORKDAY_END_REMINDER_KIND } from './workday-end-policy';
@@ -390,6 +391,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
+  await syncWorkdayExtensionProposal(prisma,now).catch(()=>undefined);
   await queueWorkdayEndReminders(prisma, now);
   await queueScheduleFillQuestions(prisma, now).catch(() => undefined);
   await queueDeliveryReadyPush(now).catch(() => undefined);
@@ -475,6 +477,11 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     const scheduleRef = scheduleNoticeRef(notification.fingerprint);
     const calendarDue = scheduleRef && scheduleNoticeKinds.includes(notification.kind) ? schedulePushAt(scheduleRef.date, dispatchTime()) : null;
     if (calendarDue && calendarDue > dispatchTime()) { await prisma.workdayNotification.updateMany({where:{id:notification.id,status:{in:['pending','sent']}},data:{scheduledAt:calendarDue,nextPushAttemptAt:calendarDue}}); continue; }
+    // An ADMIN may have extended this shift after the due batch was read.
+    if(notification.taskId && ['planned','overdue','overdue_repeat','early_finish_reminder'].includes(notification.kind)) {
+      const current=await prisma.workdayNotification.findUnique({where:{id:notification.id},select:{status:true,scheduledAt:true}});
+      if(!current || !['pending','sent'].includes(current.status) || current.scheduledAt>dispatchTime())continue;
+    }
     const sendTime = dispatchTime();
     const notBefore = employeePushNotBefore(sendTime);
     if (notBefore > sendTime) {

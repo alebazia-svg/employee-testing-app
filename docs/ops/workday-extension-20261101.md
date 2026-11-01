@@ -50,3 +50,20 @@ No migration, deploy, release version allocation, real schedule write, 1C write
 or real employee notification. Actual device push delivery not tested. Other
 checkouts and unrelated changes untouched. Release must recheck current live
 version and latest branch, then assign a new version under owner authorization.
+
+## Today's pilot release authorization
+
+Bela authorized the simple current-day flow on 1 November: ADMIN notification
+and one confirmation; employee extension notice and handover at 20:00; existing
+early-finish button preserved. Future uncompleted cash midpoint retimes 13:30 →
+14:30; already due/completed recount remains. Existing minute dispatcher creates
+one ADMIN proposal, inbox checks current eligibility independently, and final
+pending-task delivery rechecks the saved deadline. No new service or migration.
+
+Additional changed files: lib/admin-inbox-attention-policy.ts,
+lib/admin-inbox-data.ts, lib/admin-operations-view.ts,
+lib/workday-notifications.ts, package.json, package-lock.json.
+Checks: 45 focused tests, 4 PostgreSQL scenarios, 256 Workday tests,
+5 release metadata tests, TypeScript and release build passed.
+Latest deployment branch 8c4bee8 / 1.20.8 merged without conflicts;
+release candidate 1.20.9. Production schedule approval remains Bela's own click.

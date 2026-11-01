@@ -18,6 +18,12 @@ export function deriveExtensionProposal(days: ExtensionDay[], now = new Date()):
     .sort((a,b) => +b.endedAt! - +a.endedAt!)[0];
   return departed ? {workDayId:current.id,userId:current.userId,departedId:departed.id,date,fromShiftCode:current.shiftCode,toShiftCode:'09_20',endMinutes:1200} : null;
 }
+export function extensionTaskMinute(task:{category:string;status:string;completedAt:Date|null;plannedTimeMinutes:number|null;sortOrder:number}, now:Date) {
+  if(task.status!=='pending'||task.completedAt||task.plannedTimeMinutes===null)return null;
+  if(['closing','handover'].includes(task.category))return task.plannedTimeMinutes+120;
+  if(task.category==='cash'&&task.sortOrder===50&&task.plannedTimeMinutes===810&&getMoscowMinutes(now)<810)return 870;
+  return null;
+}
 export const extensionKey = (id:number) => `workday-extension:${id}:09_20`;
 export class ExtensionChanged extends Error {}
 
@@ -45,12 +51,13 @@ export async function approveWorkdayExtension(db:PrismaClient, input:{adminId:nu
         toShiftCode:shift.code,toShiftLabel:shift.label,fromLateMinutes:day.lateMinutes,toLateMinutes:day.lateMinutes,
         fromShadowPointsX2:day.latenessShadowPointsX2,toShadowPointsX2:day.latenessShadowPointsX2,latenessPolicyVersion:day.latenessPolicyVersion,changedAt:now}});
       for(const task of run?.tasks??[]) {
-        if(!['closing','handover'].includes(task.category) || task.plannedTimeMinutes===null) continue;
-        const target=task.plannedTimeMinutes+120;
+        const target=extensionTaskMinute(task,now);
+        if(target===null||task.plannedTimeMinutes===null)continue;
+        const delta=target-task.plannedTimeMinutes;
         await tx.shiftControlTask.update({where:{id:task.id},data:{plannedTimeMinutes:target}});
         // Preserve delivery/read state and every notification identity; move only unsent deadlines.
         const reminders=await tx.workdayNotification.findMany({where:{taskId:task.id,status:'pending',kind:{in:['planned','overdue','overdue_repeat','early_finish_reminder']}}});
-        for(const reminder of reminders) await tx.workdayNotification.update({where:{id:reminder.id},data:{scheduledAt:new Date(+reminder.scheduledAt+120*60000),nextPushAttemptAt:null}});
+        for(const reminder of reminders) await tx.workdayNotification.update({where:{id:reminder.id},data:{scheduledAt:new Date(+reminder.scheduledAt+delta*60000),nextPushAttemptAt:null}});
       }
       await tx.adminInboxEvent.create({data:{eventKey:extensionKey(day.id),type:'workday.shift_extended',title:'Смена продлена до 20:00',
         body:`${admin.name}: ${day.user.name}, ${day.shiftLabel} → ${shift.label}. Досрочный уход: рабочий день №${fresh.departedId}.`,
@@ -62,4 +69,18 @@ export async function approveWorkdayExtension(db:PrismaClient, input:{adminId:nu
     catch(error) { if(error instanceof Prisma.PrismaClientKnownRequestError&&(error.code==='P2034'||(error.code==='P2010'&&error.meta?.code==='40001'))&&attempt<2)continue; throw error; }
   }
   throw new ExtensionChanged('Повторите подтверждение.');
+}
+
+/** Uses the existing minute notification job and ADMIN inbox; no new scheduler. */
+export async function syncWorkdayExtensionProposal(db:PrismaClient, now=new Date()) {
+  const days=await db.workDayEntry.findMany({where:{date:getMoscowDateKey(now),department:'retail',user:{role:'EMPLOYEE',isActive:true}},include:{user:{select:{name:true}}}});
+  const proposal=deriveExtensionProposal(days,now);
+  if(!proposal)return null;
+  const day=days.find(d=>d.id===proposal.workDayId)!;
+  const event=await db.adminInboxEvent.upsert({where:{eventKey:extensionKey(day.id)+':proposal'},update:{},create:{eventKey:extensionKey(day.id)+':proposal',
+    type:'workday.extension_requested',title:`${day.user.name}: продлить смену до 20:00?`,body:'Коллега завершила смену раньше, замена пока не отметилась. Подтвердите продление в «Контроле дня».',
+    href:`/admin/workday?date=${day.date}`,sourceType:'workday_shift_extension',sourceId:String(day.id),occurredAt:now}});
+  const admins=await db.user.findMany({where:{role:'ADMIN',isActive:true},select:{id:true}});
+  await db.adminInboxReceipt.createMany({data:admins.map(a=>({eventId:event.id,userId:a.id})),skipDuplicates:true});
+  return proposal;
 }

@@ -14,6 +14,8 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'workday.extension_requested': {category:'decisions',typeLabel:'Продление смены',actionLabel:'Подтвердить смену'},
+  'workday.shift_extended': {category:'decisions',typeLabel:'Смена продлена',actionLabel:'Открыть рабочий день'},
   'payroll.days_requested': {category:'decisions',typeLabel:'Выходы на подтверждение',actionLabel:'Посмотреть запрос'},
   'expense_request.cash_issue': { category: 'requests', typeLabel: 'Выдача денег', actionLabel: 'Открыть' },
   'procurement.receipt_added': {
@@ -164,6 +166,7 @@ export function adminInboxSourceState(input: {
       ? { active: true, label: 'Текущая заявка', tone: 'active' }
       : { active: false, label: 'В истории', tone: 'history' };
   }
+  if (input.sourceType === 'workday_shift_extension') return input.current ? {active:true,label:'Подтвердить продление',tone:'attention'} : {active:false,label:'Больше не требует решения',tone:'resolved'};
   if (input.sourceType === 'work_schedule_coverage') return input.current ? {active:true,label:'Уточнить график',tone:'attention'} : {active:false,label:'Больше не актуально',tone:'resolved'};
   if (input.sourceType === 'tax_control') {
     return input.current

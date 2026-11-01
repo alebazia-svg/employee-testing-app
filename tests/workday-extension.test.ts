@@ -8,3 +8,13 @@ test('early departure produces a proposal, never modifies attendance',()=>{const
 test('replacement removes proposal, including one who later leaves',()=>{const replacement={...days[0],id:3,userId:6,shiftCode:'11_20',shiftEndMinutes:1200};assert.equal(deriveExtensionProposal([...days,replacement],now),null);});
 test('normal solo day and future departure do not extend',()=>{assert.equal(deriveExtensionProposal([days[0]],now),null);assert.equal(deriveExtensionProposal([days[0],{...days[1],endedAt:new Date('2026-11-01T14:00Z')}],now),null);});
 test('past dates, closing time, completed or already extended day are excluded',()=>{assert.equal(deriveExtensionProposal(days,new Date('2026-11-02T10:00Z')),null);assert.equal(deriveExtensionProposal(days,new Date('2026-11-01T17:00Z')),null);assert.equal(deriveExtensionProposal([{...days[0],status:'completed'},days[1]],now),null);assert.equal(deriveExtensionProposal([{...days[0],shiftCode:'09_20',shiftEndMinutes:1200},days[1]],now),null);});
+
+test('future midpoint moves to 14:30, completed or already due recount stays unchanged',async()=>{
+ const {extensionTaskMinute}=await import('../lib/workday-extension');
+ const task={category:'cash',status:'pending',completedAt:null,plannedTimeMinutes:810,sortOrder:50};
+ assert.equal(extensionTaskMinute(task,new Date('2026-11-01T09:00Z')),870);
+ assert.equal(extensionTaskMinute(task,new Date('2026-11-01T10:30Z')),null);
+ assert.equal(extensionTaskMinute({...task,status:'done'},new Date('2026-11-01T09:00Z')),null);
+ assert.equal(extensionTaskMinute({...task,category:'opening'},now),null);
+ assert.equal(extensionTaskMinute({...task,category:'handover',plannedTimeMinutes:1080},now),1200);
+});

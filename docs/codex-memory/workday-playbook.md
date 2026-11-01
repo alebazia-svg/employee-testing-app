@@ -717,8 +717,9 @@ Bela approved a one-click ADMIN proposal after an early departure: when the
 early, offer 09:00–20:00 in Workday. Never extend automatically. A replacement
 starting before approval invalidates the stale proposal. Confirm under a
 serializable transaction; preserve actual QR/start/end, lateness snapshots,
-completed tasks, cash facts and original shift in WorkdayShiftChange. Only
-pending closing/handover deadlines move by two hours. Persist ADMIN actor and
+completed tasks, cash facts and original shift in WorkdayShiftChange. Pending closing/handover deadlines move by two hours; a future, uncompleted
+midpoint cash recount moves from 13:30 to 14:30. Already due/completed recounts
+retain their original facts and deadline. Persist ADMIN actor and
 one employee notice atomically; repeated clicks produce no duplicates. No schema
 migration or 1C writes. Already approved extension is never silently shortened.
 
@@ -729,3 +730,9 @@ policy. No change to payment matching or financial totals.
 
 Implementation branch codex/workday-extension-confirm, isolated local DB
 workday_extension_test, port 3241. Production publication is not yet approved.
+
+2026-11-01 owner authorized release for today's real situation: existing minute
+notification job queues one idempotent ADMIN proposal, also visible in inbox.
+Approval retains the employee extension notice and the existing “Завершить
+раньше” path; handover is at 20:00. No automatic approval or new escalation flow.
+A fresh pending-task deadline check prevents dispatching a stale 18:00 reminder.
