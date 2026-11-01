@@ -26,7 +26,7 @@ async function readResponse(response: Response, period: string): Promise<Payroll
   if (body.periodKey !== period || !Number.isSafeInteger(body.revision) || body.revision < 0 || typeof body.locked !== 'boolean') throw new Error('Не удалось прочитать сохранённые правки.');
   return { periodKey: period, revision: body.revision, savedAt: body.savedAt, payload: body.payload === null ? null : validatePayrollDraft(body.payload), locked: body.locked };
 }
-export function usePayrollDraftSync(enabled: boolean, period: string, payload: PayrollDraft, apply: (payload: PayrollDraft) => void) {
+export function usePayrollDraftSync(enabled: boolean, period: string, payload: PayrollDraft, apply: (payload: PayrollDraft) => void, correctionRunId?: number) {
   const [state, setState] = useState<State>({ period: '', phase: 'loading' });
   const [saving, setSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(0);
@@ -47,9 +47,11 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
     setState({ period, phase: 'loading' });
     void (async () => {
       try {
-        const record = await readResponse(await fetch(`/api/admin/payroll/draft?period=${period}`, { cache: 'no-store', signal: controller.signal }), period);
+        const record = await readResponse(await fetch(`/api/admin/payroll/draft?period=${period}${correctionRunId ? `&correctionRunId=${correctionRunId}` : ''}`, { cache: 'no-store', signal: controller.signal }), period);
         if (cancelled) return;
+        if (correctionRunId && record.locked) throw new Error('CORRECTION_LOCKED');
         if (record.locked) { setState({ period, phase: 'ready', record }); return; }
+        if (correctionRunId && record.payload) { current.current.apply(record.payload); setState({ period, phase: 'ready', record }); return; }
         if (!browser) { setState({ period, phase: 'choice', record, message: 'Правки из браузера не удалось прочитать. Можно открыть сохранённые данные.' }); return; }
         if (browser.hasLocal && payrollDraftComparisonFingerprint(browser.payload, period) !== payrollDraftComparisonFingerprint(record.payload, period)) {
           setState({ period, phase: 'choice', record, local: browser.payload, message: record.payload
@@ -64,7 +66,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
       } finally { clearTimeout(timeout); }
     })();
     return () => { cancelled = true; controller.abort(); clearTimeout(timeout); };
-  }, [enabled, period, refresh]);
+  }, [enabled, period, refresh, correctionRunId]);
   const ready = !enabled || state.period === period && state.phase === 'ready';
   const locked = state.record?.locked ?? false;
   const baseline = state.record?.payload ?? { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
@@ -99,7 +101,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
     setSaving(true);
     const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch('/api/admin/payroll/draft', { method: 'PUT', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending.current), signal: controller.signal });
+      const response = await fetch('/api/admin/payroll/draft', { method: 'PUT', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(correctionRunId ? { 'X-Payroll-Correction-Run': String(correctionRunId) } : {}) }, body: JSON.stringify(pending.current), signal: controller.signal });
       if (!mounted.current || current.current.period !== period) return;
       if (response.status === 409) {
         pending.current = null;
@@ -118,7 +120,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
     } catch {
       if (mounted.current && current.current.period === period) setState(previous => ({ ...previous, message: 'Сохранение не подтверждено. Ваш ввод оставлен на экране — повторите сохранение.' }));
     } finally { clearTimeout(timeout); if (mounted.current) setSaving(false); }
-  }, [canSave, period, state.record]);
+  }, [canSave, period, state.record, correctionRunId]);
   function restore(draft: PayrollDraft) {
     if (!ready || saving || locked) return;
     try {

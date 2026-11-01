@@ -3,25 +3,26 @@ import { useEffect, useState } from 'react';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
 import type { FinboxPeriodRead } from '@/lib/payroll-finbox-input';
 
-export function useFinboxPeriod(period: string, refresh = 0) {
+export function useFinboxPeriod(period: string, refresh = 0, correctionRunId?: number) {
   const [state, setState] = useState<{period: string; data: FinboxPeriodRead | null; error: string}>({period: '', data: null, error: ''});
   useEffect(() => {
     const controller = new AbortController();
     setState({ period, data: null, error: '' });
-    void fetch(`/api/admin/payroll/finbox?period=${encodeURIComponent(period)}`, { cache: 'no-store', signal: controller.signal }).then(async response => {
+    void fetch(`/api/admin/payroll/finbox?period=${encodeURIComponent(period)}${correctionRunId ? `&correctionRunId=${correctionRunId}` : ''}`, { cache: 'no-store', signal: controller.signal }).then(async response => {
       const data = await response.json().catch(()=>{throw new Error('Не удалось прочитать сохранённые агентские. Повторите загрузку.');});
       if (!response.ok || data.periodKey !== period) throw new Error(data.error || 'Не удалось прочитать Finbox.');
       if (!controller.signal.aborted) setState({period, data, error: ''});
     }).catch(error => { if (!controller.signal.aborted) setState({period, data: null, error: error.message}); });
     return () => controller.abort();
-  }, [period, refresh]);
+  }, [period, refresh, correctionRunId]);
   return state.period === period ? state : {period, data: null, error: ''};
 }
 
-export function PayrollFinboxEditor({periodKey, onSaved}: {periodKey: string; onSaved: (period: string) => void}) {
+export function PayrollFinboxEditor({periodKey, onSaved, correctionRunId}: {periodKey: string; onSaved: (period: string) => void; correctionRunId?: number}) {
   const [period, setPeriod] = useState(periodKey);
   const [refresh, setRefresh] = useState(0);
-  const read = useFinboxPeriod(period, refresh);
+  const correctionId = period === periodKey ? correctionRunId : undefined;
+  const read = useFinboxPeriod(period, refresh, correctionId);
   const [draft, setDraft] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,7 +54,7 @@ export function PayrollFinboxEditor({periodKey, onSaved}: {periodKey: string; on
       if(!read.data||busy)return;
       setBusy(true);setError('');setNotice('');
       try {
-        const response=await fetch('/api/admin/payroll/finbox',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({period,amount:draft,revision:read.data.revision})});
+        const response=await fetch('/api/admin/payroll/finbox',{method:'PUT',headers:{'Content-Type':'application/json',...(correctionId?{'X-Payroll-Correction-Run':String(correctionId)}:{})},body:JSON.stringify({period,amount:draft,revision:read.data.revision})});
         const body=await response.json().catch(()=>{throw new Error('Не удалось подтвердить сохранение. Загрузите сохранённые данные перед повтором.');});
         if(!response.ok)throw new Error(body.error||'Не удалось сохранить.');
         setNotice(`Сохранено за ${period}: ${money(Number(body.amount))}.`);setConfirm(false);setRefresh(v=>v+1);onSaved(period);
