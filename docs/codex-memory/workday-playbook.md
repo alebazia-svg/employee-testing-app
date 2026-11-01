@@ -729,7 +729,7 @@ existing uncertainty/conflict; employee review routing retains its two-person
 policy. No change to payment matching or financial totals.
 
 Implementation branch codex/workday-extension-confirm, isolated local DB
-workday_extension_test, port 3241. Production publication is not yet approved.
+workday_extension_test, port 3241. Released 1 November as 1.20.9 / 2249680; actual ADMIN proposal and solo 1C cashier attribution verified. Real shift confirmation remains Bela’s own action.
 
 2026-11-01 owner authorized release for today's real situation: existing minute
 notification job queues one idempotent ADMIN proposal, also visible in inbox.

@@ -67,3 +67,38 @@ Checks: 45 focused tests, 4 PostgreSQL scenarios, 256 Workday tests,
 5 release metadata tests, TypeScript and release build passed.
 Latest deployment branch 8c4bee8 / 1.20.8 merged without conflicts;
 release candidate 1.20.9. Production schedule approval remains Bela's own click.
+
+Release source pushed: 224968091b502dbc33a50e3d0c522f07f71fbe15.
+Reviewed installer: /tmp/mobo-workday-release-1209.command and server
+/tmp/mobo-workday-release-1209-root.sh. Native Terminal opened successfully.
+Server command sudo -v is awaiting Bela's password; service
+mobo-workday-release-1209 is not started and no release log exists yet.
+Never handle the password or claim installation completed. Monitor via SSH
+read-only /home/bela/workday-release-1209.log, continue automatically after
+authentication. Root installer guards prior verified image, disk and source,
+serializes the release, preserves env/mounts and awaits independent verification
+flag before image registration. No real shift approval has been clicked.
+
+## Production acceptance
+
+Released 1.20.9, source 224968091b502dbc33a50e3d0c522f07f71fbe15,
+build 2026-11-01T15:50:11.987Z (18:50 Moscow). Native Terminal sudo completed,
+server task exited 0. Independent server HEAD/package and both public hostnames
+confirmed 1.20.9; health ok. Env checksum and canonical mount comparison passed.
+Actual ADMIN Workday shows Zukhra proposal “Подтвердить до 20:00”, original
+09–18 and start 08:57 retained. Actual inbox contains one proposal at 18:56.
+No production confirmation click by Codex.
+
+Fresh acquiring report at 18:58: 2000 / FD3296 is matched and manager attribution
+is “Подтверждено 1С · совпадает со сменой”; later known-cashier operations after
+11:00 also confirm. Missing-cashier/ambiguous 900 at 14:22 remains unresolved,
+with old safeguards preserved. Actual phone push receipt is not verified.
+
+Running verified image: sha256:a246f2a5700827a16cc0d9333e737f48871b24bf8081d88e52cd0e5f8a2f6de2.
+Registry also retains cee5a79c1086b1c4c87826c58546d87ac9b26b909fde49c6bae75f5a8c39678d
+and a7972b5150790124b63f054b69da5a643c89eda936ad7625a7d0dea72ef1ea2e.
+Preflight verified all three previous images and 17 GiB free; after release
+14 GiB free, so the next build must satisfy the 15 GiB preflight gate again
+using the existing approved storage maintenance policy. No arbitrary cleanup.
+No migration, direct production DB edit, 1C/OFD write, unrelated session closure.
+Evidence screenshot: .wip/production-proposal-1.20.9.png.
