@@ -3,11 +3,32 @@ import type { PayrollAttendanceSourceSummary } from '@/lib/payroll-attendance-sn
 import { buildFormSummaries } from '@/lib/payroll-attendance-summary';
 import { getMoscowDateKey, getMoscowMinutes } from '@/lib/workday';
 
-// Owner-approved pilot cutover. Other employees remain on their current source.
+// Owner-approved Google/app cutovers; every calendar date is counted once.
 export const PAYROLL_APP_ATTENDANCE_CUTOVERS = [{
   userId: 8,
   employee: 'Хурзокова Лиана',
   aliases: ['Хурзокова Лиана', 'Лиана', 'Ляна'],
+  fromDate: '2026-10-18',
+}, {
+  userId: 3,
+  employee: 'Чеченова Милана',
+  aliases: ['Чеченова Милана', 'Милана'],
+  fromDate: '2026-10-18',
+}, {
+  userId: 4,
+  employee: 'Абшаева Зухра',
+  aliases: ['Абшаева Зухра', 'Зухра'],
+  fromDate: '2026-10-18',
+}, {
+  userId: 7,
+  employee: 'Ахобекова Залина',
+  aliases: ['Ахобекова Залина', 'Залина'],
+  fromDate: '2026-10-18',
+}, {
+  userId: 5,
+  employee: 'Костеренко Магомед',
+  aliases: ['Костеренко Магомед', 'Магомед', 'Косторенко Магомед', 'Магомед Косторенко',
+    'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'],
   fromDate: '2026-10-18',
 }] as const;
 
