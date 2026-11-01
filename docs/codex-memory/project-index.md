@@ -492,3 +492,12 @@ and zero remaining. Visible name Кумыков Мухамед; saved canonical 
 Source documents, amounts and stored payroll/rules unchanged. Production ADMIN,
 health, commit, metadata and before/after hashes verified; rollback images retained.
 Separate two-hour schedule-repeat candidate remains unreleased.
+
+
+Muhamed actual-day rule released2026-11-01 as1.21.0 /01754da:
+`payroll-muhamed-november-days-20261101.md`. From November1,2,000 per real QR
+start; one owner-confirmed exceptionNovember1; November2 off in audited calendar.
+No fixed20-day norm, Google/calendar paid-day fallback or automatic schedule copy.
+October, Astemir, saved runs and1C documents unchanged, verified before/after.
+November ADMIN still requires first closed1C source data. Real first QR pending.
+New image registered healthy with current plus two verified rollback reserves.
