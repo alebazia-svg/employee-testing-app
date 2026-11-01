@@ -3155,6 +3155,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const defaultPayrollPeriod = liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
   const modernManagerCard = liveWorkspace || Boolean(settlementRows);
   const [showCurrentComparison, setShowCurrentComparison] = useState(false);
+  const [correction, setCorrection] = useState<{ periodKey: string; runId: number; runNumber: number } | null>(null);
   const [month, setMonth] = useState(defaultPayrollPeriod.month);
   const [year, setYear] = useState(defaultPayrollPeriod.year);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
@@ -3228,7 +3229,9 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const [isOneCDetailLoading, setIsOneCDetailLoading] = useState(false);
   const [oneCDetailError, setOneCDetailError] = useState('');
   const oneCDetailRequestVersion = useRef(0);
-  const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
+  const [savedFinalBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
+  const correctingPayroll = correction?.periodKey === `${year}-${formatPayrollMonthKey(Number(month))}`;
+  const oneCShadowBaseline = correctingPayroll ? null : savedFinalBaseline;
   const [oneCAdvances, setOneCAdvances] = useState<PayrollAdvanceRead | null>(null);
   const [oneCAdvancesError, setOneCAdvancesError] = useState('');
   const [advancesRefresh, setAdvancesRefresh] = useState(0);
@@ -3256,6 +3259,9 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const payrollFixedStorageKey = `payroll-fixed-${year}-${month}`;
   const payrollPurchaseStorageKey = `payroll-purchase-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
+  useEffect(() => {
+    setCorrection(null); setAutomaticDraft(null); setPayrollFinalApproval(null);
+  }, [selectedPayrollPeriodKey]);
   const applyServerDraft = useCallback((draft: import('@/lib/payroll-draft').PayrollDraft) => {
     setManualPayroll(draft.manual);
     setFixedPayroll(draft.fixed);
@@ -3263,9 +3269,9 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     setBonusState({ periodKey: selectedPayrollPeriodKey, drafts: draft.bonuses, error: '' });
   }, [selectedPayrollPeriodKey]);
   const payrollDraftPayload = useMemo(() => ({ manual: manualPayroll, fixed: fixedPayroll, purchase: purchasePayroll, bonuses: bonusState.drafts }), [manualPayroll, fixedPayroll, purchasePayroll, bonusState.drafts]);
-  const draftSync = usePayrollDraftSync(serverDraftsEnabled, selectedPayrollPeriodKey, payrollDraftPayload, applyServerDraft);
+  const draftSync = usePayrollDraftSync(serverDraftsEnabled, selectedPayrollPeriodKey, payrollDraftPayload, applyServerDraft, correctingPayroll ? correction?.runId : undefined);
   const [finboxRefresh, setFinboxRefresh] = useState(0);
-  const finboxRead = useFinboxPeriod(selectedPayrollPeriodKey, finboxRefresh);
+  const finboxRead = useFinboxPeriod(selectedPayrollPeriodKey, finboxRefresh, correctingPayroll ? correction?.runId : undefined);
   const isSelectedPayrollPeriodCurrent = selectedPayrollPeriodKey === getCurrentMoscowPayrollPeriodKey();
   const isSelectedPayrollPeriodAvailable = isPayrollPeriodAvailable(selectedPayrollPeriodKey, getCurrentMoscowPayrollPeriodKey());
   useEffect(() => {
@@ -3731,10 +3737,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     () => savedPeriods.find((period) => period.year === Number(year) && period.month === Number(month)) ?? null,
     [savedPeriods, year, month],
   );
-  const currentFinalRun = useMemo(
+  const actualFinalRun = useMemo(
     () => currentSavedPeriod?.runs.find((run) => run.status === 'FINAL') ?? null,
     [currentSavedPeriod],
   );
+
+  const currentFinalRun = correctingPayroll ? null : actualFinalRun;
 
   useEffect(() => {
     let cancelled = false;
@@ -5424,7 +5432,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       const response = await fetch(`/api/admin/payroll/runs/${runId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, replaceExistingFinal,
+        body: JSON.stringify({ status, replaceExistingFinal: replaceExistingFinal || Boolean(correctingPayroll && correction),
+          ...(correctingPayroll && correction ? { expectedFinalId: correction.runId } : {}),
           ...(status === 'FINAL' && payrollFinalApproval?.run.id === runId ? { acceptedIssues: approvalAccepted, approvalComment } : {}),
         }),
       });
@@ -5450,6 +5459,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         : 'Расчёт отмечен как проверенный.');
       setPayrollFinalReplacement(null);
       setPayrollFinalApproval(null);
+      if (status === 'FINAL') setCorrection(null);
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось изменить статус расчёта.');
@@ -5932,6 +5942,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       ...calculation.reviewEmployees.flatMap(employee => employee.reasons.map(reason => `${employee.employeeName}: ${reason}`))])];
     const sourceSummary = {
       kind: 'automatic-1c-v1', periodKey: selectedPayrollPeriodKey,
+      ...(correctingPayroll && correction ? { correctionOfRunId: correction.runId } : {}),
       verifiedThrough: body.period.verifiedThrough,
       approvalIssues,
       finboxRevision: finboxRead.data.revision,
@@ -5957,16 +5968,32 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     };
   }
 
+  async function beginPayrollCorrection() {
+    if (!actualFinalRun || !currentSavedPeriod || !draftSync.ready) return;
+    setSaveError(''); setSaveStatus(''); setPayrollHistoryActionId('correction');
+    try {
+      // Check server state even if another window closed the month after loading.
+      const response = await fetch(`/api/admin/payroll/periods/${currentSavedPeriod.id}/status`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'OPEN' }),
+      });
+      if (!response.ok) throw new Error('Не удалось открыть месяц для исправления. Повторите попытку.');
+      await loadSavedPayrollPeriods();
+      setAutomaticDraft(null); setApprovalAccepted([]); setApprovalComment('');
+      setCorrection({ periodKey: selectedPayrollPeriodKey, runId: actualFinalRun.id, runNumber: actualFinalRun.runNumber });
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось открыть исправление.'); }
+    finally { setPayrollHistoryActionId(null); }
+  }
+
   async function prepareAutomaticSave() {
     if (automaticSaveLock.current) return;
     automaticSaveLock.current = true;
     setIsSavingPayroll(true); setSaveError(''); setSaveStatus('');
-    try { setAutomaticDraft(await prepareAutomaticPayload()); }
+    try { setAutomaticDraft(await prepareAutomaticPayload()); setApprovalAccepted([]); setApprovalComment(''); }
     catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось подготовить ведомость.'); }
     finally { automaticSaveLock.current = false; setIsSavingPayroll(false); }
   }
 
-  async function confirmAutomaticSave() {
+  async function confirmAutomaticSave(finalize = false) {
     if (!automaticDraft || automaticSaveLock.current) return;
     if (automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey) { setAutomaticDraft(null); setSaveError('Выбран другой месяц. Подготовьте ведомость заново.'); return; }
     automaticSaveLock.current = true;
@@ -5978,7 +6005,32 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       const response = await fetch('/api/admin/payroll/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(automaticDraft) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Не удалось сохранить ведомость.');
-      setAutomaticDraft(null); setLastSavedRunId(result.id);
+      setLastSavedRunId(result.id);
+      if (finalize) {
+        // Once a draft exists, a retry must only confirm that run, not create duplicates.
+        setAutomaticDraft(null);
+        setPayrollFinalApproval({ periodKey: selectedPayrollPeriodKey, run: result });
+        setApprovalReviewable(payrollApprovalReview(result.sourceSummary, result.reviewCount).reviewable);
+        const response = await fetch(`/api/admin/payroll/runs/${result.id}/status`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'FINAL', acceptedIssues: approvalAccepted, approvalComment,
+            ...(correctingPayroll && correction ? { replaceExistingFinal: true, expectedFinalId: correction.runId } : {}),
+          }),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          setAutomaticDraft(null);
+          setPayrollFinalApproval({ periodKey: selectedPayrollPeriodKey, run: result });
+          setApprovalReviewable(Array.isArray(body.reviewableIssues) ? body.reviewableIssues : []);
+          await loadSavedPayrollPeriods();
+          throw new Error(body.error || 'Черновик сохранён, но утверждение не завершилось. Повторите утверждение ниже.');
+        }
+        setAutomaticDraft(null); setPayrollFinalApproval(null); setCorrection(null);
+        setSaveStatus(`Финальная ведомость №${result.runNumber} сохранена. Предыдущие версии — в истории. Документы 1С не изменены.`);
+        await loadSavedPayrollPeriods();
+        return;
+      }
+      setAutomaticDraft(null);
       setSaveStatus(`Ведомость №${result.runNumber} за ${automaticDraft.sourceSummary.periodKey} сохранена.${automaticDraft.sourceSummary.approvalIssues.length ? ' Это черновик: перед утверждением устраните указанные вопросы и сохраните новую версию.' : ' Откройте «Сохранённые ведомости», проверьте и нажмите «Сделать финальным». '}`);
       await loadSavedPayrollPeriods();
     } catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось подтвердить сохранение. Проверьте историю перед повтором.'); }
@@ -6174,7 +6226,11 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       {!settlementRows && !workspaceFinalRun && (!visualPreview || !oneCShadowCalculation) && <div className="mb-4">{periodPicker}</div>}
 
       <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
-        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} />}
+        {correctingPayroll && correction && <div role='status' className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm'>
+          <span>Исправление ведомости №{correction.runNumber}. До сохранения действует прежняя финальная версия.</span>
+          <button type='button' disabled={isSavingPayroll || draftSync.saving} className='min-h-11 font-semibold' onClick={() => { setAutomaticDraft(null); setPayrollFinalApproval(null); setSelectedManager(null); setCorrection(null); }}>Вернуться к финальной</button>
+        </div>}
+        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} onCorrect={() => void beginPayrollCorrection()} correcting={payrollHistoryActionId === 'correction'} />}
         {workspaceFinalRun && showCurrentComparison && !oneCShadowCalculation && <p role='status' className='rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600'>Текущие данные для сверки ещё недоступны. Утверждённые суммы выше сохранены и не изменяются. Состояние загрузки можно посмотреть в «Источниках и настройках».</p>}
         {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
@@ -6310,9 +6366,15 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         {automaticDraft && <section id='payroll-save-confirmation' aria-label='Подтверждение сохранения ведомости' className='scroll-mt-24 rounded-xl border border-slate-300 bg-white p-5'>
           <h2 className='text-lg font-bold'>Сохранить ведомость за {automaticDraft.sourceSummary.periodKey}?</h2>
           <p className='mt-2'>Сотрудников: {automaticDraft.totals.employeeCount} · Начислено: {formatMoney(automaticPayrollDisplayedTotal(automaticDraft.employeeResults, 'grossPay'))} · После авансов и удержаний: {formatMoney(automaticPayrollDisplayedTotal(automaticDraft.employeeResults, 'netPay'))}</p>
-          <p className='mt-2 text-sm text-slate-600'>Сохранится отдельная версия с расшифровкой. Это ещё не утверждение и не выплата зарплаты.</p>
-          {automaticDraft.sourceSummary.approvalIssues.length > 0 && <div className='mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950'><strong>Можно сохранить только черновик. До утверждения:</strong><ul className='mt-2 list-disc pl-5'>{automaticDraft.sourceSummary.approvalIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
-          <div className='mt-4 flex flex-wrap gap-3'><button type='button' disabled={isSavingPayroll || automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey} onClick={() => void confirmAutomaticSave()} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохраняю…' : 'Подтвердить сохранение'}</button><button type='button' disabled={isSavingPayroll} onClick={() => setAutomaticDraft(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button></div>
+          <p className='mt-2 text-sm text-slate-600'>Сохранится отдельная версия с расшифровкой. Выберите черновик или финальную ведомость. Выплаты и документы 1С это действие не создаёт.</p>
+          {saveError && <p role='alert' className='mt-3 text-sm text-amber-800'>{saveError}</p>}
+          {automaticDraft.sourceSummary.approvalIssues.length > 0 && <div className='mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950'><strong>Перед утверждением проверьте:</strong><ul className='mt-2 list-disc pl-5'>{automaticDraft.sourceSummary.approvalIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
+          {payrollApprovalReview(automaticDraft.sourceSummary, automaticDraft.totals.reviewCount).reviewable.length > 0 && <fieldset className='mt-3 rounded-lg border border-amber-200 p-3'>
+            <legend className='px-1 font-semibold'>Замечания перед утверждением</legend>
+            {payrollApprovalReview(automaticDraft.sourceSummary, automaticDraft.totals.reviewCount).reviewable.map(issue => <label key={issue} className='mt-2 flex items-start gap-2 text-sm'><input type='checkbox' checked={approvalAccepted.includes(issue)} onChange={event => setApprovalAccepted(items => event.target.checked ? [...items, issue] : items.filter(item => item !== issue))} /><span>{issue}</span></label>)}
+            <label className='mt-3 block text-sm'>Ваше решение<textarea value={approvalComment} maxLength={1000} onChange={event => setApprovalComment(event.target.value)} className='mt-1 block min-h-20 w-full rounded-lg border p-2' placeholder='Как учитывать замечание в этой ведомости' /></label>
+          </fieldset>}
+          <div className='mt-4 flex flex-wrap gap-3'><button type='button' disabled={isSavingPayroll || automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey || payrollApprovalReview(automaticDraft.sourceSummary, automaticDraft.totals.reviewCount, approvalAccepted, approvalComment).pending.length > 0} onClick={() => void confirmAutomaticSave(true)} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохраняю…' : correctingPayroll ? 'Сохранить новую финальную' : 'Сохранить финальную ведомость'}</button><button type='button' disabled={isSavingPayroll || automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey} onClick={() => void confirmAutomaticSave()} className='min-h-11 rounded-lg border px-4 py-2 font-semibold disabled:opacity-50'>{isSavingPayroll ? 'Сохраняю…' : 'Сохранить черновик'}</button><button type='button' disabled={isSavingPayroll} onClick={() => setAutomaticDraft(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button></div>
         </section>}
         {(!visualPreview || !oneCShadowCalculation) && !workspaceFinalRun && (
         <Card className='min-w-0 w-full max-w-full overflow-hidden border border-slate-200 bg-white p-0'>
@@ -7781,7 +7843,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                         }}>Отменить правки</button>}
                       </div>
                     </section>}
-                    {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
+                    {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} correctionRunId={correctingPayroll ? correction?.runId : undefined} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
                     {selectedManagerPayroll.salaryType === 'purchase_daily' && (
                       <section className='rounded-xl border border-slate-200 bg-white p-4'>
                         <h3 className='font-bold text-slate-900'>Расчёт за месяц</h3>

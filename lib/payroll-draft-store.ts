@@ -1,17 +1,20 @@
 import 'server-only';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { payrollDraftFingerprint, validatePayrollDraft, type PayrollDraftRead, type validatePayrollDraftWrite } from './payroll-draft';
+import { payrollCorrectionMatches } from './payroll-correction';
 
 type Db = Pick<PrismaClient, '$transaction'>;
 export class PayrollDraftConflict extends Error {}
-export async function savePayrollDraft(db: Db, input: ReturnType<typeof validatePayrollDraftWrite>, actor: number): Promise<PayrollDraftRead> {
+export async function savePayrollDraft(db: Db, input: ReturnType<typeof validatePayrollDraftWrite>, actor: number, correctionRunId?: number): Promise<PayrollDraftRead> {
   try {
     return await db.$transaction(async tx => {
       const period = await tx.payrollPeriod.upsert({ where: { periodKey: input.period }, update: {}, create: {
         periodKey: input.period, year: Number(input.period.slice(0, 4)), month: Number(input.period.slice(5)) - 1,
       } });
       const lock = await tx.$queryRaw<Array<{ status: string }>>`SELECT "status" FROM "PayrollPeriod" WHERE "id" = ${period.id} FOR UPDATE`;
-      const locked = lock[0]?.status === 'CLOSED' || await tx.payrollRun.count({ where: { periodId: period.id, status: 'FINAL' } }) > 0;
+      const final = await tx.payrollRun.findFirst({ where: { periodId: period.id, status: 'FINAL' }, select: { id: true } });
+      const locked = lock[0]?.status === 'CLOSED' || Boolean(final && !payrollCorrectionMatches(final.id, correctionRunId))
+        || Boolean(correctionRunId && !payrollCorrectionMatches(final?.id, correctionRunId));
       const current = await tx.payrollDraftRevision.findFirst({ where: { periodKey: input.period }, orderBy: { revision: 'desc' } });
       const priorRequest = await tx.payrollDraftRevision.findUnique({ where: { periodKey_requestId: { periodKey: input.period, requestId: input.requestId } } });
       if (priorRequest) {

@@ -5,6 +5,7 @@ import { validateFinboxPeriod } from '@/lib/payroll-finbox-input';
 import { validatePayrollDraft, validatePayrollDraftWrite } from '@/lib/payroll-draft';
 import { PayrollDraftConflict, savePayrollDraft } from '@/lib/payroll-draft-store';
 import { payrollFeatureState } from '@/lib/payroll-features';
+import { payrollCorrectionDraft, payrollCorrectionMatches } from '@/lib/payroll-correction';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
 function enabled() { return payrollFeatureState().draftsEnabled; }
@@ -26,8 +27,12 @@ export async function GET(req: Request) {
       prisma.payrollDraftRevision.findFirst({ where: { periodKey }, orderBy: { revision: 'desc' } }),
       prisma.payrollPeriod.findUnique({ where: { periodKey }, select: { status: true, runs: { where: { status: 'FINAL' }, select: { id: true } } } }),
     ], { isolationLevel: 'RepeatableRead' });
+    const correctionId = Number(new URL(req.url).searchParams.get('correctionRunId')) || undefined;
+    const correction = correctionId ? await prisma.payrollRun.findFirst({ where: { id: correctionId, status: 'FINAL', period: { periodKey } }, include: { manualInputs: true, employeeResults: { include: { adjustments: true, calculationDetails: true } } } }) : null;
+    if (correctionId && !correction) return Response.json({ error: 'Финальная ведомость изменилась. Откройте её заново.' }, { status: 409, headers });
+    const correctionPayload = correction && (!saved || saved.createdAt <= (correction.finalizedAt ?? correction.createdAt)) ? payrollCorrectionDraft(correction) : null;
     return Response.json({ periodKey, revision: saved?.revision ?? 0, savedAt: saved?.createdAt.toISOString() ?? null,
-      payload: saved ? validatePayrollDraft(saved.payload) : null, locked: period?.status === 'CLOSED' || Boolean(period?.runs.length) }, { headers });
+      payload: correctionPayload ?? (saved ? validatePayrollDraft(saved.payload) : null), locked: period?.status === 'CLOSED' || Boolean(period?.runs.length && !payrollCorrectionMatches(period.runs[0].id, correctionId)) }, { headers });
   } catch { return Response.json({ error: 'Не удалось загрузить сохранённые правки. Повторите попытку.' }, { status: 503, headers }); }
 }
 export async function PUT(req: Request) {
@@ -38,7 +43,8 @@ export async function PUT(req: Request) {
   let input: ReturnType<typeof validatePayrollDraftWrite>;
   try { input = validatePayrollDraftWrite(JSON.parse(raw)); }
   catch { return Response.json({ error: 'Проверьте введённые дни, суммы и комментарии.' }, { status: 400, headers }); }
-  try { return Response.json(await savePayrollDraft(prisma, input, access.user.id), { headers }); }
+  const correctionId = Number(req.headers.get('X-Payroll-Correction-Run')) || undefined;
+  try { return Response.json(await savePayrollDraft(prisma, input, access.user.id, correctionId), { headers }); }
   catch (error) {
     if (error instanceof PayrollDraftConflict) return Response.json({ error: error.message === 'PERIOD_LOCKED'
       ? 'Месяц закрыт или уже утверждён. Финальный расчёт не изменён.'

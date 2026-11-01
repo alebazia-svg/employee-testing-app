@@ -5,7 +5,7 @@ import { payrollDepartmentTone } from './payroll-department-tone';
 import { getPayrollWorkbookGroup, sortPayrollWorkbookEmployees } from '@/lib/payroll-workbook';
 type Employee = { employeeName: string; salaryType: string; reportGroup?: string; grossPay: number; advance: number; netPay: number; fixedDeduction: number; reasons?: unknown };
 const money = (value: number) => value.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' });
-export default function PayrollFinalOverview({ employees, periodPicker, runNumber, onEmployee, onExport, exporting, onCompare, comparing, verifiedThrough, savedAt }: { verifiedThrough?: string; savedAt?: string; employees: Employee[]; periodPicker: ReactNode; runNumber: number; onEmployee: (name: string) => void; onExport: () => void; exporting: boolean; onCompare: () => void; comparing: boolean }) {
+export default function PayrollFinalOverview({ employees, periodPicker, runNumber, onEmployee, onExport, exporting, onCompare, comparing, verifiedThrough, savedAt, onCorrect, correcting }: { onCorrect?: () => void; correcting?: boolean; verifiedThrough?: string; savedAt?: string; employees: Employee[]; periodPicker: ReactNode; runNumber: number; onEmployee: (name: string) => void; onExport: () => void; exporting: boolean; onCompare: () => void; comparing: boolean }) {
   const groups = new Map<string, Employee[]>();
   const total = (key: 'grossPay' | 'advance' | 'netPay') => employees.reduce((sum, row) => sum + Math.round(row[key] * 100), 0) / 100;
   const remarks = (row: Employee) => Array.isArray(row.reasons) ? row.reasons.filter((reason): reason is string => typeof reason === 'string' && Boolean(reason.trim())) : [];
@@ -14,7 +14,7 @@ export default function PayrollFinalOverview({ employees, periodPicker, runNumbe
     groups.set(group, [...(groups.get(group) ?? []), row]);
   }
   return <section className='rounded-xl border border-slate-200 bg-white p-4' aria-label='Утверждённое начисление'>
-    <div className='flex flex-wrap items-center justify-between gap-3'><div className='flex flex-wrap items-center gap-3'>{periodPicker}<span className='text-sm font-semibold'>Утверждено · ведомость №{runNumber}</span></div><button data-payroll-read-action type='button' disabled={exporting} onClick={onExport} className='min-h-11 rounded-lg border px-4 text-sm font-semibold disabled:opacity-50'>Скачать ведомость</button></div>
+    <div className='flex flex-wrap items-center justify-between gap-3'><div className='flex flex-wrap items-center gap-3'>{periodPicker}<span className='text-sm font-semibold'>Утверждено · ведомость №{runNumber}</span></div><div className='flex flex-wrap gap-2'>{onCorrect && <button type='button' disabled={correcting} onClick={onCorrect} className='min-h-11 rounded-lg border px-4 text-sm font-semibold disabled:opacity-50'>{correcting ? 'Открываю…' : 'Исправить ведомость'}</button>}<button data-payroll-read-action type='button' disabled={exporting} onClick={onExport} className='min-h-11 rounded-lg border px-4 text-sm font-semibold disabled:opacity-50'>Скачать ведомость</button></div></div>
     <div className='mt-3 rounded-lg bg-slate-50 p-3 text-sm' aria-label='Актуальность утверждённой ведомости'>
       <p className='font-semibold'>{verifiedThrough ? `Рассчитано по ${verifiedThrough} включительно` : 'Дата расчёта не указана в сохранённой ведомости'}</p>
       <p className='mt-1 text-slate-600'>Сохранено: {savedAt ? new Date(savedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' МСК' : 'дата неизвестна'}</p>

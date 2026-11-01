@@ -43,6 +43,8 @@ export async function PATCH(req: Request, props: RouteContext) {
       });
 
       if (!run) return { error: 'NOT_FOUND' as const };
+      // Recover a lost success response without rewriting approval/history.
+      if (nextStatus === 'FINAL' && run.status === 'FINAL') return { updatedRun: run, replacedFinal: null };
       if (run.period.status === 'CLOSED') return { error: 'PERIOD_CLOSED' as const };
       if (!isAllowedPayrollRunTransition(run.status, nextStatus)) {
         return { error: 'INVALID_TRANSITION' as const };
@@ -76,6 +78,9 @@ export async function PATCH(req: Request, props: RouteContext) {
           },
           select: { id: true, runNumber: true, netPay: true, createdAt: true },
         });
+
+        if (body.expectedFinalId !== undefined && (!Number.isSafeInteger(body.expectedFinalId)
+          || existingFinal?.id !== body.expectedFinalId)) return { error: 'FINAL_CHANGED' as const };
 
         if (existingFinal && !replaceExistingFinal) {
           return { error: 'FINAL_EXISTS' as const, existingFinal };
@@ -120,6 +125,7 @@ export async function PATCH(req: Request, props: RouteContext) {
       if (outcome.error === 'REVIEW_REQUIRED') return Response.json({ error: `До утверждения: ${outcome.issues.join(' ')}`, reviewableIssues: outcome.reviewableIssues }, { status: 409 });
       if (outcome.error === 'NOT_FOUND') return Response.json({ error: 'Payroll run not found.' }, { status: 404 });
       if (outcome.error === 'PERIOD_CLOSED') return Response.json({ error: 'Период закрыт' }, { status: 409 });
+      if (outcome.error === 'FINAL_CHANGED') return Response.json({ error: 'Финальную ведомость уже изменили в другом окне. Обновите расчёт перед сохранением новой версии.' }, { status: 409 });
       if (outcome.error === 'INVALID_TRANSITION') return Response.json({ error: 'Недопустимый переход статуса' }, { status: 409 });
       if (outcome.error === 'INVALID_REPLACEMENT') return Response.json({ error: 'Этот расчёт нельзя назначить вместо финального' }, { status: 409 });
       if (outcome.error === 'FINAL_EXISTS') {

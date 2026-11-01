@@ -72,10 +72,13 @@ attendance. Muhamed remains16 agreed days; Astemir/other fixed or special staff
 do not acquire day-based pay from app marks.
 
 Finding:18 app-only dates for Milana(4), Zukhra(6), Zalina(4), Magomed(4) are
-omitted because only Liana has the existing form/app cutover. No automatic
-extension to other staff was authorized. Owner asked separately whether to
-extend their unique-date union from October18; awaiting decision. Current
-release does not silently change this policy or old approved/final statements.
+omitted because only Liana has the existing form/app cutover. Owner approved their unique-date union from October18 on November1.
+The extension was tested locally and subsequently released as1.20.3 below. Version1.20.2 retains its original policy and approved/final statements.
+Regression counts on the audited dates: Milana20,Zukhra18,Zalina15,Magomed22.
+Tests cover exact identities/Google aliases, duplicate dates, pre-cutover scope,
+provenance, payroll inputs and retained manual corrections;29 targeted tests,
+79 payroll tests, TypeScript and production build pass. No UI/formula/schema
+change is included in this follow-up.
 
 Audit evidence locally: `/tmp/payroll-attendance-production-audit-20261031.json`;
 read-only bundled source in the release worktree's ignored `.wip/` directory.
@@ -107,3 +110,71 @@ That failed audit stopped before product checkout/restart and did not mutate DB.
 Original preview worktree and its pre-existing/other dirty files were left intact.
 Documentation records an actual production release and source-policy audit;
 the release note and index are committed separately from runtime code.
+
+## November1 approved union follow-up — pre-release verification
+
+Exact changed code/test files:
+- `lib/payroll-attendance-source.ts`: four additional owner-approved exact ID/name
+  cutovers from2026-10-18, retaining Google canonical/legacy aliases.
+- `tests/payroll-attendance-source.test.ts`: isolated original pilot tests plus
+  all-five-employee October date regression, provenance/calculation/manual-input
+  safeguards, identity rejection and pre-cutover/lateness preservation.
+
+Only release/audit memory was updated in this note and project-index.md.
+At the local verification stage no production deployment, production DB write,
+migration, 1C write, saved FINAL approval or financial save was performed. Physical phone/UI
+was not retested because the interface is unchanged. Earlier preview worktree's
+pre-existing dirty files remain untouched. Subsequently explicitly approved and released as1.20.3; see below.
+
+## Attendance union release1.20.3 — November1, verified complete
+
+Owner explicitly authorized production release and regression verification.
+Commit928daa2b4529bf598f5801b302e0f39224c781f1, public version1.20.3,
+build2026-11-01T06:23:21.306Z. Running image
+`sha256:3e6434ef0fa649a8928389fb527b63458b19b5f89e63c79e7930c4d4bbaad8d7`,
+healthy;21GiB free. Code/test files are the two listed above plus package.json
+and package-lock.json for synchronized version fields.
+
+All79 payroll,29 attendance/provenance/day-review,56 draft/Finbox/settlement and
+5 release tests pass; TypeScript/build/diff checks pass. Before/after hashes
+match for all9 saved runs including details/manual inputs/source files/adjustments,
+79 classification rules,49 supplier rules,2 Finbox revisions,0 day reviews and
+10 employee payroll settings. Entire container env/server.env hashes and mounts
+match. No migration, schema change,1C write, financial save/approval or manual DB
+edit. October fresh source, stored snapshot and effective payroll inputs agree on
+20/18/15/22 after normal source refresh at2026-11-01T09:03:39.445Z.
+
+Past-month UI intentionally serves saved attendance without auto-refresh. The
+October cache therefore needs the existing `refreshPayrollAttendance` action
+under `withPayrollSourceLock`, preserving FINAL history. The narrow finalization
+script completed this refresh and rechecked protected-data hashes: unchanged.
+Source-cache persistence used existing application code under its advisory lock,
+not manual day/snapshot database edits. Native Terminal exit0; independent public
+metadata/server commit/authenticated footer/card and real workbook verified,
+then registered the current image and two preceding verified images.
+
+Scheduled storage maintenance's earlier November1 failure was the fail-closed
+unregistered1.20.2 guard before morning verification. Registry and all three
+reserves were validated, and the approved retention command succeeded before
+this build. No broadened cleanup or security changes were made.
+
+Final evidence:
+- Actual downloaded `Зарплата_Октябрь_2026 (2).xlsx`: Milana20, Zukhra18,
+  Zalina15, Magomed22; Liana25 retained, Muhamed16/24000/7500/16500 retained.
+- Working gross990974.12; advances17000; after advances973974.12. Increase10400
+  comes only from the18 newly included dates at existing500/600 daily rates.
+  Other employee accruals and percentage components remain unchanged.
+- ADMIN card shows Milana20×600, dated app/Google provenance and existing advance;
+  source cutoff31October and ordinary export/save actions retained. Diana's
+  existing missing-lateness question remains. No QA financial approval/save used.
+- Protected nine saved runs and settings still byte-equivalent after refresh.
+- Verified registry: current3e6434ef, previous e833e60d(1.20.2), c7d7973a(1.20.1),
+  full IDs in native log `/tmp/mobo-payroll-union-finalize-1.20.3.log`.
+- Screenshot `/tmp/payroll-union-production-1.20.3.jpg`; final read-only audit
+  `/tmp/payroll-union-production-final-audit.json`. Physical phone was not retested;
+  the existing ADMIN layout and PWA code were not modified. Other worktree dirty
+  files remain untouched. Documentation committed separately from runtime.
+
+Documentation commit retained locally while the parallel1.20.4 release script
+expects exact origin8cd33dd. Runtime928daa2 is pushed, running and verified; do
+not advance that deployment branch with docs until its exact-origin guard passes.
