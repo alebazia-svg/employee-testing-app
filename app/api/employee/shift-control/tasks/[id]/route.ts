@@ -22,7 +22,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -555,6 +555,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         attempts: (readInteger(previousCheck?.attempts) ?? 0) + 1,
         status: evidence.status,
         evidence,
+        firstEvidence: firstKkmCloseEvidence(previousCheck,evidence),
       };
       const savedCheck = await updateActiveHandoverTask(prisma, {
         taskId: task.id, workDayEntryId: task.run.workDayEntryId, expectedUpdatedAt:handoverVersion, expectedHandoverData:handoverSnapshot,
