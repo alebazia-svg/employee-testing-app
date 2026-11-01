@@ -1375,3 +1375,10 @@ and unused build cache; current plus two verified reserves exist, free 22.8 GiB.
 No volumes/uploads/backups were pruned. Primary checkout WIP remained untouched.
 Newer sales classification beyond the displayed cutoff and November preparation
 remain separate work; this release does not claim to resolve those items.
+
+### 2026-11-01 — approved proposal for extending a remaining Retail shift
+
+Bela approved an ADMIN-confirmed extension proposal, not automatic reassignment.
+See workday-playbook.md “Owner-approved shift extension”. Preserve original
+shift and attendance facts. Solo-shift fiscal display requires mapped 1C identity;
+existing employee-error routing stays unchanged. Prepared locally, not released.

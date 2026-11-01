@@ -709,3 +709,23 @@ not the preferred first channel for this pilot.
   Free disk after deployment: 17 GiB. No migration/manual production DB write.
 - Physical iPhone and actual system push display remain unverified. The photo/
   no-print write scenarios were tested only on the isolated demo, not real staff.
+
+## Owner-approved shift extension — 2026-11-01, prepared locally
+
+Bela approved a one-click ADMIN proposal after an early departure: when the
+09:00–18:00 Retail employee remains alone after the 11:00–20:00 colleague ends
+early, offer 09:00–20:00 in Workday. Never extend automatically. A replacement
+starting before approval invalidates the stale proposal. Confirm under a
+serializable transaction; preserve actual QR/start/end, lateness snapshots,
+completed tasks, cash facts and original shift in WorkdayShiftChange. Only
+pending closing/handover deadlines move by two hours. Persist ADMIN actor and
+one employee notice atomically; repeated clicks produce no duplicates. No schema
+migration or 1C writes. Already approved extension is never silently shortened.
+
+Fiscal manager display may confirm a single active Retail employee only against
+the mapped 1C cashier identity. Missing/unmapped/conflicting cashiers keep their
+existing uncertainty/conflict; employee review routing retains its two-person
+policy. No change to payment matching or financial totals.
+
+Implementation branch codex/workday-extension-confirm, isolated local DB
+workday_extension_test, port 3241. Production publication is not yet approved.
