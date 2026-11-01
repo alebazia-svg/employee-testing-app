@@ -6,7 +6,8 @@ export type IncomeEvidence = {
   identityResolved: boolean; fnsSearchComplete: boolean;
   finding: string; internalNotes: string[]; sourceDocumentIds: string[];
 };
-export type IncomeEvidenceReview = { schema: 1; reviewedAt: string; title: string; cases: IncomeEvidence[]; documentId?: string };
+export type FnsIncomeSnapshot = { year: string; from: string; through: string; exportedAt: string; incomeCents: number; sourceDocumentId: string };
+export type IncomeEvidenceReview = { fnsSnapshot?: FnsIncomeSnapshot; schema: 1; reviewedAt: string; title: string; cases: IncomeEvidence[]; documentId?: string };
 export type IncomeRecognition = 'accounted' | 'omitted' | 'duplicate' | 'unconfirmed';
 export function incomeRecognition(item: IncomeEvidence): IncomeRecognition {
   // A matching amount/date, a non-tax bank row, or a missing 1C check alone
@@ -24,6 +25,10 @@ export function parseIncomeEvidence(raw: string): IncomeEvidenceReview | undefin
   try {
     const r: unknown = JSON.parse(raw);
     if (!record(r) || r.schema !== 1 || !text(r.title, 180) || !text(r.reviewedAt, 30) || !Number.isFinite(Date.parse(r.reviewedAt)) || !Array.isArray(r.cases) || !r.cases.length || r.cases.length > 500) return;
+    if (r.fnsSnapshot !== undefined) {
+      const f = r.fnsSnapshot;
+      if (!record(f) || !text(f.year, 4) || !/^20\d{2}$/.test(f.year) || !text(f.from, 10) || !text(f.through, 10) || ![f.from, f.through].every(d => /^20\d{2}-\d{2}-\d{2}$/.test(String(d)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d) || !String(f.from).startsWith(f.year) || !String(f.through).startsWith(f.year) || f.from > f.through || !text(f.exportedAt, 30) || !Number.isFinite(Date.parse(f.exportedAt)) || !cents(f.incomeCents) || !text(f.sourceDocumentId, 100) || !/^[a-zA-Z0-9_-]+$/.test(f.sourceDocumentId)) return;
+    }
     const ids = new Set<string>();
     for (const c of r.cases) {
       if (!record(c) || !text(c.id, 80) || ids.has(c.id) || !text(c.date, 10) || !/^20\d{2}-\d{2}-\d{2}$/.test(c.date) || new Date(`${c.date}T00:00:00Z`).toISOString().slice(0, 10) !== c.date || !text(c.bank, 60) || !cents(c.amountCents) || c.amountCents === 0 || !(c.bankBaseCents === null || cents(c.bankBaseCents)) || !(c.fiscalBaseCents === null || cents(c.fiscalBaseCents)) || typeof c.identityResolved !== 'boolean' || typeof c.fnsSearchComplete !== 'boolean' || !text(c.finding, 1600) || !Array.isArray(c.internalNotes) || c.internalNotes.length > 10 || c.internalNotes.some(n => !text(n, 500)) || !Array.isArray(c.sourceDocumentIds) || !c.sourceDocumentIds.length || c.sourceDocumentIds.length > 20 || c.sourceDocumentIds.some(id => !text(id, 100) || !/^[a-zA-Z0-9_-]+$/.test(id))) return;

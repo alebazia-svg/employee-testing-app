@@ -24,14 +24,39 @@ Evidence is in the authorized portal archive (separate AI Business OS task).
 Validation: 15 focused tests passed; isolated Prisma generation and TypeScript
 passed; production build passed; panel rendered and visually inspected locally.
 
-Production publication is NOT yet performed. Live source readback was
-928daa2b4529bf598f5801b302e0f39224c781f1, public version1.20.3. Deployment branch
-also contains a later payroll caption change/version1.20.4. Recheck both before
-release; do not silently ship, discard or overwrite concurrent work. No release
-number is reserved here. Production Git refused the diagnostic due ownership;
-no safe.directory exception was added. Read-only .git/HEAD was used instead.
-VPS changes requiring sudo need exact owner authorization and owner-entered
-passwords in native Terminal under persistent instructions.
+Production released 1.20.5 / 1318137fa7cae3df64697a331c03bec07e685bbb.
+Owner explicitly authorized sudo for this release. Native Terminal used for
+owner password entry; no password handled by agent. Fresh baseline was live
+1.20.4 / 8cd33dd, preserved. Public builtAt2026-11-01T09:42:39.566Z, authenticated
+reconciliation/version label and /api/health independently verified. No migration.
+Current image c10538c221d9972e5648f58dbaeb77fada41be786b45daae85406037d51311de
+reported running/healthy. Registration of verified reserves FAILED: previous
+registry image797678d4407169f652e568b9f3d71d5fc71505dbf560beb872aabb9f23337c41
+was missing after build, despite the initial three-image gate passing. No prune,
+registry substitution or reserve recovery performed. Registration remains open.
+Fresh FNS export and per-case findings archived as stage16, portal document
+cmvxnkr3g004mb6v2bw2ny90t; downloaded bytes verified by SHA256. No source data
+is committed here. All five final tax-inclusion statuses remain unresolved;
+known bank lines and original receipts do not include their credit components.
+Do not portray this as proof that no incorrectly-labelled alternative receipt
+exists. Numeric maximum-limit scenarios are not implemented in1.20.5.
 
 Investigation remains open: obtain missing bank registries and establish actual
 FNS recognition, rather than labelling bookkeeping errors as tax omissions.
+
+Owner-approved follow-up: manager overview with two limit scenarios.
+Local candidate code225ac29, based on latest production1.20.6 branch (merged,
+no existing behavior removed). Adds an overview block; no runner/Telegram/FNS
+or1C changes. Uses an optional archived FNS snapshot plus the existing runner's
+Jan–Mar2026 baseline. Displays FNS/VTB-hypothesis balances and the stricter of
+existing runner balance and VTB scenario for planning. Unknown/partial-year
+sources do not invent annual balances. Explicitly not a global maximum for all
+unresolved income. The current snapshot and full calculation are in stage21
+archive; no private financial sources are committed here.
+Validation:8 focused tests, TypeScript and production build passed; actual new
+component rendered with saved source values, desktop preview inspected.
+New overview block NOT deployed. Separate sudo release approval pending;
+previous authorization was explicitly for the1.20.5 release. Recheck live and
+latest deployment branch immediately before choosing a version. The later
+1.20.6 deployment/recovery evidence is in kkm-empty-shift-release-20261101.md;
+do not repeat the older missing-image diagnosis as current without a fresh gate.

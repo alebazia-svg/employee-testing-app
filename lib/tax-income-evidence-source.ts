@@ -24,7 +24,7 @@ export async function loadIncomeEvidence(documents: Document[], root = path.join
     // Only link documents the authorized page already queried, never arbitrary
     // external URLs or invented IDs from a supplied assessment.
     const available = new Set(documents.map(d => d.id));
-    if (!review || review.cases.some(c => c.sourceDocumentIds.some(id => !available.has(id)))) return;
+    if (!review || (review.fnsSnapshot && !available.has(review.fnsSnapshot.sourceDocumentId)) || review.cases.some(c => c.sourceDocumentIds.some(id => !available.has(id)))) return;
     return { ...review, documentId: doc.id };
   } catch { return; }
 }
