@@ -2,6 +2,16 @@
 
 ## Current Purpose
 
+Latest cash-closure baseline (2026-11-01): production 1.20.6 reuses the existing
+actual-workday/home-workplace responsibility rule when cashier receipts cannot
+identify a KKT, including days without sales. An exact OFD closure remains the
+proof; no new manual employee/device assignment is required for a known home
+workplace. The existing minute HTTP runner prefetches closure reports without
+creating employee tasks. Photo/not-printed fallback and reopened-shift guards
+remain unchanged. This supersedes the older cashier-receipts-only limitation
+below. Release, production recovery and rollback evidence:
+`../ops/kkm-empty-shift-release-20261101.md`.
+
 The workday module is being prepared for a small pilot. The goal is reliable
 daily control, not adding many manual checklist tasks.
 
