@@ -124,3 +124,5 @@ a.tax-summary-row:hover{background:#faf8f5}
 .tax-income-status{display:inline-block;padding:3px 7px;border-radius:5px;background:#fff4dc;color:#76551e}
 .tax-income-status[data-recognition="accounted"]{background:#e9f4eb;color:#326344}
 .tax-income-status[data-recognition="omitted"]{background:#fbeceb;color:#983d37}
+
+.tax-limit-evidence-links{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}

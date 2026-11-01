@@ -9,6 +9,7 @@ import { taxDocumentHelp } from '@/lib/tax-document-plan';
 import { LimitScenario } from './LimitScenario';
 import type { LimitOutlook } from '@/lib/ausn-limit-outlook';
 import './taxes.css';
+import { TaxLimitEvidencePanel } from './TaxLimitEvidencePanel';
 import { IncomeEvidencePanel } from './IncomeEvidencePanel';
 import type { IncomeEvidenceReview } from '@/lib/tax-income-evidence';
 
@@ -140,6 +141,8 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
         {forecast && <details className='tax-details group mt-3 border-t border-[#eee7df] pt-2'><summary className='flex items-center justify-between gap-3 py-1'><span className='text-[13px] font-semibold'>Посчитать свой вариант продаж</span><AdminDisclosureAction /></summary><div className='mt-3'><LimitScenario remaining={forecast.remaining} cutoff={forecast.cutoff} year={year} average={forecast.average} /></div></details>}
       </div>
     </section>
+
+    <TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} />
 
     <section className='tax-panel' aria-label='Налоги коротко'>
       <SummaryRow title='Налог' tone={unpaidDue.length ? 'error' : underpaid.length ? 'warn' : 'muted'} status={unpaidDue.length ? 'Не оплачен' : underpaid.length ? 'Разница с платежом' : paid > 0 ? 'Найдены платежи' : 'Оплаты не сверялись'} href={`${withTab(base)}reconciliation`}>
