@@ -1,3 +1,5 @@
+import {netConfirmedReceiptReversals,type ExtraReceiptSnapshot} from './terminal-extra-receipts';
+import {syncExtraReceiptIssues} from './terminal-extra-receipts-sync';
 import {syncFiscalManagerAlert} from './terminal-fiscal-manager-alert';
 import {applyFiscalAmountCoverage} from './terminal-fiscal-amount-coverage';
 import { loadHistoricalCabinetEvidence } from '@/lib/tbank-cabinet-snapshot';
@@ -112,7 +114,8 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
     const matchingBankOperations = [...tbank.data];
     const matchingOfdReceipts = [...ofd.data];
     const orderCompetition = { bankComplete: true, ofdComplete: true };
-    if (oneC.data.some(c => c.acquiringOrderState === 'complete'
+    const extraReceiptsEnabled=process.env.TERMINAL_FISCAL_EXTRA_RECEIPTS_ENABLED==='true';
+    if (extraReceiptsEnabled || oneC.data.some(c => c.acquiringOrderState === 'complete'
       && c.cardPayments.some(p => p.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef))) {
       let peers: Array<NonNullable<typeof mappingRow>> = [];
       try { peers = await prisma.terminalFiscalMapping.findMany({ where: {
@@ -140,6 +143,8 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       const at = new Date(check.dateTime).getTime();
       return Number.isFinite(at) && at >= input.periodFrom.getTime() && at < lateMatchTo.getTime();
     });
+    const extraSnapshot:ExtraReceiptSnapshot={now,periodFrom:input.periodFrom.toISOString(),periodTo:input.periodTo.toISOString(),complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete,peers:orderCompetition.bankComplete&&orderCompetition.ofdComplete},banks:matchingBankOperations,checks:periodOneCChecks,receipts:matchingOfdReceipts,mapping};
+    const reversalEvidence=extraReceiptsEnabled?netConfirmedReceiptReversals(extraSnapshot):{checks:periodOneCChecks,pairs:[]};
     const kkmChecks = oneC.data.filter((check) => check.sourceType !== 'acquiring_operation');
     const employeeReviewOneCChecks = oneCChecksAvailableForEmployeeReview({
       checks: kkmChecks,
@@ -156,7 +161,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       orderCompetition,
       mappings: matchingMappings,
       bankOperations: matchingBankOperations,
-      oneCChecks: periodOneCChecks,
+      oneCChecks: reversalEvidence.checks,
       ofdReceipts: matchingOfdReceipts,
     });
     const ownBankKeys = new Set(tbank.data.map(bankOperationKey));
@@ -212,6 +217,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       }
       if (input.syncWorkdayControl === true) {
         await syncTerminalFiscalWorkdayControl(prisma, output);
+        if(extraReceiptsEnabled)await syncExtraReceiptIssues(prisma,extraSnapshot,new Set(output.records.filter(r=>r.status==='confirmed'&&r.oneCCheckKey).map(r=>r.oneCCheckKey!)),process.env.TERMINAL_FISCAL_EXTRA_RECEIPTS_NOTIFY==='true');
         const employeeReviewMode = process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true'
           ? 'notify'
           : process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_SHADOW_ENABLED === 'true'
@@ -245,7 +251,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       acquired: true as const,
       output: input.includeEvidence ? output : undefined,
       evidence: input.includeEvidence ? {bankOperations:tbank.data,oneCChecks:periodOneCChecks,ofdReceipts:ofd.data,mapping,
-        complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete}} : undefined,
+        complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete},reversals:reversalEvidence.pairs} : undefined,
       persisted: Boolean(lease),
       summary: input.syncWorkdayControl === true
         ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }

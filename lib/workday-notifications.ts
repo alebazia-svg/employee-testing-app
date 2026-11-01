@@ -314,6 +314,7 @@ export function notificationTargetKey(notification: { id: number; taskId: number
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if(notification.kind==='terminal_extra_receipt'&&notification.issueId)return `/employee?attention=receipt&item=${encodeURIComponent(`issue:${notification.issueId}`)}`;
   if (notification.kind === 'payroll_days_decision') return '/employee?tab=payroll';
   if (notification.kind === SCHEDULE_NEAR_KIND) return scheduleCalendarHref(getMoscowDateKey());
   if (notification.kind === SCHEDULE_WEEK_KIND) {

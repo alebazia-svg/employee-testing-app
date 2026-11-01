@@ -1,6 +1,6 @@
 import type { AcquiringOrder } from './terminal-fiscal-acquiring-order';
 import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.10';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.11';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -142,6 +142,8 @@ export type OneCCashier = {
 
 export type OneCCheck = {
   sourceRef: string;
+  documentNumber?: string;
+  originalCheckRef?: string;
   sourceType: 'sale_check' | 'refund_check' | 'acquiring_operation' | 'correction' | 'credit_realization';
   operationType: 'sale' | 'refund' | 'correction';
   dateTime: string;
