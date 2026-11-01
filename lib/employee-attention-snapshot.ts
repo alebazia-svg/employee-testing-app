@@ -1,3 +1,4 @@
+import {extraReceiptCopy,type ExtraReceiptCase} from './terminal-extra-receipts';
 import {terminalPaymentCopy,terminalPaymentMetadata} from './terminal-payment-copy';
 import { loadEmployeeScheduleAttention } from './employee-schedule-attention';
 import { portalMessageAuthor } from './portal-person';
@@ -22,9 +23,10 @@ export async function loadEmployeeAttention(user: { id: number }) {
   const events = issues.length ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'workday_control_issue', sourceId: { in: issues.map(i => String(i.id)) }, eventKey: { startsWith: 'credit_issue:' } }, select: { sourceId: true, eventKey: true, occurredAt: true }, orderBy: { occurredAt: 'desc' } }) : [];
   const items: EmployeeAttentionItem[] = issues.map(issue => {
     if(issue.ruleKey==='terminal_extra_receipt') {
-      const s=issue.sourceData as {facts?:Array<[string,string]>;response?:string};
+      const s=issue.sourceData as ExtraReceiptCase & {response?:string};
+      const copy=s?.bankAt&&Array.isArray(s.facts)?extraReceiptCopy(s,true):{title:issue.title,detail:issue.detail};
       const choosing=s?.response==='second_sale',answered=Boolean(s?.response)&&!choosing;
-      return {id:`issue:${issue.id}`,kind:'receipt' as const,title:issue.title,date:issue.detectedAt.toISOString(),priority:1,state:answered?'waiting' as const:'action' as const,status:choosing?'Укажите оплату второй продажи':answered?'Ответ передан руководителю':'Нужно проверить',detail:issue.detail,facts:s?.facts??[],
+      return {id:`issue:${issue.id}`,kind:'receipt' as const,receiptProblem:'extra' as const,title:copy.title,date:issue.detectedAt.toISOString(),priority:1,state:answered?'waiting' as const:'action' as const,status:choosing?'Укажите оплату второй продажи':answered?'Ответ передан руководителю':'Нужно проверить',detail:copy.detail,facts:[],
         endpoint:`/api/employee/extra-receipts/${issue.id}/response`,actions:choosing?[{label:'Наличными',action:'second_cash'},{label:'Картой или СБП',action:'second_terminal'},{label:'Другим способом',action:'second_other'}]:answered?[]:[{label:'Это дубль',action:'duplicate'},{label:'Была вторая продажа',action:'second_sale'},{label:'Нужна помощь',action:'help'}]};
     }
     const view = workdayIssueView(issue);

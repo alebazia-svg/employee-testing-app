@@ -45,6 +45,10 @@ services:
       PORTAL_ACCESS_TRUST_REAL_IP: "1"
       PORT: "3000"
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
+      # Owner-approved extra-receipt checks. Deployment initially masks delivery
+      # until already corrected fiscal chains have been independently verified.
+      TERMINAL_FISCAL_EXTRA_RECEIPTS_ENABLED: ${TERMINAL_FISCAL_EXTRA_RECEIPTS_ENABLED:-true}
+      TERMINAL_FISCAL_EXTRA_RECEIPTS_NOTIFY: ${TERMINAL_FISCAL_EXTRA_RECEIPTS_NOTIFY:-true}
       # Owner-approved expense commands; each POST verifies the live 1C contract.
       EXPENSE_REQUEST_NATIVE_ADMIN: ${EXPENSE_REQUEST_NATIVE_ADMIN:-1}
       EXPENSE_REQUEST_NATIVE_WRITES: ${EXPENSE_REQUEST_NATIVE_WRITES:-1}

@@ -1,7 +1,13 @@
+import {terminalPaymentCopy} from './terminal-payment-copy';
 import {canonicalFiscalKey,normalizeMatchingItemName,type BankOperation,type OneCCheck,type OfdReceipt,type TerminalMapping,type MatchingItem} from './terminal-fiscal-matching';
 export const EXTRA_RECEIPT_RULE='terminal_extra_receipt';
+export function extraReceiptCopy(c:Pick<ExtraReceiptCase,'amountKopecks'|'bankAt'|'facts'|'method'|'terminalReceiptNumber'>,relative=false){
+ const payment=terminalPaymentCopy({amountKopecks:c.amountKopecks,operationAt:c.bankAt,method:c.method,receiptNumber:c.terminalReceiptNumber,relative}).payment;
+ const checks=c.facts.filter(([label])=>label.startsWith('Чек 1С')).map(([,value])=>value).join('; ');
+ return {title:'В 1С два чека на одну оплату',detail:`${payment}\n\nЧеки в 1С: ${checks}.`};
+}
 export type ExtraReceiptSnapshot={now:string;periodFrom?:string;periodTo?:string;complete:{bank:boolean;oneC:boolean;ofd:boolean;peers:boolean};banks:BankOperation[];checks:OneCCheck[];receipts:OfdReceipt[];mapping:TerminalMapping};
-export type ExtraReceiptCase={key:string;mappingId:string;cashierRef:string;amountKopecks:number;bankKey:string;bankAt:string;checkRefs:string[];facts:Array<[string,string]>};
+export type ExtraReceiptCase={key:string;mappingId:string;cashierRef:string;method?:string;terminalReceiptNumber?:string;amountKopecks:number;bankKey:string;bankAt:string;checkRefs:string[];facts:Array<[string,string]>};
 const minute=60_000;
 const day=(s:string)=>new Date(Date.parse(s)+180*minute).toISOString().slice(0,10);
 const bankKey=(b:BankOperation)=>[b.terminalKey,b.rrn,b.transactionDate,b.type,b.amountKopecks].join('|');
@@ -50,6 +56,9 @@ export function detectPossibleExtraReceipts(s:ExtraReceiptSnapshot):ExtraReceipt
   if(near.length!==2)continue;const [a,b]=near;
   if(a.sourceRef===b.sourceRef||canonicalFiscalKey(a)===canonicalFiscalKey(b)||!a.cashier.ref||a.cashier.ref!==b.cashier.ref||!sameItems(a.items,b.items))continue;
   if(near.some(c=>c.sourceType!=='sale_check'||c.operationType!=='sale'||c.totalKopecks!==c.electronicKopecks||c.cardPayments.length!==1||c.cardPayments[0].amountKopecks!==c.electronicKopecks||c.cardPayments[0].acquiringTerminalRef!==s.mapping.oneCAcquiringTerminalRef||!proven(c,s)))continue;
+  // A return already being registered must not provoke a request to fix it again.
+  if(s.checks.some(c=>c.operationType!=='sale'&&c.originalCheckRef&&near.some(n=>n.sourceRef===c.originalCheckRef)))continue;
+  if(s.receipts.some(r=>r.operationType===2&&r.kktRegistrationNumber===a.kktRegistrationNumber&&r.totalKopecks===a.totalKopecks&&sameItems(r.items,a.items)&&Number.isFinite(Date.parse(r.receiptAt))&&day(r.receiptAt)===day(bank.transactionDate)))continue;
   const latest=Math.max(...near.map(c=>Date.parse(c.dateTime)));
   if(Date.parse(s.now)-latest<30*minute)continue;
   // Any equal-amount competing payment/refund on either workplace prevents a personal question.
@@ -57,7 +66,7 @@ export function detectPossibleExtraReceipts(s:ExtraReceiptSnapshot):ExtraReceipt
   const refs=near.map(c=>c.sourceRef).sort(),ordered=[...near].sort((a,b)=>a.dateTime.localeCompare(b.dateTime));
   const amount=`${(bank.amountKopecks/100).toLocaleString('ru-RU')} ₽`;
   const key=[s.mapping.id,bankKey(bank),...refs].join('|');
-  out.set(key,{key,mappingId:s.mapping.id,cashierRef:a.cashier.ref,amountKopecks:bank.amountKopecks,bankKey:bankKey(bank),bankAt:bank.transactionDate,checkRefs:refs,
+  out.set(key,{key,mappingId:s.mapping.id,cashierRef:a.cashier.ref,method:bank.rawType,terminalReceiptNumber:bank.terminalReceiptNumber,amountKopecks:bank.amountKopecks,bankKey:bankKey(bank),bankAt:bank.transactionDate,checkRefs:refs,
    facts:[['Оплата',`${amount} · ${time(bank.transactionDate)} · ${bank.rawType==='TERM_SBP'?'СБП':'терминал'}`],...(bank.terminalReceiptNumber?[['Чек терминала',`№${bank.terminalReceiptNumber}`] as [string,string]]:[]),...ordered.map((c,i)=>[`Чек 1С ${i+1}`,`${c.documentNumber?'№'+c.documentNumber:'ФД №'+c.fiscalDocumentNumber} · ${time(c.dateTime)}`] as [string,string]),['Сумма каждого',amount]]});
  }
  return [...out.values()];
