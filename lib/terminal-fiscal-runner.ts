@@ -251,7 +251,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       acquired: true as const,
       output: input.includeEvidence ? output : undefined,
       evidence: input.includeEvidence ? {bankOperations:tbank.data,oneCChecks:periodOneCChecks,ofdReceipts:ofd.data,mapping,
-        complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete}} : undefined,
+        complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete},reversals:reversalEvidence.pairs} : undefined,
       persisted: Boolean(lease),
       summary: input.syncWorkdayControl === true
         ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }

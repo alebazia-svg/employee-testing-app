@@ -1,6 +1,6 @@
 import type { AcquiringOrder } from './terminal-fiscal-acquiring-order';
 import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.10';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.11';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;

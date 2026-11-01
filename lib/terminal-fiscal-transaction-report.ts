@@ -48,6 +48,17 @@ export function buildFiscalTransactions(input:{from:Date;to:Date;parts:DailyFisc
    oneC:cs.map(c=>({key:c.sourceRef,at:c.dateTime,amountKopecks:(c.operationType==='refund'?-1:1)*c.electronicKopecks,cashier:c.cashier?.name,orderNumber:c.acquiringOrder?.number,items:c.acquiringOrder?.items,label:c.sourceType==='acquiring_operation'?`Эквайринг ${c.sourceRef.match(/Эквайринговая операция\s+([^\s|]+)/u)?.[1]??''}`.trim():`${c.operationType==='refund'?'Возврат':'Чек'} № ${c.fiscalDocumentNumber??'—'}`})),
    ofd:linked.map(f=>({key:receiptKey(f),at:f.receiptAt,amountKopecks:(f.operationType===2?-1:1)*f.electronicKopecks,items:cs.some(c=>c.acquiringOrder)?f.items:undefined,label:`${f.operationType===2?'Возврат':'Чек'} № ${f.fiscalDocumentNumber}${f.items.length&&f.items.every(i=>i.paymentType===1)?' · Предоплата 100%':''}`}))});
  }
+ // Keep both immutable documents visible as one confirmed reversal chain.
+ // Pairs are supplied only by the full three-source exact-reference verifier.
+ for(const p of input.parts)for(const pair of p.reversals??[]){
+  const original=checks.get(pair.originalRef),refund=checks.get(pair.refundRef);
+  if(!original||!refund||refund.originalCheckRef!==original.sourceRef||original.operationType!=='sale'||refund.operationType!=='refund'||original.electronicKopecks!==refund.electronicKopecks||usedCheck.has(original.sourceRef)||usedCheck.has(refund.sourceRef)||!inside(original.dateTime)||!inside(refund.dateTime))continue;
+  const ids=[original,refund].map(c=>[...receipts.values()].filter(f=>canonicalFiscalKey(f)===canonicalFiscalKey(c)&&f.kktRegistrationNumber===c.kktRegistrationNumber));
+  if(ids.some(fs=>fs.length!==1)||ids[0][0].operationType!==1||ids[1][0].operationType!==2)continue;
+  add(`reversal:${refund.sourceRef}`,[],[original,refund],[],true);
+  const row=result[result.length-1];
+  if(Object.values(row.complete).every(Boolean)){row.status='matched';row.message='Чек отменён возвратом';}
+ }
  // A single hypothesis may group payments and receipts, but never marks them confirmed.
  const hypotheses=new Map<string,{bs:BankOperation[];cs:OneCCheck[];record:MatchingAuditRecord}>();
  for(const r of records.values()){
