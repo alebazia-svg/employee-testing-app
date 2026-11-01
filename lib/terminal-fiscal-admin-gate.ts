@@ -26,7 +26,7 @@ export type FiscalProposedRecipients = {
   users: ProposedUser[];
   primary: ProposedUser | null;
   confidence: 'high' | 'uncertain';
-  reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'ambiguous';
+  reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'solo_shift' | 'ambiguous';
 };
 
 function money(value: number) {
@@ -111,7 +111,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
 
 export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   'workDayEntry' | 'terminalFiscalMapping' | 'workdayKkmAssignment' | 'userOneCCashboxMapping'
->, at: Date, mappingId?: string | null): Promise<FiscalProposedRecipients> {
+>, at: Date, mappingId?: string | null, options: { allowSolo?: boolean } = {}): Promise<FiscalProposedRecipients> {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
   const entries = await db.workDayEntry.findMany({ where: { date, department: 'retail', status: { in: ['active', 'completed'] }, user: { role: 'EMPLOYEE', isActive: true } },
     select: { userId: true, startedAt: true, endedAt: true, user: { select: { name: true } } }, orderBy: { userId: 'asc' } });
@@ -123,11 +123,13 @@ export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   });
   // A personal proposal is safe only for the normal two-person retail shift.
   // Otherwise the ADMIN keeps the existing shared delivery instead of guessing.
-  if (!mappingId || active.length !== 2 || users.length !== 2) return ambiguous();
+  if (!mappingId || !((active.length === 2 && users.length === 2) || (options.allowSolo && active.length === 1 && users.length === 1))) return ambiguous();
   const mapping = await db.terminalFiscalMapping.findUnique({
     where: { id: mappingId }, select: { oneCCashRegisterRef: true, terminalKey: true },
   });
   if (!mapping?.oneCCashRegisterRef) return ambiguous();
+  // Display attribution only; employee review routing keeps its two-person policy.
+  if (options.allowSolo && active.length === 1 && users.length === 1) return { scope: 'workstation_shift', users, primary: users[0], confidence: 'high', reason: 'solo_shift' };
   const userIds = users.map((user) => user.id);
   const assignments = await db.workdayKkmAssignment.findMany({
     where: { date, userId: { in: userIds }, oneCCashRegisterRef: mapping.oneCCashRegisterRef,

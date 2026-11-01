@@ -1,3 +1,5 @@
+import { deriveExtensionProposal } from '@/lib/workday-extension';
+import { WorkdayExtensionProposal } from './WorkdayExtensionProposal';
 import { createCashInventoryLookup } from '@/lib/cash-inventory-lookup';
 import type { CashInventoryResolution } from '@/lib/cash-inventory-resolution';
 import { kkmCloseConfirmation, hasConfirmedKkmCloseEvidence } from '@/lib/kkm-close-confirmation';
@@ -1731,12 +1733,14 @@ export default async function AdminWorkdayPage(
   ]).values()).filter((item) => item.ref);
   const terminalFiscalPresentation = presentTerminalFiscalWorkdaySummary(terminalFiscalSummary);
   const showTerminalFiscalSummary = selectedDate !== today || terminalFiscalPresentation.status !== 'confirmed';
+  const extensionProposal = selectedDate === today ? deriveExtensionProposal(workDays) : null;
   const showTechnical = searchParams?.technical === '1';
 
   return (
     <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
+        {extensionProposal && <WorkdayExtensionProposal proposal={extensionProposal} name={employees.find(e=>e.id===extensionProposal.userId)?.name??'Сотрудник'} departedName={employees.find(e=>e.id===workDays.find(d=>d.id===extensionProposal.departedId)?.userId)?.name??'Коллега'} />}
         <div className="workday-date-toolbar mb-4 flex flex-wrap items-center gap-2">
             <Link
               href={`/admin/workday?date=${previousDate}`}

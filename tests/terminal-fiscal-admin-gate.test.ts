@@ -304,3 +304,14 @@ test('a genuine ambiguity names its cause and refreshes one existing event witho
  assert.equal(f.events[0].title,'В ОФД отличается сумма оплаты картой');
  assert.match(f.events[0].body,/повторно пробивать чек до проверки не нужно/);
 });
+
+test('solo display confirms a current shift without widening review recipients',async()=>{
+  const f=fixture();
+  f.db.workDayEntry.findMany=async()=>[{userId:4,startedAt:new Date('2026-11-01T05:57Z'),endedAt:null,user:{name:'Зухра'}},{userId:3,startedAt:new Date('2026-11-01T07:21Z'),endedAt:new Date('2026-11-01T08:00Z'),user:{name:'Милана'}}];
+  f.db.terminalFiscalMapping={findUnique:async()=>({oneCCashRegisterRef:'kkm'})};
+  const at=new Date('2026-11-01T10:00Z');
+  assert.equal((await fiscalProposedRecipients(f.db,at,'map')).confidence,'uncertain');
+  const solo=await fiscalProposedRecipients(f.db,at,'map',{allowSolo:true});assert.equal(solo.primary?.id,4);assert.equal(solo.confidence,'high');
+  assert.equal((await fiscalProposedRecipients(f.db,new Date('2026-11-01T05:00Z'),'map',{allowSolo:true})).confidence,'uncertain');
+  assert.equal((await fiscalProposedRecipients(f.db,at,null,{allowSolo:true})).confidence,'uncertain');
+});

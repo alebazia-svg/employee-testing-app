@@ -75,3 +75,11 @@ test('an unknown manager becomes an ADMIN question only after the existing quiet
  await syncFiscalManagerAlert(f.db,record,[]);assert.equal(f.events.length,0);
  await syncFiscalManagerAlert(f.db,{...record,evaluatedAt:'2026-10-28T10:00Z'},[]);assert.equal(f.events[0].type,'fiscal_manager.attention');assert.match(f.events[0].body,/однозначного ответственного/);
 });
+
+test('solo shift confirms the mapped 1C cashier and preserves identity conflicts',async()=>{
+ const f=dbFixture(),at=new Date('2026-10-28T09:20Z');f.setEnd(new Date('2026-10-28T09:00Z'));
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'magomed',name:magomed.name}]})).state,'confirmed');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'milana',name:milana.name}]})).state,'conflict');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'unknown',name:magomed.name}]})).state,'conflict');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[]})).state,'unknown');
+});
