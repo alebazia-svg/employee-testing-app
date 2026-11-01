@@ -1,5 +1,5 @@
 import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD } from './payroll-trainee';
-import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance, PROCUREMENT_TRAINEE_REF } from './payroll-payment-breakdown';
+import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance, PROCUREMENT_TRAINEE_REF, MUHAMED_ONE_C_REF, MUHAMED_PAYROLL_NAME } from './payroll-payment-breakdown';
 
 export type PayrollAdvanceDocument = {
   key: string; employeeRef: string; employeeName: string;
@@ -108,6 +108,11 @@ export function parsePayrollAdvanceResponse(value: unknown, expected: {
 // 1C refs. No fuzzy spelling matching; trainee assignment starts in September.
 export function matchPayrollAdvanceEmployee(document: PayrollAdvanceDocument, names: string[]) {
   const source = normalize(document.employeeName);
+  if (source === 'кумыков мухамед' && document.periodKey >= '2026-10'
+      && document.employeeRef.toLowerCase() === MUHAMED_ONE_C_REF
+      && names.includes(MUHAMED_PAYROLL_NAME)
+      && !names.some(name => normalize(name) === source)) return MUHAMED_PAYROLL_NAME;
+
   if (source === 'стажерзакупка' && document.periodKey >= '2026-10'
     && document.employeeRef.toLowerCase() === PROCUREMENT_TRAINEE_REF) {
     return names.includes('Кумыков Мухаммед') ? 'Кумыков Мухаммед' : null;
