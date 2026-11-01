@@ -22,6 +22,8 @@ export async function findOpenRequiredWorkdayIssues(db: Db, userId: number, thro
       userId,
       status: 'open',
       employeeActionRequired: true,
+      // A possible duplicate is a clarification, like a missing terminal receipt.
+      ruleKey: { not: 'terminal_extra_receipt' },
       ...(throughDate ? { originDate: { lte: throughDate } } : {}),
     },
     select: workdayRequiredIssueSelect,

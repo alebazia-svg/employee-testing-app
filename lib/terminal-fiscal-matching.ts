@@ -142,6 +142,8 @@ export type OneCCashier = {
 
 export type OneCCheck = {
   sourceRef: string;
+  documentNumber?: string;
+  originalCheckRef?: string;
   sourceType: 'sale_check' | 'refund_check' | 'acquiring_operation' | 'correction' | 'credit_realization';
   operationType: 'sale' | 'refund' | 'correction';
   dateTime: string;

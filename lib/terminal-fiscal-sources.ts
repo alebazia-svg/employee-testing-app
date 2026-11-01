@@ -228,6 +228,8 @@ export function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Reco
   });
   return {
     sourceRef,
+    documentNumber: text(source.number) || undefined,
+    originalCheckRef: metadataRef(record(source.links)?.originalCheck) || undefined,
     sourceType: actualSourceType as OneCCheck['sourceType'],
     operationType: operation as OneCCheck['operationType'],
     dateTime,

@@ -21,6 +21,12 @@ export async function loadEmployeeAttention(user: { id: number }) {
   ]);
   const events = issues.length ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'workday_control_issue', sourceId: { in: issues.map(i => String(i.id)) }, eventKey: { startsWith: 'credit_issue:' } }, select: { sourceId: true, eventKey: true, occurredAt: true }, orderBy: { occurredAt: 'desc' } }) : [];
   const items: EmployeeAttentionItem[] = issues.map(issue => {
+    if(issue.ruleKey==='terminal_extra_receipt') {
+      const s=issue.sourceData as {facts?:Array<[string,string]>;response?:string};
+      const choosing=s?.response==='second_sale',answered=Boolean(s?.response)&&!choosing;
+      return {id:`issue:${issue.id}`,kind:'receipt' as const,title:issue.title,date:issue.detectedAt.toISOString(),priority:1,state:answered?'waiting' as const:'action' as const,status:choosing?'Укажите оплату второй продажи':answered?'Ответ передан руководителю':'Нужно проверить',detail:issue.detail,facts:s?.facts??[],
+        endpoint:`/api/employee/extra-receipts/${issue.id}/response`,actions:choosing?[{label:'Наличными',action:'second_cash'},{label:'Картой или СБП',action:'second_terminal'},{label:'Другим способом',action:'second_other'}]:answered?[]:[{label:'Это дубль',action:'duplicate'},{label:'Была вторая продажа',action:'second_sale'},{label:'Нужна помощь',action:'help'}]};
+    }
     const view = workdayIssueView(issue);
     const reply = issue.messages.find(m => m.author.role === 'ADMIN');
     const response = events.find(e => e.sourceId === String(issue.id) && e.eventKey.endsWith(`:${user.id}`));
