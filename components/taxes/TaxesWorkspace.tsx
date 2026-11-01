@@ -9,6 +9,8 @@ import { taxDocumentHelp } from '@/lib/tax-document-plan';
 import { LimitScenario } from './LimitScenario';
 import type { LimitOutlook } from '@/lib/ausn-limit-outlook';
 import './taxes.css';
+import { IncomeEvidencePanel } from './IncomeEvidencePanel';
+import type { IncomeEvidenceReview } from '@/lib/tax-income-evidence';
 
 export type TaxTab = 'overview' | 'income' | 'reconciliation' | 'documents';
 export const taxTabs: Array<[TaxTab, string]> = [['overview', 'Обзор'], ['income', 'Доходы'], ['reconciliation', 'Сверка с налоговой'], ['documents', 'Документы']];
@@ -42,6 +44,7 @@ const More = ({ children, label }: { children: React.ReactNode; label?: string }
 const T = ({ children, title }: { children: React.ReactNode; title: string }) => <span className='tax-term' title={title}>{children}</span>;
 
 export type TaxesWorkspaceProps = {
+  incomeEvidence?: IncomeEvidenceReview;
   tab: TaxTab;
   base: string;
   full?: PortalReport;
@@ -211,13 +214,14 @@ function Cell({ state, value, note }: { state: CheckState; value?: string; note?
   return <td><span className='flex items-start gap-1.5'><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${meta.className}`} aria-label={meta.label} /><span className='tabular-nums'>{value || meta.label}{note && <small data-tone={state === 'diff' ? 'error' : undefined}>{note}</small>}</span></span></td>;
 }
 
-function Reconciliation({ months, issues, full, base }: TaxesWorkspaceProps) {
+function Reconciliation({ months, issues, full, base, incomeEvidence }: TaxesWorkspaceProps) {
   const groups = [
     { tone: 'error', title: 'Нужно разобраться', items: issues.filter((issue) => issue.severity === 'high') },
     { tone: 'warn', title: 'Требует проверки', items: issues.filter((issue) => issue.severity === 'medium') },
     { tone: 'info', title: 'К сведению', items: issues.filter((issue) => issue.severity === 'low') },
   ].filter((group) => group.items.length);
   return <>
+    <IncomeEvidencePanel review={incomeEvidence} />
     {!full?.available && <div className='tax-callout' data-tone='warn'><strong>Сверка недоступна.</strong> {full?.reason || 'Нет полного годового отчёта с подтверждёнными источниками.'}</div>}
     {groups.map((group) => <section key={group.title} className='tax-panel tax-queue' data-tone={group.tone}><header><h2>{group.title}</h2><span>{group.items.length}</span></header>{group.items.map((issue, index) => <div key={index} className='tax-item flex flex-wrap items-center justify-between gap-x-4 gap-y-1'><b>{issue.title}</b>{issue.uploadHint ? <Link href={`${withTab(base)}documents`} className='tax-link'>Загрузить <ArrowRight /></Link> : issue.operations ? null : <More label='что делать'><p>{issue.text}</p>{issue.action && <p className='mt-1.5'>{issue.action}</p>}</More>}{issue.operations && <GapDetails issue={issue} />}</div>)}</section>)}
     {!groups.length && full?.available && <div className='tax-callout' data-tone='info'><strong>{months.length > 0 && months.every((month) => month.state === 'ok') ? 'В выполненных проверках расхождений не выявлено.' : 'Подтверждённых результатов недостаточно для завершения сверки.'}</strong></div>}
