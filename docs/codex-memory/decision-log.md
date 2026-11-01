@@ -1376,14 +1376,14 @@ No volumes/uploads/backups were pruned. Primary checkout WIP remained untouched.
 Newer sales classification beyond the displayed cutoff and November preparation
 remain separate work; this release does not claim to resolve those items.
 
-## 2026-11-01 — Final payroll corrections approved; local implementation
+## 2026-11-01 — Final payroll corrections released in 1.20.8
 
 Bela explicitly approved saving a payroll statement as final and later correcting
 it through a new final version, retaining the prior version in history. She then
 restricted the scope: preserve the current interface and all calculation formulas;
 add only the convenient saving/correction actions.
 
-Local candidate adds `Исправить ведомость` to the existing final overview and
+Released implementation adds `Исправить ведомость` to the existing final overview and
 `Сохранить финальную ведомость` / `Сохранить новую финальную` to the existing save
 confirmation. Existing draft save, comparison, export, employee cards, source
 checks and remarks acceptance remain. The old final stays authoritative until an
@@ -1394,5 +1394,6 @@ remain immutable, with replacement/actor/time history. Documented 1C advances ar
 re-read once, while genuine manual advances and deductions are preserved.
 
 No compensation formula, employee historical 1C-accrual authority, 1C document,
-production payroll data or schema was changed. Not deployed. Readiness and exact
-files/checks: `../ops/payroll-final-correction-20261101.md`.
+production payroll data or schema was changed. Released together with the
+owner-approved tax-limit block as 1.20.8 / `8c4bee8`; server, public metadata,
+authenticated UI and unchanged payroll hashes verified. Exact files/checks: `../ops/payroll-final-correction-20261101.md`.

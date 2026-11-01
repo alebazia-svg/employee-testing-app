@@ -1,8 +1,9 @@
 # Final payroll correction candidate — 2026-11-01
 
-Status: production release explicitly approved; 1.20.8 prepared at
-`8c4bee8965d71f28e19252f42d11c582005eee4e`; native Terminal authorization pending.
-The owner explicitly chose the combined payroll and tax-limit-panel release.
+Status: released and independently verified as **1.20.8**, runtime/server commit
+`8c4bee8965d71f28e19252f42d11c582005eee4e`. The owner explicitly chose the
+combined payroll and tax-limit-panel release. Built 2026-11-01T11:09:37.674Z
+(14:09 Moscow).
 Owner approved final-save/correct/new-final with history, and explicitly required
 no substantial interface change and no formula changes.
 
@@ -91,5 +92,38 @@ Release uses the shared deployment flock, exact origin commit gate, 15-GiB free
 space gate and three verified image checks. Before/after checks cover saved
 payroll with full child details, classification/supplier rules, Finbox, day
 reviews, draft revisions, employee payroll settings, server.env and mounts.
-The native Terminal starts a detached server job; only portal-app is rebuilt.
+The native Terminal started a detached server job; only portal-app was rebuilt.
 Independent public/server/authenticated UI verification precedes registration.
+
+## Verified production outcome
+
+- Public release-info, authenticated payroll and taxes footers agree on 1.20.8,
+  built 14:09 Moscow; exact server Git commit was read independently over SSH.
+- Authenticated October remains 14 employees, gross 990974.12, advances 17000,
+  after advances 973974.12. The final-save confirmation and remark acceptance
+  are present. Inspection was cancelled without creating/approving a live run.
+- The tax overview displays the approved `ФНС и запас до лимита` block with its
+  two scenarios and existing planning reserve. No tax/source document was changed.
+- Before/after hashes identical for nine saved runs with all employee calculation
+  details and child records; 79 classification rules; 49 supplier rules; two
+  Finbox revisions; zero day reviews; one draft revision; ten employee payroll
+  settings. server.env hash and every mount field are identical. No migration
+  was pending, no Prisma source changed and no 1C publication/write occurred.
+- Initial release job stopped after app restart at a strict byte comparison of
+  mount arrays. Independent root verification compared every mount field sorted
+  by destination and proved the only difference was array order. It then passed
+  the full payroll hash comparison, health and metadata checks. No rebuild,
+  data repair, relaxed financial guard or rollback was needed for this recovery.
+- Public health returned ok. Anonymous employee payroll and ADMIN draft requests
+  both returned 401. Actual final correction remains verified in the isolated
+  database; production historical finals were deliberately not changed.
+- After independent authenticated UI verification the current image was registered.
+  Verification job exit 0, service Result=success. Approximately 17 GiB free.
+  Current and two verified reserves:
+  - 1.20.8: sha256:cee5a79c1086b1c4c87826c58546d87ac9b26b909fde49c6bae75f5a8c39678d
+  - 1.20.6: sha256:a7972b5150790124b63f054b69da5a643c89eda936ad7625a7d0dea72ef1ea2e
+  - 1.20.5: sha256:c10538c221d9972e5648f58dbaeb77fada41be786b45daae85406037d51311de
+- Evidence: /home/bela/payroll-release-1208-verify.log, paired
+  /home/bela/payroll-release-1208-before.json and -after.json. Local screenshots:
+  /tmp/payroll-final-correction-production-1.20.8.png and
+  /tmp/tax-limit-production-1.20.8.png. Physical employee-phone testing was not done.
