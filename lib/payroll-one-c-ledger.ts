@@ -1,3 +1,4 @@
+import { MUHAMED_ONE_C_REF } from './payroll-payment-breakdown';
 /** Complete, reconciled ledger evidence. Dates do not silently assign salary months. */
 export type PayrollLedgerRead = { dateFrom: string; dateTo: string; checkedAt: string;
   employees: { employeeRef: string; employeeName: string }[]; movementCount: number;
@@ -13,6 +14,15 @@ const object = (v: unknown): Record<string, unknown> => {
 /** Existing explicit month rules, shared by accrual and prior-credit checks. */
 export function payrollLedgerAccrualPeriod(row: NonNullable<PayrollLedgerRead['allocationEvidence']>['movements'][number]) {
   const ref = row.employeeRef;
+  // Owner-confirmed October accrual. Preserve the source's old five-day wording;
+  // it is evidence of this exact posted document, not a formula to execute.
+  if (ref.toLowerCase() === MUHAMED_ONE_C_REF
+      && row.organizationRef === '1c2d6c5c-251f-11ec-ac9f-0025901e48ee'
+      && row.key === '6e7f552b-c949-11f1-8f13-002590803daf:2'
+      && row.date === '2026-10-16' && row.sign === -1
+      && row.kind === 'asset_liability_movement' && row.amountMinor === 2400000
+      && row.comment.trim() === 'Выход за окт закупки(1500*5)') return '2026-10';
+
   const stems = ['янв','фев','мар','апр','ма','июн','июл','авг','сент','окт','ноя','дек'];
     // Owner confirmed these exact bonus lines as August premiums on 2026-10-18.
     // Match source identity and unchanged facts, never the generic word "bonus".
