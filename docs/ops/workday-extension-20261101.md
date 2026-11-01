@@ -102,3 +102,17 @@ Preflight verified all three previous images and 17 GiB free; after release
 using the existing approved storage maintenance policy. No arbitrary cleanup.
 No migration, direct production DB edit, 1C/OFD write, unrelated session closure.
 Evidence screenshot: .wip/production-proposal-1.20.9.png.
+
+### Real pilot confirmation observed
+
+After the owner's own confirmation, actual Zukhra day shows 09:00–20:00,
+start 08:57, active. History records 18:57, 09:00–18:00 → 09:00–20:00.
+Opening task 566 and completed midpoint 567 retain their amounts, facts and
+original deadlines (09:00 and 13:30). Pending handover 568 is due 20:00.
+Terminal attribution is confirmed 10/10. Codex did not click the production
+approval. Screenshot: .wip/production-confirmed-1.20.9.png.
+
+Read-only investigation of the separate 900 payment at 14:22:29 found two
+same-amount receipts, FD3297 and FD3298. The bank payment is not reliably linked
+to a 1C document; cashier therefore remains unresolved. This does not prove
+missing fiscalization or a duplicate receipt. No linkage or fiscal write made.
