@@ -43,3 +43,20 @@ exists. Numeric maximum-limit scenarios are not implemented in1.20.5.
 
 Investigation remains open: obtain missing bank registries and establish actual
 FNS recognition, rather than labelling bookkeeping errors as tax omissions.
+
+Owner-approved follow-up: manager overview with two limit scenarios.
+Local candidate code225ac29, based on latest production1.20.6 branch (merged,
+no existing behavior removed). Adds an overview block; no runner/Telegram/FNS
+or1C changes. Uses an optional archived FNS snapshot plus the existing runner's
+Jan–Mar2026 baseline. Displays FNS/VTB-hypothesis balances and the stricter of
+existing runner balance and VTB scenario for planning. Unknown/partial-year
+sources do not invent annual balances. Explicitly not a global maximum for all
+unresolved income. The current snapshot and full calculation are in stage21
+archive; no private financial sources are committed here.
+Validation:8 focused tests, TypeScript and production build passed; actual new
+component rendered with saved source values, desktop preview inspected.
+New overview block NOT deployed. Separate sudo release approval pending;
+previous authorization was explicitly for the1.20.5 release. Recheck live and
+latest deployment branch immediately before choosing a version. The later
+1.20.6 deployment/recovery evidence is in kkm-empty-shift-release-20261101.md;
+do not repeat the older missing-image diagnosis as current without a fresh gate.
