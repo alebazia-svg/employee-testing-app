@@ -10,8 +10,8 @@ export function payrollRequiredAction(input:{today:string;tomorrow:string;planne
  const missingPlans=[input.today,input.tomorrow].filter(date=>!vacation.has(date)&&!['working','off'].includes(plans.get(date)??''));
  if(missingPlans.length){
   const message=missingPlans.length===2
-   ?'Укажите рабочие и выходные дни на сегодня и завтра, чтобы посмотреть расчёт.'
-   :`Отметьте в графике ${missingPlans[0]===input.today?'сегодняшний':'завтрашний'} день: рабочий или выходной.`;
+   ?'Отметьте в графике сегодня и завтра: рабочие или выходные дни, чтобы посмотреть расчёт.'
+   :`Отметьте в графике ${missingPlans[0]===input.today?'сегодняшний':'завтрашний'} день: рабочий или выходной, чтобы посмотреть расчёт.`;
   return {kind:'schedule',title:'Заполните график',message,label:'Открыть график',href:`/employee?tab=schedule&date=${missingPlans[0]}`};
  }
  const missingPast=input.planned.filter(row=>row.date>=PAYROLL_ACCESS_FROM&&row.date<input.today&&row.status==='working'&&!vacation.has(row.date)&&!approved.has(row.date)).find(row=>!facts.has(row.date));
