@@ -483,3 +483,12 @@ Audit-date October totals after union: Milana20,Zukhra18,Zalina15,Magomed22.
 Existing Liana/Diana rules, lateness policy and saved FINAL statements retained. Diana has no recorded October app starts or
 working Google schedule cells in this audit. See the note for exact counts/dates
 and source freshness; do not describe all staff days as fully accounted for.
+
+
+Muhamed recipient repair released 2026-11-01 as1.20.10 /6c817cc: see
+`payroll-muhamed-link-candidate-20261101.md`. Exact actual1C recipient and
+October/November1 document facts restore accrued24,000, paid24,000 (advance7,500)
+and zero remaining. Visible name Кумыков Мухамед; saved canonical identity retained.
+Source documents, amounts and stored payroll/rules unchanged. Production ADMIN,
+health, commit, metadata and before/after hashes verified; rollback images retained.
+Separate two-hour schedule-repeat candidate remains unreleased.
