@@ -13,6 +13,7 @@ import { buildTaxWorkspace } from '@/lib/tax-workspace-data';
 import { RefreshFigures } from '@/components/taxes/RefreshFigures';
 import { TaxDocumentUpload, UploadChanges } from '../(dashboard)/admin/taxes/TaxDocumentUpload';
 import { ownerFullReport, ownerFullReportAfterEns } from './owner-scenario';
+import { parseIncomeEvidence, type IncomeEvidenceReview } from '@/lib/tax-income-evidence';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,10 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   let full = parsePortalReport(scenario === 'broken' ? ownerFullReportAfterEns.replace('полнота: да', 'полнота: нет') : ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md');
   const documents = archive.map(([documentType, coverageFrom, coverageTo, status, originalName, createdAt], index) => ({ id: `preview-${index}`, documentType, coverageFrom, coverageTo, periodKey: coverageTo, status: scenario === 'broken' && index === 0 ? 'PROCESSING_FAILED' : status, originalName, createdAt: new Date(createdAt), uploadedBy: 'Кештова Бэла' }));
   let gaps: FnsGaps | undefined;
+  let incomeEvidence: IncomeEvidenceReview | undefined;
+  if (scenario === 'audit' && process.env.AUSN_PREVIEW_EVIDENCE_PATH) {
+    incomeEvidence = parseIncomeEvidence(await readFile(process.env.AUSN_PREVIEW_EVIDENCE_PATH, 'utf8'));
+  }
   if (scenario === 'audit' && process.env.AUSN_PREVIEW_REPORT_PATH && process.env.AUSN_PREVIEW_GAPS_PATH && process.env.AUSN_PREVIEW_FNS_PATH) {
     const [reportText, gapText, bytes] = await Promise.all([readFile(process.env.AUSN_PREVIEW_REPORT_PATH, 'utf8'), readFile(process.env.AUSN_PREVIEW_GAPS_PATH, 'utf8'), readFile(process.env.AUSN_PREVIEW_FNS_PATH)]);
     full = parsePortalReport(reportText, path.basename(process.env.AUSN_PREVIEW_REPORT_PATH));
@@ -63,6 +68,7 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
       tab={tab}
       base={`/taxes-development-preview?scenario=${scenario}`}
       {...data}
+      incomeEvidence={incomeEvidence}
       documents={documents}
       notice={notice}
       refresh={<RefreshFigures demo />}
