@@ -293,7 +293,7 @@ async function fetchJson(url: string, init?: RequestInit) {
   return { response, body };
 }
 
-export async function loadOneCKkmChecks(input: { fromDate: string; toDate: string }): Promise<SourceSnapshot<OneCCheck>> {
+export async function loadOneCKkmChecks(input: { fromDate: string; toDate: string; timeoutMs?: number }): Promise<SourceSnapshot<OneCCheck>> {
   // /kkm-checks accepts at most seven days, while late-receipt evidence
   // includes the operation day plus the following seven days.
   const from = Date.parse(`${input.fromDate}T00:00:00.000Z`);
@@ -306,6 +306,7 @@ export async function loadOneCKkmChecks(input: { fromDate: string; toDate: strin
       const part = await loadOneCKkmChecks({
         fromDate: new Date(start).toISOString().slice(0, 10),
         toDate: new Date(Math.min(start + windowMs, to)).toISOString().slice(0, 10),
+        timeoutMs: input.timeoutMs,
       });
       data.push(...part.data);
       checkedAt = part.checkedAt;
@@ -320,7 +321,7 @@ export async function loadOneCKkmChecks(input: { fromDate: string; toDate: strin
   for (let offset = 0; offset <= ONE_C_MAX_OFFSET; offset += ONE_C_PAGE_LIMIT) {
     const query = new URLSearchParams({ from: input.fromDate, to: input.toDate, limit: String(ONE_C_PAGE_LIMIT), offset: String(offset) });
     const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
-    const { response, body } = await fetchJson(`${config.baseUrl}/kkm-checks?${query}`, { headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' } });
+    const { response, body } = await fetchJson(`${config.baseUrl}/kkm-checks?${query}`, { headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },...(input.timeoutMs?{signal:AbortSignal.timeout(input.timeoutMs)}:{}) });
     const root = record(body);
     if (!response.ok || !root || root.ok !== true) return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_REQUEST_FAILED' };
     const facts = new Map(array(root.fiscalFacts).flatMap((entry) => {
@@ -437,7 +438,7 @@ export async function loadPlatformaOfdZReports(input: {
   const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
   if (!baseUrl) return { complete: false, checkedAt, data: [], errorCode: 'OFD_PROXY_NOT_CONFIGURED' };
   const query = new URLSearchParams({ kktRegNumber: input.kktRegistrationNumber, from: input.from, to: input.to });
-  const { response, body } = await fetchJson(`${baseUrl}/api/v1/ofd/platforma/z-reports?${query}`, { headers: { Accept: 'application/json' } });
+  const { response, body } = await fetchJson(`${baseUrl}/api/v1/ofd/platforma/z-reports?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
   const root = record(body);
   const dataRoot = record(root?.data);
   const rows = array(dataRoot?.zReports ?? root?.zReports);

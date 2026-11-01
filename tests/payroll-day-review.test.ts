@@ -106,17 +106,32 @@ test('schedule message names only missing days and respects vacation across the 
  const today='2026-10-31',tomorrow='2026-11-01';
  const base={...input,today,tomorrow,planned:[] as {date:string;status:string}[]};
  const both=payrollRequiredAction(base)!;
- assert.equal(both.message,'Укажите рабочие и выходные дни на сегодня и завтра, чтобы посмотреть расчёт.');
+ assert.equal(both.message,'Отметьте в графике сегодня и завтра: рабочие или выходные дни, чтобы посмотреть расчёт.');
  assert.equal(both.href,'/employee?tab=schedule&date='+today);
  for(const status of ['working','off']){
   const missingTomorrow=payrollRequiredAction({...base,planned:[{date:today,status}]})!;
-  assert.equal(missingTomorrow.message,'Отметьте в графике завтрашний день: рабочий или выходной.');
+  assert.equal(missingTomorrow.message,'Отметьте в графике завтрашний день: рабочий или выходной, чтобы посмотреть расчёт.');
   assert.equal(missingTomorrow.href,'/employee?tab=schedule&date='+tomorrow);
   const missingToday=payrollRequiredAction({...base,planned:[{date:tomorrow,status}]})!;
-  assert.equal(missingToday.message,'Отметьте в графике сегодняшний день: рабочий или выходной.');
+  assert.equal(missingToday.message,'Отметьте в графике сегодняшний день: рабочий или выходной, чтобы посмотреть расчёт.');
   assert.equal(missingToday.href,'/employee?tab=schedule&date='+today);
  }
- assert.equal(payrollRequiredAction({...base,vacationDates:[today]})?.message,'Отметьте в графике завтрашний день: рабочий или выходной.');
- assert.equal(payrollRequiredAction({...base,vacationDates:[tomorrow]})?.message,'Отметьте в графике сегодняшний день: рабочий или выходной.');
+ assert.equal(payrollRequiredAction({...base,vacationDates:[today]})?.message,'Отметьте в графике завтрашний день: рабочий или выходной, чтобы посмотреть расчёт.');
+ assert.equal(payrollRequiredAction({...base,vacationDates:[tomorrow]})?.message,'Отметьте в графике сегодняшний день: рабочий или выходной, чтобы посмотреть расчёт.');
  assert.equal(payrollRequiredAction({...base,vacationDates:[today,tomorrow]}),null);
+});
+
+
+test('schedule copy follows live obligations as days are filled and cleared',()=>{
+ const base={...input,planned:[] as {date:string;status:string}[]};
+ const action=()=>payrollRequiredAction(base);
+ assert.match(action()!.message,/сегодня и завтра/);
+ base.planned.push({date:base.today,status:'off'});
+ assert.equal(action()!.message,'Отметьте в графике завтрашний день: рабочий или выходной, чтобы посмотреть расчёт.');
+ base.planned.push({date:base.tomorrow,status:'working'});
+ assert.equal(action(),null);
+ base.planned.shift();
+ assert.equal(action()!.message,'Отметьте в графике сегодняшний день: рабочий или выходной, чтобы посмотреть расчёт.');
+ base.planned=[];
+ assert.match(action()!.message,/сегодня и завтра/);
 });
