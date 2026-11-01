@@ -178,3 +178,18 @@ Fix:
 The trainee retail account and Magomed Kosterenko have historical alias logic.
 Before payroll identity changes, read `payroll-playbook.md` and inspect existing
 normalization helpers/tests. Do not solve with one-off display-name edits only.
+
+## Attendance cutover in a past payroll month
+
+ADMIN intentionally opens a stored attendance snapshot for a past month without
+an automatic POST refresh. Deploying a new Google/app cutover can therefore leave
+its old day totals visible until the source is refreshed, even though a fresh
+read-only calculation is correct.
+
+Include the affected month's normal attendance refresh in the approved release
+workflow. Use the existing `refreshPayrollAttendance` under
+`withPayrollSourceLock`, or the existing ADMIN refresh action when available.
+Do not edit snapshot JSON or day counts manually, approve a FINAL run, clear
+financial history, change month-loading behavior, or modify 1C. Verify the saved
+source date, employee-card/export days and preservation of prior saved runs after
+refresh. Source refresh permission belongs to the exact owner-approved release.

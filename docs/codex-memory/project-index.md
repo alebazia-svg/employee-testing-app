@@ -474,7 +474,12 @@ an overnight SSH disconnect; healthy, current plus two verified reserves,19GiB f
 
 Read-only October audit: Liana's approved Google/app union works;18 app-only
 dates for Milana4,Zukhra6,Zalina4,Magomed4 remain outside their current Google-only
-policy. Owner was asked about extending their union from October18; no approval
-received yet, so no policy change. Diana has no recorded October app starts or
+policy. Owner approved extending their union from October18 on November1.
+Implemented, deployed and independently verified as1.20.3 /928daa2 on
+November1. October source refreshed through the existing locked application
+reader; stored days, working calculation and real Excel agree. Verified-image
+registration completed; healthy,21GiB free, current plus two verified reserves.
+Audit-date October totals after union: Milana20,Zukhra18,Zalina15,Magomed22.
+Existing Liana/Diana rules, lateness policy and saved FINAL statements retained. Diana has no recorded October app starts or
 working Google schedule cells in this audit. See the note for exact counts/dates
 and source freshness; do not describe all staff days as fully accounted for.
