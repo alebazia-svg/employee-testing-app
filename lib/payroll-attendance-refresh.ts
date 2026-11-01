@@ -1,3 +1,4 @@
+import { mergeMuhamedPayrollDays, MUHAMED_DAY_FROM, MUHAMED_DAY_NAME } from './payroll-muhamed-day-source';
 import { overlayApprovedDays } from './payroll-day-review-store';
 import { payrollDayAccountingEnabled } from './payroll-day-review';
 import { buildReviewDaySources } from './payroll-day-review-sources';
@@ -107,6 +108,17 @@ export async function refreshPayrollAttendance(request: Request) {
     const attendance = mergePayrollAttendanceSources({
       googleRows: attendanceData.rows, appUsers, periodKey: period.periodKey, throughDate, cutovers,
     });
+    if (period.periodKey >= MUHAMED_DAY_FROM.slice(0, 7)) {
+      const users = await prisma.user.findMany({
+        where: { OR: [{ payrollName: MUHAMED_DAY_NAME }, { name: 'Кумыков Мухамед' }, { name: MUHAMED_DAY_NAME }] },
+        select: { id: true, name: true, payrollName: true, role: true, department: true, isActive: true, portalArea: true,
+          workDays: { where: { date: { gte: period.periodKey + '-01', lte: throughDate } },
+            select: { userId: true, date: true, startedAt: true, qrAcceptedAt: true, status: true } } },
+      });
+      const merged = mergeMuhamedPayrollDays({ ...attendance, appUsers: users, periodKey: period.periodKey, throughDate });
+      attendance.formSummaries = merged.formSummaries;
+      attendance.sources = merged.sources;
+    }
     let scheduleSummaries = buildScheduleSummaries(scheduleData.rows, period.periodKey);
     let scheduleMessage = scheduleData.message;
     let dianaDates: string[] = [];

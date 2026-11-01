@@ -2,7 +2,7 @@
 import { payrollDisplayName } from '@/lib/payroll-display-name';
 import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 
-import { CellValue, SalesRow, Department, CalculationType, ClassifiedSalesRow, BonusManagerSummary, PayrollManualInput, PayrollDaysSource, ConfiguredSalaryType, SalaryType, PayrollEmployee, PayrollDirectoryUser, FixedPayrollInput, PurchasePayrollInput, PurchaseReportState, FullPayrollRow, PayrollAttendanceSourceType, PayrollAttendanceConfig, payrollEmployees, isConfiguredSalaryType, buildPayrollEmployeeDirectory, buildUnconfiguredPayrollRows, payrollAttendanceConfig, PayrollAttendanceFormSummary, PayrollAttendanceScheduleSummary, PayrollAttendancePreviewResponse, purchaseManagerName, purchaseTargetSalary, purchaseStandardWorkedDays, purchaseDayRate, purchasePercent, agentCreditCommissionEmployee, retailTraineePayrollName, payrollExcludedEmployeeNames, payrollManagerAliases, calculationFormulas, normalizeText, getPayrollManagerName, mapLegacyRetailTraineeRowsForPeriod, isCreditSale, isAccessoryBonusRow, getAccessoryCalculationRows, getAccessoryCalculationBase, parseManualNumber, normalizePersonName, isBelaManager, isNoDayPayManager, getDayRate, getDefaultPayrollDepartment, isPayrollEmployeeActiveForPeriod, buildEmptyManagerSummary, mergeBonusManagerSummaries, buildSalesPayrollSummaries, applyRetailAccessoryTier, buildFullPayrollRow, getPayrollManualInput, applyBelaPercentRule, applyPayrollBonuses, buildFixedPayrollRows, buildPurchasePayrollRow, findAttendanceMatches, applyAutomaticAttendanceInputs } from '@/lib/payroll-calculation-engine';
+import { getPayrollAttendanceConfig, CellValue, SalesRow, Department, CalculationType, ClassifiedSalesRow, BonusManagerSummary, PayrollManualInput, PayrollDaysSource, ConfiguredSalaryType, SalaryType, PayrollEmployee, PayrollDirectoryUser, FixedPayrollInput, PurchasePayrollInput, PurchaseReportState, FullPayrollRow, PayrollAttendanceSourceType, PayrollAttendanceConfig, payrollEmployees, isConfiguredSalaryType, buildPayrollEmployeeDirectory, buildUnconfiguredPayrollRows, payrollAttendanceConfig, PayrollAttendanceFormSummary, PayrollAttendanceScheduleSummary, PayrollAttendancePreviewResponse, purchaseManagerName, purchaseTargetSalary, purchaseStandardWorkedDays, purchaseDayRate, purchasePercent, agentCreditCommissionEmployee, retailTraineePayrollName, payrollExcludedEmployeeNames, payrollManagerAliases, calculationFormulas, normalizeText, getPayrollManagerName, mapLegacyRetailTraineeRowsForPeriod, isCreditSale, isAccessoryBonusRow, getAccessoryCalculationRows, getAccessoryCalculationBase, parseManualNumber, normalizePersonName, isBelaManager, isNoDayPayManager, getDayRate, getDefaultPayrollDepartment, isPayrollEmployeeActiveForPeriod, buildEmptyManagerSummary, mergeBonusManagerSummaries, buildSalesPayrollSummaries, applyRetailAccessoryTier, buildFullPayrollRow, getPayrollManualInput, applyBelaPercentRule, applyPayrollBonuses, buildFixedPayrollRows, buildPurchasePayrollRow, findAttendanceMatches, applyAutomaticAttendanceInputs } from '@/lib/payroll-calculation-engine';
 
 import PayrollAttendanceSourceNote from './PayrollAttendanceSourceNote';
 import { PayrollDraftGuard, PayrollDraftStatus, usePayrollDraftSync } from './PayrollDraftSync';
@@ -3556,8 +3556,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const retailAccessoryTier = payrollAccessoryCalculation.tier;
   const totalBonus = useMemo(() => payrollManagerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [payrollManagerSummaries]);
   const salesPayrollRows = useMemo(
-    () => buildSalesPayrollSummaries(payrollManagerSummaries, payrollEmployeeDirectory).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll), payrollEmployeeDirectory)),
-    [payrollManagerSummaries, manualPayroll, payrollEmployeeDirectory],
+    () => buildSalesPayrollSummaries(payrollManagerSummaries, payrollEmployeeDirectory).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, summary.manager === 'Кумыков Мухаммед' && selectedPayrollPeriodKey >= '2026-11' ? prepareDailyPayrollInputs({directory: payrollEmployeeDirectory, manual: manualPayroll, attendance: attendancePreview, periodKey: selectedPayrollPeriodKey, finboxAmount: null}) : manualPayroll), payrollEmployeeDirectory)),
+    [payrollManagerSummaries, manualPayroll, payrollEmployeeDirectory, attendancePreview, selectedPayrollPeriodKey],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory), [fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory]);
   const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport, payrollEmployeeDirectory), [purchasePayroll, purchaseReport, payrollEmployeeDirectory]);
@@ -3582,23 +3582,23 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const payrollAttendanceMappingRows = useMemo(
     () =>
       salesPayrollRows.map((row) => {
-        const config = payrollAttendanceConfig[row.manager];
+        const config = getPayrollAttendanceConfig(row.manager, selectedPayrollPeriodKey);
         const attendanceNames = config?.attendanceNames ?? [];
         return {
           manager: row.manager,
           attendanceNames,
-          source: config ? getPayrollAttendanceSourceLabel(config.sourceType) : 'не задано',
+          source: config ? row.manager === 'Кумыков Мухаммед' && selectedPayrollPeriodKey >= '2026-11' ? 'QR / подтверждение администратора' : getPayrollAttendanceSourceLabel(config.sourceType) : 'не задано',
           status: config ? 'задано' : 'проверить',
           comment: config?.comment ?? 'Нет ручного соответствия в карте.',
         };
       }),
-    [salesPayrollRows],
+    [salesPayrollRows, selectedPayrollPeriodKey],
   );
   const payrollAttendancePreviewRows = useMemo(() => {
     if (!attendancePreview) return [];
 
     return salesPayrollRows.map((row) => {
-      const config = payrollAttendanceConfig[row.manager];
+      const config = getPayrollAttendanceConfig(row.manager, selectedPayrollPeriodKey);
       const attendanceNames = config?.attendanceNames ?? [];
       const formMatches = findAttendanceMatches(attendancePreview.formSummaries, attendanceNames);
       const scheduleMatches = findAttendanceMatches(attendancePreview.scheduleSummaries, attendanceNames);
@@ -3693,7 +3693,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       return {
         manager: row.manager,
         sourceType: config.sourceType,
-        source: appSource ? 'Приложение / резерв Google' : getPayrollAttendanceSourceLabel(config.sourceType),
+        source: appSource?.ownerConfirmedDates !== undefined ? 'QR / подтверждение администратора' : appSource ? 'Приложение / резерв Google' : getPayrollAttendanceSourceLabel(config.sourceType),
         sourceNames: attendanceNames.join(', ') || '—',
         matchedNames: uniqueFormMatches.map((match) => match.employee).join(', ') || '—',
         formRows,
@@ -3703,11 +3703,11 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         daysToApply: uniqueFormMatches.length ? uniqueFormDates : null,
         daySourceField: 'formUniqueDates',
         lateCount,
-        status,
-        comment: appSource ? `С ${appSource.fromDate.split('-').reverse().join('.')} дни из приложения, при отсутствии отметки — Google Sheets. Каждый день учитывается один раз.` : config.comment,
+        status: appSource?.ownerConfirmedDates !== undefined ? 'По QR и подтверждению администратора' : status,
+        comment: appSource?.ownerConfirmedDates !== undefined ? config.comment : appSource ? `С ${appSource.fromDate.split('-').reverse().join('.')} дни из приложения, при отсутствии отметки — Google Sheets. Каждый день учитывается один раз.` : config.comment,
       };
     });
-  }, [attendancePreview, salesPayrollRows]);
+  }, [attendancePreview, salesPayrollRows, selectedPayrollPeriodKey]);
   const isAttendancePreviewPeriodCurrent = attendancePreview?.period.periodKey === selectedPayrollPeriodKey;
   const payrollTotals = useMemo(
     () =>
@@ -7221,7 +7221,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                               {!fixed && !purchase && (row.salaryRule === 'standard' || row.salaryRule === 'daily') && <>
                                 <label className='grid gap-1 text-sm font-semibold text-slate-700'>Отработано дней
                                   <Input aria-label={`Дни: ${row.manager}`} type='number' min='0' step='0.5' disabled={row.manager === 'Кумыков Мухаммед'} value={row.manager === 'Кумыков Мухаммед' ? row.workedDays ?? '' : salesInput.workedDays || (row.workedDays === null ? '' : String(row.workedDays))} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} />
-                                  {row.manager === 'Кумыков Мухаммед' && <span className='text-xs font-normal text-slate-500'>Согласовано за весь месяц: октябрь — 16 дней, с ноября — 20.</span>}
+                                  {row.manager === 'Кумыков Мухаммед' && <span className='text-xs font-normal text-slate-500'>{selectedPayrollPeriodKey < '2026-11' ? 'Согласовано за октябрь: 16 дней.' : 'С 1 ноября — 2 000 ₽ за выход. Дни по QR; 1 ноября подтверждено администратором.'}</span>}
                                 </label>
                                 {row.salaryRule !== 'daily' && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Опоздания
                                   <Input aria-label={`Опоздания: ${row.manager}`} type='number' min='0' step='1' value={salesInput.lateCount || (row.lateCount === null ? '' : String(row.lateCount))} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} />
@@ -7738,7 +7738,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                       <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{payrollDisplayName(selectedManagerPayroll.manager)}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
                       {selectedManagerSource === 'oneC' && (
-                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? 'Согласованное начисление за месяц' : 'Автоматический расчёт по данным 1С'}</p>
+                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? selectedPayrollPeriodKey >= '2026-11' ? 'Начислено за отработанные дни' : 'Согласованное начисление за месяц' : 'Автоматический расчёт по данным 1С'}</p>
                       )}
                       {savedCardEmployee && <p className='mt-2 text-xs text-slate-500'>Утверждённая ведомость №{savedCardRun?.runNumber}</p>}
                       {!savedCardEmployee && (selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
@@ -7849,7 +7849,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                         <h3 className='font-bold text-slate-900'>Расчёт за месяц</h3>
                         <p className='mt-1 text-sm text-slate-600'>Ставка {formatMoney(selectedManagerPayroll.dayRate)} за день. Без процента с закупок и бонуса за дисциплину.</p>
                         <p className='mt-3 text-sm font-semibold text-slate-900'>{selectedManagerPayroll.workedDays ?? '—'} дней × {formatMoney(selectedManagerPayroll.dayRate)} = {formatMoney(selectedManagerPayroll.dayPay)}</p>
-                        <p className='mt-2 text-xs text-slate-500'>{currentFinalRun ? 'Финальная ведомость не изменяется.' : 'Согласованная сумма за весь месяц, не заработок на сегодня. Октябрь — 16 дней; с ноября — 20 дней в месяц. Отметки посещаемости не требуются.'}</p>
+                        <p className='mt-2 text-xs text-slate-500'>{currentFinalRun ? 'Финальная ведомость не изменяется.' : selectedPayrollPeriodKey >= '2026-11' ? 'График 5/2 заполняет сотрудник. Выходы — по QR; 1 ноября подтверждено администратором. График не заменяет отметки.' : 'Согласованная сумма за октябрь: 16 дней. Отметки посещаемости не требуются.'}</p>
                       </section>
                     )}
                     {!modernManagerCard && selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
