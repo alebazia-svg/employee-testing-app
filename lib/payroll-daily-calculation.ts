@@ -23,6 +23,9 @@ export function prepareDailyPayrollInputs(input: {
   ) };
   const empty = () => ({ workedDays: '', lateCount: '', advance: '', comment: '' });
   const assistant = input.directory['Кумыков Мухаммед'];
+  if (input.periodKey >= '2026-11' && (!input.attendance || input.attendance.period.periodKey !== input.periodKey)) manual['Кумыков Мухаммед'] = {
+    ...(manual['Кумыков Мухаммед'] ?? empty()), workedDays: '', source: 'attendance',
+  };
   if (assistant?.agreedDays !== undefined) manual[assistant.name] = {
     ...(manual[assistant.name] ?? empty()), workedDays: String(assistant.agreedDays),
   };

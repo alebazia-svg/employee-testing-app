@@ -96,6 +96,7 @@ export type PayrollEmployee = {
   salary?: number;
   dayRate?: number;
   agreedDays?: number;
+  qrDaysRequired?: boolean;
   activeFromPeriod?: string;
   activeThroughPeriod?: string;
 };
@@ -283,8 +284,11 @@ export function isConfiguredSalaryType(value: string | null): value is Configure
 
 export function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set(), useAgreedDays = true) {
   const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
-  if (useAgreedDays && periodKey >= '2026-10') directory['Кумыков Мухаммед'] = {
-    ...directory['Кумыков Мухаммед'], agreedDays: periodKey === '2026-10' ? 16 : 20,
+  if (periodKey >= '2026-11') directory['Кумыков Мухаммед'] = {
+    ...directory['Кумыков Мухаммед'], dayRate: 2000, qrDaysRequired: true,
+  };
+  if (useAgreedDays && periodKey === '2026-10') directory['Кумыков Мухаммед'] = {
+    ...directory['Кумыков Мухаммед'], agreedDays: 16,
   };
   if (periodKey >= FILM_TRAINEE_PERIOD) directory[FILM_TRAINEE_NAME] = {
     name: FILM_TRAINEE_NAME, department: 'Розничные продажи',
@@ -310,6 +314,7 @@ export function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], per
       salaryType,
       salary: salaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
       dayRate: existing?.dayRate,
+      qrDaysRequired: existing?.qrDaysRequired,
       agreedDays: salaryType === 'purchase_daily' ? existing?.agreedDays : undefined,
       activeFromPeriod: user.payrollRuleFrom ?? existing?.activeFromPeriod,
       activeThroughPeriod: user.payrollRuleThrough ?? existing?.activeThroughPeriod,
@@ -670,7 +675,7 @@ export function buildFullPayrollRow(summary: BonusManagerSummary, manual: Payrol
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
   const salaryRule = salaryType === 'purchase_daily' ? 'daily' : isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
   const dayPayNotRequired = salaryRule !== 'standard' && salaryRule !== 'daily';
-  const workedDays = dayPayNotRequired ? null : employee.agreedDays ?? manualWorkedDays;
+  const workedDays = dayPayNotRequired ? null : employee.agreedDays ?? (employee.qrDaysRequired && manual?.source !== 'attendance' ? null : manualWorkedDays);
   const lateCount = dayPayNotRequired || salaryRule === 'daily' ? null : manualLateCount;
   const advance = parseManualNumber(manual?.advance ?? '') ?? 0;
   const agentCreditCommission = summary.manager === agentCreditCommissionEmployee ? parseManualNumber(manual?.agentCreditCommission ?? '') ?? 0 : 0;
@@ -902,6 +907,16 @@ export function applyAutomaticAttendanceInputs(
 
   const next = { ...currentInputs };
   for (const employeeName of employeeNames) {
+    // November cutover: editable plans and legacy 20-day drafts are not attendance.
+    if (employeeName === 'Кумыков Мухаммед' && periodKey >= '2026-11') {
+      const source = preview.attendanceSources?.find(row => row.employee === employeeName && row.fromDate === '2026-11-01' && row.ownerConfirmedDates !== undefined);
+      const expectedDates = source ? new Set([...source.appDates, ...source.ownerConfirmedDates!]).size : null;
+      const matches = preview.formSummaries.filter(row => row.employee === employeeName);
+      const previous = getPayrollManualInput(employeeName, currentInputs);
+      next[employeeName] = { workedDays: source && matches.length === 1 && matches[0].uniqueFormDates === expectedDates ? String(matches[0].uniqueFormDates) : '',
+        lateCount: '', advance: previous?.advance ?? '', comment: previous?.comment ?? '', source: 'attendance' };
+      continue;
+    }
     const config = payrollAttendanceConfig[employeeName];
     if (!config || config.sourceType === 'manual_excluded' || config.sourceType === 'manual_special') continue;
 
@@ -939,4 +954,12 @@ export function applyAutomaticAttendanceInputs(
   }
 
   return next;
+}
+
+export function getPayrollAttendanceConfig(employeeName: string, periodKey: string) {
+  if (employeeName === 'Кумыков Мухаммед' && periodKey >= '2026-11') return {
+    attendanceNames: [employeeName], sourceType: 'form' as const,
+    comment: 'Выходы по QR. 1 ноября подтверждено администратором. График 5/2 не заменяет отметки.',
+  };
+  return payrollAttendanceConfig[employeeName];
 }

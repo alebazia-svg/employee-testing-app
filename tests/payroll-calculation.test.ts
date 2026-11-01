@@ -582,7 +582,7 @@ describe('retail accessory rate', () => {
   it('uses agreed monthly days for Muhammad, ignoring stale browser days and subtracting advances once', () => {
     const manager = 'Кумыков Мухаммед';
     const summary = { manager, department: 'Розница', revenue: 0, grossProfit: 0, creditBonus: 0, filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 0, wholesaleBonus: 0, totalBonus: 0 };
-    for (const [period, gross] of [['2026-10', 24000], ['2026-11', 30000], ['2027-01', 30000]] as const) {
+    for (const [period, gross] of [['2026-10', 24000]] as const) {
       const directory = buildPayrollEmployeeDirectory([], period);
       for (const workedDays of ['', '5', '31']) {
         const row = buildFullPayrollRow(summary, { workedDays, lateCount: '', advance: '7500', comment: '' }, directory);
