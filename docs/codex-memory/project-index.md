@@ -462,3 +462,19 @@ outstanding-action banners are required on BOTH Schedule and My salary even
 when the calendar/access card repeats the action. Missing-day copy names only
 the actual missing day(s). Workday behavior and calendar dimensions unchanged.
 See payroll-day-review-candidate-20261031.md for production verification.
+
+## ADMIN payroll report — production1.20.2,2026-10-31
+
+See `../ops/payroll-report-release-20261031.md`: clear cost/cutoff status,
+actionable concise checks, review export, preserved payment/history/source
+flows, Muhamed daily-rule inclusion and October7500 advance, single-M display.
+Code5b4ad79; server66a0180 including prior release docs; public/authenticated UI
+and real Excel independently verified. Verified-image registration completed November1 after
+an overnight SSH disconnect; healthy, current plus two verified reserves,19GiB free. No formula9%/schema/1C write change.
+
+Read-only October audit: Liana's approved Google/app union works;18 app-only
+dates for Milana4,Zukhra6,Zalina4,Magomed4 remain outside their current Google-only
+policy. Owner was asked about extending their union from October18; no approval
+received yet, so no policy change. Diana has no recorded October app starts or
+working Google schedule cells in this audit. See the note for exact counts/dates
+and source freshness; do not describe all staff days as fully accounted for.
