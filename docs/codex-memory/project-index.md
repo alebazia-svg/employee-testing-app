@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Retail workstation responsibility and retained Magomed seating: `decision-log.md`
+  (2026-11-02) — released/verified 1.21.4 / a48ee29. Home seating survives a
+  colleague leaving; Magomed keeps a proven replacement seat in the same shift;
+  dated manual assignment wins. Financial matching and the 30-minute grace remain.
+
 - Personal fiscal help and short employee payment copy: `fiscal-help-preview-20261026.md` —
   released/verified 1.18.14 / e778abf on 2026-10-27 after owner visual approval.
   Separate named help push; actual printed terminal check number; 30-minute first
