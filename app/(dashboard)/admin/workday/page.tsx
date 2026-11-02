@@ -599,8 +599,9 @@ function buildEmployeeAutoChecks({
           label: 'Наличные в кассе',
           actual: task.numericValue, expected: null,
           status: 'unavailable',
-          summary: snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.',
-          evidence: 'Исторический остаток не реконструируется по движениям задним числом.',
+          historicalCashUnverified: true,
+          summary: 'Пересчёт сохранён. Сверить с 1С не удалось.',
+          evidence: `${snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.'} Исторический остаток не реконструируется по движениям задним числом.`,
         });
         continue;
       }
@@ -1559,6 +1560,7 @@ export default async function AdminWorkdayPage(
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
         && !check.handoverExpenses
+        && !check.historicalCashUnverified
         && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
@@ -1677,7 +1679,7 @@ export default async function AdminWorkdayPage(
         reviewText,
         cannotVerify,
         incompleteCount,
-        incompleteChecks: unresolvedAutoChecks.filter(check => !check.handoverExpenses && check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
+        incompleteChecks: unresolvedAutoChecks.filter(check => !check.handoverExpenses && !check.historicalCashUnverified && check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
         primaryIssueLifecycle,
         completedTaskCount,
         totalTaskCount,
