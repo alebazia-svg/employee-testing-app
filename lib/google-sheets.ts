@@ -1,4 +1,5 @@
 import { createSign } from 'crypto';
+import { parseGoogleAttendanceTimestamp } from './google-attendance-date';
 
 export type AttendanceRow = {
   timestamp: string;
@@ -239,24 +240,12 @@ function looksLikeHeader(row: string[]) {
 }
 
 function formatTimestamp(timestamp: string) {
-  if (!timestamp) return { date: '-', time: '-' };
-
-  const parsed = new Date(timestamp);
-  if (!Number.isNaN(parsed.getTime())) {
-    return {
-      date: parsed.toLocaleDateString('ru-RU'),
-      time: parsed.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-    };
-  }
-
-  const [datePart = '-', timePart = '-'] = timestamp.trim().split(/\s+/);
-  return {
-    date: datePart,
-    time: timePart.slice(0, 5) || '-',
-  };
+  const parsed = parseGoogleAttendanceTimestamp(timestamp);
+  if (!parsed) throw new Error('Некорректная дата отметки Google Sheets. Обновление посещаемости отменено.');
+  return parsed;
 }
 
-function mapRows(values: string[][]): AttendanceRow[] {
+export function mapGoogleAttendanceRows(values: string[][]): AttendanceRow[] {
   const rows = values[0] && looksLikeHeader(values[0]) ? values.slice(1) : values;
 
   return rows
@@ -384,7 +373,7 @@ export async function getAttendanceRows(): Promise<AttendanceResult> {
 
   return {
     mode: 'google-sheets',
-    rows: mapRows(data.values ?? []),
+    rows: mapGoogleAttendanceRows(data.values ?? []),
     message: 'Данные загружены из Google Sheets.',
   };
 }
