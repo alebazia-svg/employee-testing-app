@@ -16,6 +16,22 @@ test('Milana empty shift uses the agreed home workstation, without any same-day 
  const s=scenario(),r=await s.verify();assert.equal(r.status,'confirmed');assert.equal(r.fiscalShiftNumber,'82');assert.equal(r.workplaceBasis,'home_workstation');assert.equal(s.calls[0].kktRegistrationNumber,'milana-kkt');
  s.shift.status='Открыта';s.shift.closedAt='';assert.equal((await s.verify()).status,'confirmed','delayed 1C closure does not defeat exact OFD proof');
 });
+test('OFD starts before external 1C reads and does not wait for their responses',async()=>{
+ const s=scenario(),order:string[]=[];let release!:()=>void;
+ const barrier=new Promise<void>(r=>{release=r;});
+ s.sources.loadOneCKkmChecks=async()=>{order.push('checks');await barrier;return{complete:true,data:[]};};
+ s.sources.getCashShifts=async()=>{order.push('shifts');await barrier;return{ok:true,shifts:[s.shift]};};
+ const original=s.sources.loadPlatformaOfdZReports;
+ s.sources.loadPlatformaOfdZReports=async(arg:any)=>{order.push('ofd');return {...await original(arg),providerFetchedAt:'2026-11-01T08:01:00Z'};};
+ const pending=s.verify();await new Promise(r=>setImmediate(r));
+ assert.equal(order[0],'ofd');assert.equal(order.includes('checks'),true);assert.equal(order.includes('shifts'),true);
+ release();const result=await pending;assert.equal(result.status,'confirmed');
+ assert.deepEqual(result.ofdRead?.shiftNumbers,['82']);assert.equal(result.ofdRead?.complete,true);assert.equal(result.ofdRead?.providerFetchedAt,'2026-11-01T08:01:00Z');
+});
+test('an early home-workplace report cannot confirm a different KKT identified by actual receipts',async()=>{
+ const s=scenario();s.setChecks([{cashier:{ref:'milana-cashier'},cashRegisterRef:'foreign-kkm',kktRegistrationNumber:'foreign-kkt',dateTime:'2026-11-01T07:46Z',fiscalDateTime:'2026-11-01T07:46Z',fiscalDriveNumber:'foreign-fn',fiscalDocumentNumber:'1',fiscalSign:'2'}]);
+ assert.notEqual((await s.verify()).status,'confirmed');assert.deepEqual(s.calls.map((c:any)=>c.kktRegistrationNumber),['milana-kkt','foreign-kkt']);
+});
 test('an empty shift never guesses a workstation or accepts another day, device or ambiguous report',async()=>{
  for(const change of [(s:any)=>s.day.user.name='Неизвестный сотрудник',(s:any)=>s.setMappings([]),(s:any)=>s.setMappings([{terminalKey:'1010808747019437',oneCCashRegisterRef:'a',kktRegistrationNumber:'a'},{terminalKey:'1010808747019437',oneCCashRegisterRef:'b',kktRegistrationNumber:'b'}]),(s:any)=>s.setReports([{kktRegistrationNumber:'other',fiscalDriveNumber:'fn',shiftNumber:'82',openedAt:'2026-11-01T07:12Z',closedAt:'2026-11-01T07:47Z'}]),(s:any)=>s.setReports([{kktRegistrationNumber:'milana-kkt',fiscalDriveNumber:'fn',shiftNumber:'81',openedAt:'2026-11-01T07:12Z',closedAt:'2026-11-01T07:47Z'}]),(s:any)=>{s.shift.fiscalShiftNumber='';}]){const s=scenario();change(s);assert.notEqual((await s.verify()).status,'confirmed');}
 });

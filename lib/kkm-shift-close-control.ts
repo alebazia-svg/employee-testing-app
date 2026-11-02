@@ -35,6 +35,7 @@ export type KkmShiftCloseEvidence = {
   lastFiscalCheck?: { sourceRef: string; sourceType: string; fiscalDocumentNumber: string; fiscalDateTime: string; documentDateTime: string };
   sourceError: string;
   workplaceBasis?: string;
+  ofdRead?: { requestedAt: string; receivedAt: string; providerFetchedAt?: string; durationMs: number; complete: boolean; fromCache: boolean; shiftNumbers: string[]; errorCode?: string };
   simulated?: boolean;
 };
 
@@ -83,6 +84,12 @@ function normalized(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
 }
 
+/** Source-only warmup before the existing receipt/cash handover checks. */
+export async function prefetchEmployeeKkmClose(db:Db,userId:number,date:string) {
+  const place=await resolveKkmCloseWorkplace(db,userId,date);
+  if(place)await loadKkmCloseReports({kktRegistrationNumber:place.kktRegistrationNumber,...moscowPeriod(date)});
+}
+
 export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }, sources = { loadOneCKkmChecks, getCashShifts, loadPlatformaOfdZReports: loadKkmCloseReports }): Promise<KkmShiftCloseEvidence> {
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
@@ -90,16 +97,33 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   const cashierRef = identity?.oneCCashierRef?.trim() || '';
   if (!cashierRef) return { ...empty, status: 'unavailable', sourceError: 'Кассир сотрудника не сопоставлен с 1С.' };
 
+  // Start OFD immediately for the agreed workplace. 1C supplies independent
+  // device/receipt/reopening guards; its document closure is never a prerequisite.
+  const knownWorkplace = 'terminalFiscalMapping' in input.db
+    ? await resolveKkmCloseWorkplace(input.db,input.userId,input.date) : null;
+  const period = moscowPeriod(input.date);
+  const readOfd = async (kktRegistrationNumber: string) => {
+    const requestedAt = new Date().toISOString(), start = Date.now();
+    const snapshot = await sources.loadPlatformaOfdZReports({kktRegistrationNumber,...period})
+      .catch(()=>({complete:false as const,checkedAt:requestedAt,data:[],errorCode:'OFD_REQUEST_FAILED'}));
+    return {snapshot,observation:{requestedAt,receivedAt:new Date().toISOString(),durationMs:Date.now()-start,
+      complete:snapshot.complete,fromCache:'fromCache' in snapshot&&snapshot.fromCache===true,
+      ...('providerFetchedAt' in snapshot&&typeof snapshot.providerFetchedAt==='string'?{providerFetchedAt:snapshot.providerFetchedAt}:{}),
+      shiftNumbers:snapshot.data.map(row=>row.shiftNumber),...(snapshot.errorCode?{errorCode:snapshot.errorCode}:{})}};
+  };
+  const earlyOfd = knownWorkplace ? readOfd(knownWorkplace.kktRegistrationNumber) : null;
+  const shiftsPending = sources.getCashShifts(input.date).catch(() => ({ ok: false as const, dateFrom: input.date, dateTo: input.date, shifts: [], error: 'ONE_C_REQUEST_FAILED' }));
   const checksStarted=Date.now();
   const readChecks=()=>sources.loadOneCKkmChecks({...kkmShiftCloseOneCPeriod(input.date),timeoutMs:3000}).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
   let checks = await readChecks();
   if(!checks.complete&&Date.now()-checksStarted<1000){await new Promise(resolve=>setTimeout(resolve,200));checks=await readChecks();}
-  if (!checks.complete) return { ...empty, cashierRef, status: 'unavailable', sourceError: 'Не удалось получить полный список чеков 1С.' };
+  const shifts = await shiftsPending;
+  if (!checks.complete) return { ...empty, cashierRef,...(earlyOfd?{ofdRead:(await earlyOfd).observation}:{}), status: 'unavailable', sourceError: 'Не удалось получить полный список чеков 1С.' };
   const employeeChecks = checks.data.filter((check) => check.cashier.ref === cashierRef).sort((a, b) => Date.parse(a.fiscalDateTime || a.dateTime) - Date.parse(b.fiscalDateTime || b.dateTime));
   const lastCheck = employeeChecks.at(-1) ?? null;
   const completeCheckIdentity=Boolean(lastCheck?.cashRegisterRef&&lastCheck.kktRegistrationNumber);
   const workplace = !completeCheckIdentity && 'terminalFiscalMapping' in input.db
-    ? await resolveKkmCloseWorkplace(input.db,input.userId,input.date) : null;
+    ? knownWorkplace : null;
   if(workplace&&lastCheck&&((lastCheck.cashRegisterRef&&lastCheck.cashRegisterRef!==workplace.cashRegisterRef)
     ||(lastCheck.kktRegistrationNumber&&lastCheck.kktRegistrationNumber!==workplace.kktRegistrationNumber))) {
     return {...empty,cashierRef,status:'unavailable',sourceError:'Данные чека и рабочего места указывают разные ККТ. Требуется однозначное подтверждение.'};
@@ -110,14 +134,15 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
     return { ...empty, cashierRef, status: 'unavailable', sourceError: 'По чекам 1С не удалось определить ККТ сотрудника за этот день.' };
   }
 
-  const shifts = await sources.getCashShifts(input.date).catch(() => ({ ok: false as const, dateFrom: input.date, dateTo: input.date, shifts: [], error: 'ONE_C_REQUEST_FAILED' }));
   const candidates = (shifts.ok ? shifts.shifts : []).filter((shift) => shift.cashRegister.ref === cashRegisterRef && shift.posted !== false && shift.deletionMark !== true);
   const shift = [...candidates].sort((a, b) => Date.parse(b.closedAt || b.openedAt || b.datetime) - Date.parse(a.closedAt || a.openedAt || a.datetime))[0] ?? null;
   const common = { ...empty, cashierRef, cashRegisterRef, cashRegisterName: shift?.cashRegister.name || '', kktRegistrationNumber, oneCShiftNumber: shift?.number || '', fiscalShiftNumber: shift?.fiscalShiftNumber || '', oneCOpenedAt: shift?.openedAt || '', oneCClosedAt: shift?.closedAt || '',...(workplace?{workplaceBasis:workplace.basis}:{}) };
   const oneCClosed = Boolean(shift?.closedAt) && normalized(shift?.status || '').includes('закрыт');
 
-  const period = moscowPeriod(input.date);
-  const ofd = await sources.loadPlatformaOfdZReports({ kktRegistrationNumber, ...period }).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' }));
+  const loadedOfd = earlyOfd && kktRegistrationNumber===knownWorkplace?.kktRegistrationNumber
+    ? await earlyOfd : await readOfd(kktRegistrationNumber);
+  const ofd=loadedOfd.snapshot;
+  Object.assign(common,{ofdRead:loadedOfd.observation});
   if (!ofd.complete) return { ...common, status: 'unavailable', sourceError: 'Платформа OFD временно не ответила полностью.' };
   const refreshCached = () => verifyEmployeeKkmShiftClose(input,{...sources,loadPlatformaOfdZReports:arg=>sources.loadPlatformaOfdZReports(arg,{force:true})});
   const cached = 'fromCache' in ofd && ofd.fromCache===true;

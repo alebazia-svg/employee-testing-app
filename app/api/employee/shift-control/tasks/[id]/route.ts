@@ -22,7 +22,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { prefetchEmployeeKkmClose, firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -459,6 +459,9 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     }
 
     const refreshReceipts = () => refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
+    if(user.department==='retail'&&!closeConfirmationRequested&&!readKkmCloseConfirmation(task.handoverData)) {
+      void prefetchEmployeeKkmClose(prisma,user.id,task.run.date).catch(()=>undefined);
+    }
     if (closeConfirmationRequested || readKkmCloseConfirmation(task.handoverData)?.userId===user.id) after(refreshReceipts); else await refreshReceipts();
 
     const earlyFinishDeviation = await prisma.workdayDeviation.findUnique({
