@@ -18,6 +18,7 @@ export const terminalFiscalReasonLabels: Record<string, string> = {
   ONE_C_POSSIBLE_SPLIT_SALE: 'Возможное разделение продажи на несколько документов',
   ONE_C_MULTIPLE_CARD_PAYMENTS: 'В чеке 1С несколько карточных оплат',
   ONE_C_UNSUPPORTED_DOCUMENT: 'Документ 1С требует отдельной проверки',
+  FISCAL_DATA_PENDING: 'Документ 1С найден. Ждём подтверждения чека',
   FISCAL_DATA_UNCONFIRMED: 'Фискальные данные 1С не подтверждены',
   FISCAL_KEY_CONFLICT: '1С вернула конфликтующие фискальные данные',
   OFD_RECEIPT_NOT_FOUND: 'Чек не найден в ОФД по точному фискальному ключу',
