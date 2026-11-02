@@ -29,6 +29,12 @@ project from scratch.
 
 ## Read First By Task
 
+- Google Form attendance dates: `../ops/google-attendance-date-release-20261102.md`
+  — released/verified 1.21.6. Parse Russian day/month explicitly, never through
+  native Date guessing. Invalid timestamps fail source refresh; persisted payroll
+  snapshots/runs and schedules were not rewritten. Liana's false November 2 marks
+  were February 11 entries; production UI now shows her day off without hours.
+
 - Daily cash recount source failure: `cash-recount-source-failure-20261102.md` —
   released/verified 1.21.5 / e39bc5e. Bounded immediate reads, save actual amount
   on failure, explicit unverified history; never backfill historical balance.
