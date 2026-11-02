@@ -29,6 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
+- Daily cash recount source failure: `cash-recount-source-failure-20261102.md` —
+  released/verified 1.21.5 / e39bc5e. Bounded immediate reads, save actual amount
+  on failure, explicit unverified history; never backfill historical balance.
+
 - Retail workstation responsibility and retained Magomed seating: `decision-log.md`
   (2026-11-02) — released/verified 1.21.4 / a48ee29. Home seating survives a
   colleague leaving; Magomed keeps a proven replacement seat in the same shift;
