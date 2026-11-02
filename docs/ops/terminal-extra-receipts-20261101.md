@@ -1,4 +1,7 @@
-# Possible extra receipts — local candidate, 2026-11-01
+# Automatic extra-receipt checks — released 1.21.1
+
+Historical preparation notes below are retained; production verification is recorded
+in the final section.
 
 Owner approved a system-generated possible-extra-receipt check, parallel to missing
 receipt checks, with the SAME native mobile receipt sheet, structured facts and
@@ -66,3 +69,76 @@ Current production UI observed1.20.10, candidate based on1.20.9 worktree. Before
 release merge the latest deployment baseline, follow version/runbook/approval gates,
 recheck these modules for concurrent changes and allocate a new portal version.
 No version reserved; no deploy authorized/performed by this local candidate.
+
+## Production installation authorized
+
+Bela explicitly authorized installation, automatic future extra-receipt checks and
+closure of both existing900 alerts, with NO employee notification for the corrected
+case. Final text now exactly reuses terminalPaymentCopy and the native missing-
+receipt sheet: «В 1С два чека на одну оплату», ordinary terminal payment line,
+then both1C check numbers/times. Earlier long/personal/desktop examples rejected.
+Buttons retained. No existing controls removed. Extra warnings stay nonblocking.
+
+Merged the complete verified1.21.0 payroll baseline, including its original salary
+rules and owner verification. Release1.21.1 source c71ee6529b6e98efcfaaeadbc86120aaf5302219.
+130 focused tests +5 release metadata tests pass, PostgreSQL lifecycle tests and
+final isolated production build pass. Matching metadata/cache version mvp-1.11.
+Verified reversal pairs are grouped as «Чек отменён возвратом» in daily transactions;
+both original and refund documents and every movement remain visible.
+
+Additional protection: save a resolved evidence record for an already corrected
+case before enabling delivery; later stale readings cannot reopen/notify it.
+Pending/unconfirmed returns also suppress an obsolete employee question. Only
+complete exact fiscal evidence closes a case. No arbitrary total-only closure.
+
+Reviewed installer /tmp/mobo-extra-receipts-release.command opens native macOS
+Terminal for Bela-only sudo. Root task pins the1.21.0 server source, checks registered
+images/disk/global deployment lock, preserves env/mounts/networks, first starts with
+new employee delivery masked, previews then invokes normal application recheck,
+independently verifies both legacy alerts resolved and zero new900 notifications,
+then enables future checks/delivery and verifies again. No migration/server.env edit,
+manual business-row patch, fiscal write, unrelated container or upload change.
+It awaits independent public/server/authenticated-UI verification before registering
+current plus two rollback images. Native launch succeeded; completion is not yet
+claimed. Final production results will be recorded below.
+
+## Production verification — 2026-11-02
+
+Installed 1.21.1, runtime source c71ee6529b6e98efcfaaeadbc86120aaf5302219,
+build 2026-11-01T17:40:59.507Z (1 November, 20:40 Moscow). Independent SSH source
+and package checks, both public release-info hostnames, health, and a freshly
+reloaded authenticated ADMIN payment card confirmed the release. Final sheet
+preview: .wip/extra900-like-missing-preview.png; real production closed card:
+.wip/extra900-production-verified.png. Earlier screenshots/text are superseded.
+
+The normal application recheck, followed by a separate read-only Prisma process,
+confirmed both legacy900 alerts resolved, the extra-case evidence resolved,
+payment matched to00OF-003759, and ZERO employee notifications for this case.
+The independent readback passed both before and after enabling future delivery.
+Report totals balance; original and exact referenced refund remain in history.
+Both EXTRA_RECEIPTS flags are true. Baseline comparison confirmed unchanged other
+environment, server.env, mounts, networks and ports. No migration, manual financial
+row patch, 1C/OFD write or message to Zukhra was performed.
+
+The root resume reached DEPLOY_READY_FOR_INDEPENDENT_VERIFICATION. Before its final
+marker, the separate tax release advanced the server checkout to55e1d48 /1.21.2.
+The exact-source marker guard correctly refused to register against a changed
+checkout. Its release resume explicitly registered the running verified1.21.1
+image8591a688c92ef41572539d7a8c5ac43ad8fa5cf341c9d2eaaf94f4a1d1f696e1;
+its subsequent preflight requires that image to be the registry current and that
+all three reserves exist before proceeding to build. The tax release passed that
+preflight and began its build. No marker for the newer release was supplied by
+this task. Extra-receipt runtime files and compose are unchanged in55e1d48.
+
+Operational verifier fixes only: temporary TS dynamic imports needed the CJS
+module.default fallback; the initial runtime guard confused OCI index/config
+identities and was replaced with exact runtime source hashes. Installed application
+code was not rebuilt or changed by these fixes. Earlier failed script exits are
+not evidence of an application outage; the public health stayed healthy.
+
+Checks completed before release:130 focused tests,5 release metadata tests,
+TypeScript, isolated production build and PostgreSQL lifecycle scenarios. Physical
+phone push display was not tested, and no fake production incident was created.
+Existing missing-receipt controls, handover rules and prior payroll/shift behavior
+were preserved. New extra-receipt warnings are nonblocking and use the same native
+mobile receipt sheet; closure follows verified fiscal evidence, not an answer alone.

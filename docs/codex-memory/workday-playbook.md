@@ -736,3 +736,24 @@ notification job queues one idempotent ADMIN proposal, also visible in inbox.
 Approval retains the employee extension notice and the existing “Завершить
 раньше” path; handover is at 20:00. No automatic approval or new escalation flow.
 A fresh pending-task deadline check prevents dispatching a stale 18:00 reminder.
+
+
+## Automatic possible extra receipts — released 1.21.1, 2026-11-02
+
+Owner approved the same automatic/native mobile mechanism as missing receipts.
+Use «В 1С два чека на одну оплату», the existing terminalPaymentCopy and both1C
+receipt numbers/times; retain «Это дубль», «Была вторая продажа», «Нужна помощь».
+No personal-message wording, standalone form or extra fact table. Warning only;
+existing handover blockers remain unchanged. Detect only complete, unambiguous
+one-payment/two-fiscal-backed-same-goods cases after30 quiet minutes. Actual mapped
+1C cashier attribution is required; ambiguous/incomplete cases remain ADMIN-only.
+Answers preserve the case; exact verified payment/refund evidence closes it.
+
+Already corrected cases save resolved evidence before delivery is enabled, so
+stale snapshots cannot revive obsolete questions. For1 November900/terminal000478,
+refund00OF-000079 explicitly cancels00OF-003760; remaining00OF-003759 matches payment.
+Both old alerts closed, separate production readback confirmed zero new employee
+notifications before and after flag activation. Do not send Zukhra this case.
+Enabled and Notify flags are true. Runtime sourcec71ee65; verification and concurrent
+tax-release registration handoff: ../ops/terminal-extra-receipts-20261101.md.
+No1C/OFD writes or migration. Physical phone push remains unverified.
