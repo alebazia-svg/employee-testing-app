@@ -1,5 +1,44 @@
 ﻿# Portal Decision Log
 
+## 2026-11-02 - Retail receipt responsibility follows the actual workstation
+
+Owner reconfirmed the seating policy: Zukhra and Milana use their own terminals;
+Magomed replaces the absent home owner when the other owner is working. A sole
+remaining owner keeps only her own workstation; she does not inherit the departed
+colleague's terminal. Owner explicitly approved retaining Magomed's replacement
+seat after the home owner leaves, until Magomed's same continuous shift ends.
+The resolver reconstructs the last actual overlapping seating, never invents a
+seat without that evidence, and does not carry expired manual assignments forward.
+Dated explicit KKM assignments take priority; conflicts stay ambiguous.
+Use actual shift intervals at payment time, with an exclusive end boundary, rather
+than using the current shift or the schedule as proof of historical presence.
+
+Local implementation only (not released): report attribution and review routing
+use the same workstation resolver without the old cashier-dependent solo bypass.
+Actual 1C cashier evidence remains separate from operational responsibility;
+matching, the 30-minute reminder grace, source-health safeguards and automatic
+review retirement are unchanged. The earlier approved FISCAL_DATA_PENDING wording
+fix is still local. No production DB, migrations, 1C publication or deployment.
+
+Candidate code commit: `0cfabb7`. Verification: 284 fiscal tests passed (one
+optional external fixture skipped), 258 workday, 38 adjacent notification tests,
+and 13 real PostgreSQL integration tests; TypeScript and optimized build passed.
+Database integration used disposable local PostgreSQL, current schema plus the
+three existing matching uniqueness indexes. The historical empty-database
+migration order fails at 20260830143000; it was not changed or presented as a
+successful migration rehearsal. No schema change is needed by this candidate.
+
+Authenticated visual review used the actual app and synthetic local records at
+127.0.0.1:3279 on a separate fiscal_seating_preview database. Normal home seating
+and Magomed before/after the colleague's departure were rendered on mobile and
+desktop; the vacant other terminal stayed unassigned, and financial mismatch
+remained independent of responsibility. External providers were unconfigured/
+loopback-only; the UI correctly kept the saved demo report when refresh failed.
+Screenshot: /tmp/mobo-seating-desktop-verified.png. Preview seed helper is guarded
+to the exact local DB at /tmp/mobo-seating-preview.cjs. Native phone push and
+production confirmation are not verified for this candidate. Release approval
+is still required; earlier 1.18.14 authorization does not cover this new release.
+
 ## 2026-10-25 - AUSN Control Is An Isolated ADMIN Tax Module
 
 The portal exposes AUSN control under `/admin/taxes`, separate from the
