@@ -1,9 +1,9 @@
 # Team calendar — production 1.21.20
 
 Owner approved two exact changes, saw the real local application and explicitly
-approved a separate release after1.21.19, conditional on regression verification.
+approved a separate release after 1.21.19, conditional on regression verification.
 Runtime/server commit: `c93687b25757c0eab961069fc5e4b9f15db0c5ac`.
-Public metadata and authenticated footer agree on1.21.20, built
+Public metadata and authenticated footer agree on 1.21.20, built
 2026-11-03T18:36:30.212Z (21:36 Moscow).
 
 ## Approved behavior and retained baseline
@@ -22,8 +22,8 @@ Public metadata and authenticated footer agree on1.21.20, built
   No reminder, workday fact, payroll, financial match, receipt workflow, schema,
   migration, source credential, environment or upload change.
 
-Implementation commits8b12b51 and92db6d9; merges retain independently released
-receipt lifecycle1.21.19 and its documentation. The local Google provider fixture
+Implementation commits 8b12b51 and92db6d9; merges retain independently released
+receipt lifecycle 1.21.19 and its documentation. The local Google provider fixture
 existed only in a temporary preview copy; production keeps the original provider.
 
 ## Exact changed application/test files
@@ -37,7 +37,7 @@ existed only in a temporary preview copy; production keeps the original provider
 
 ## Verification
 
-After merging19:271 Workday tests,296 fiscal tests,61 calendar/navigation/source
+After merging 19: 271 Workday tests, 296 fiscal tests, 61 calendar/navigation/source
 tests, one real calendar server/render test and five metadata tests passed.
 One optional live OFD fixture test was skipped because no fixture was supplied.
 TypeScript and both exact candidate/isolated-preview production builds passed.
@@ -47,7 +47,7 @@ Local authenticated app used disposable `team_calendar_preview_20261103`, cloned
 from the previous isolated navigation demo. App precedence, genuine Google
 fallback, empty and contradictory Google dates, week/month/source switching,
 day dialogs, Escape/close and selected-date Workday navigation were checked.
-At390x844 the page width375 did not exceed the viewport390; the monthly table
+At 390x844 the page width 375 did not exceed the viewport 390; the monthly table
 kept its intentional inner scroller. Physical-phone operation/push was not tested.
 
 Independent production readback before/after on Nov1: all five existing plans
@@ -71,17 +71,17 @@ No migration or manual production business-data edit was performed. Both public
 health endpoints returned ok. Exact server commit and live footer were verified.
 
 Registered current image and two existing verified reserves, all present:
--20: sha256:d3eb916075151404fdc1d7e682b5c6c9fcb112da428776dc55c692a25cd11936
--19: sha256:0780f65ce8b2387caff627a7d8feaa1201477749f7b803f3415dfffcbd231bbe
--18: sha256:4ecc55d58e535fe27eb7d46988bb5551aafe07a86ad7825b52eb7db69e54af78
+- 1.21.20: sha256:d3eb916075151404fdc1d7e682b5c6c9fcb112da428776dc55c692a25cd11936
+- 1.21.19: sha256:0780f65ce8b2387caff627a7d8feaa1201477749f7b803f3415dfffcbd231bbe
+- 1.21.18: sha256:4ecc55d58e535fe27eb7d46988bb5551aafe07a86ad7825b52eb7db69e54af78
 
-Final free disk19.88GiB. The deployment lock was released before registration.
+Final free disk 19.88 GiB. The deployment lock was released before registration.
 The previously owner-approved bounded storage retention ran before the build;
 no container, volume, upload, backup or unknown image was pruned.
 
 Main log `/home/bela/team-calendar-12120-release.log` did not persist its final
 two markers. A separate native-Terminal read-only journal audit authoritatively
-confirmed at18:44:20UTC `RELEASE_VERIFIED_AND_REGISTERED`, `RELEASE_EXIT=0` and
+confirmed at 18:44:20 UTC `RELEASE_VERIFIED_AND_REGISTERED`, `RELEASE_EXIT=0` and
 `Deactivated successfully`. Local audit command also exited0:
 `/tmp/mobo-team-calendar-12120-final-audit.log`. No second installation occurred.
 The owned stale read-only tail was stopped after this proof. See error-playbook.
