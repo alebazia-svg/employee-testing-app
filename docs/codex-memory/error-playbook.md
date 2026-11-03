@@ -193,3 +193,20 @@ Do not edit snapshot JSON or day counts manually, approve a FINAL run, clear
 financial history, change month-loading behavior, or modify 1C. Verify the saved
 source date, employee-card/export days and preservation of prior saved runs after
 refresh. Source refresh permission belongs to the exact owner-approved release.
+
+## Transient systemd release logger can lose final file markers
+
+Observed in the Nov3 calendar release: with `exec > >(tee "$LOG")` under
+`systemd-run --collect`, the file stopped at final free-space output although the
+unit journal contained `RELEASE_VERIFIED_AND_REGISTERED`, `RELEASE_EXIT=0` and
+`Deactivated successfully`. The image had been registered and independently
+verified; missing tail markers alone were not an application failure.
+
+Future operational scripts should persist the completion result directly to a
+dedicated file before exiting and finish the logger, rather than depending only
+on a background tee. Do not fabricate an exit line to unblock an observer.
+A collected unit's `LoadState=not-found` / default Result is not authoritative:
+an earlier failed waiting unit also disappeared. Use the unit journal when
+needed. Nov3 was resolved through a narrowly scoped, read-only native-Terminal
+`sudo journalctl` check. Stop only the owned read-only tail after completion;
+do not restart a verified app merely to repair logging.

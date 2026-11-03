@@ -29,6 +29,16 @@ project from scratch.
 
 ## Read First By Task
 
+- ADMIN team calendar: `../ops/team-calendar-release-20261103.md` — released/verified
+  1.21.20 / c93687b. Includes active Procurement employees. A genuinely empty
+  selected day displays `Нет записи`; saved app/Google plans, unavailable sources,
+  ambiguous Google evidence and the original pilot policy stay distinct.
+  This is calendar display only, without payroll or shift/reminder policy changes.
+
+- Direct Overview employee cards: `../ops/workday-direct-card-release-20261103.md`
+  — released/verified 1.21.18 / c4abeda. Current plus inherited questions no longer
+  redirect an Overview check to Need Action. Counts and past-question history stay.
+
 - Closed app workday without submitted handover: `handover-review-candidate-20261103.md`
   — released/verified 1.21.14 (767c45b), supersedes the faulty archive backfill in
   1.21.13. Explicit `Проверено` uses the existing
