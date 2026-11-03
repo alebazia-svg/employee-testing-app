@@ -1,4 +1,12 @@
-# Automatic current-month employee estimate — local candidate
+# Automatic current-month employee estimate — released 1.21.16
+
+Owner approved deployment after reviewing this candidate. Released and verified
+as `17e115dc6852ce6c34e30d80bdf9afdcbc24efd6` / 1.21.16. Normal source service
+updated November sales and attendance without a draft; private projections for
+all five managers passed rounding checks and existing access conditions. Real
+ADMIN/employee preview and October re-entry verified. Final evidence and the
+additional PWA-only refresh guard repair:
+`../ops/payroll-automatic-month-release-20261103.md`.
 
 Owner explicitly approved showing and automatically updating November estimates
 in the employee app, retaining established October rounding, formulas and UI.
@@ -27,9 +35,9 @@ month/year rollover, blank-input provenance, source-refresh eligibility, real
 store read without creating revisions, existing corrections and bonuses,
 changed attendance reaching the private rounded response, missing/incomplete
 sources, private identity and FINAL/CLOSED exclusion. No UI files were changed.
-Physical phones and production behavior after this change are untested; this is
-a local candidate, not a production release. The already configured schedule
-access condition still asks for tomorrow's calendar when required.
+Physical phones remain untested. Production checks are recorded in the release
+evidence above. The already configured schedule access condition still asks for
+tomorrow's calendar when required.
 
 QA used newly created local `payroll_automatic_month_20261103`, never production.
 Older QA database schema lacked qrScanMode; fresh migration replay also hit the
@@ -40,5 +48,5 @@ Prisma schema for the passing integration runs. Existing data and production
 schema were left intact. No production snapshot, payroll, draft, setting or 1C
 document was changed by this task. Logs: `/tmp/payroll-automatic-month-*.log`.
 
-Release requires the owner's operations approval, fresh live/deployment version
-check, new patch version, and source/UI/retention verification per runbook.
+The release followed owner operations approval, a fresh live/deployment version
+check, new patch version and source/UI/retention verification per runbook.
