@@ -626,7 +626,7 @@ export async function syncTerminalFiscalEmployeeReviews(
             reviewId: review.id,
             fingerprint,
             kind: 'terminal_fiscal_review',
-            title: acquiringWithoutReceipt ? acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks}).title : 'Проверьте чек',
+            title: acquiringWithoutReceipt ? acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks,documentNumber:acquiringNumber}).title : 'Проверьте чек',
             body: (acquiringWithoutReceipt ? acquiringReceiptCopy : terminalPaymentCopy)({ operationAt, amountKopecks: record.amountKopecks, receiptNumber:record.evidence.terminalReceiptNumber, method:record.evidence.bankOperationRawType, shared:sharedAssignment(assignmentScope), relative:false, documentNumber:acquiringNumber }).body,
             scheduledAt: evaluatedAt,
           },
@@ -637,7 +637,7 @@ export async function syncTerminalFiscalEmployeeReviews(
       // Enrich an active notice from the exact bank operation; history stays intact.
       if (mode === 'notify' && record.evidence.terminalReceiptNumber && review.status === 'open') await tx.workdayNotification.updateMany({
         where:{reviewId:review.id,kind:'terminal_fiscal_review',status:{in:['pending','sent']},...(acquiringWithoutReceipt?{fingerprint:{startsWith:`${reviewKey}:acquiring-receipt-created:`}}:{})},
-        data:{...(acquiringWithoutReceipt?{title:acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks}).title}:{}),body:(acquiringWithoutReceipt?acquiringReceiptCopy:terminalPaymentCopy)({operationAt,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,shared:sharedAssignment(assignmentScope),relative:false,documentNumber:acquiringNumber}).body},
+        data:{...(acquiringWithoutReceipt?{title:acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks,documentNumber:acquiringNumber}).title}:{}),body:(acquiringWithoutReceipt?acquiringReceiptCopy:terminalPaymentCopy)({operationAt,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,shared:sharedAssignment(assignmentScope),relative:false,documentNumber:acquiringNumber}).body},
       });
       if (mode === 'notify' && !automaticDelivery && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([

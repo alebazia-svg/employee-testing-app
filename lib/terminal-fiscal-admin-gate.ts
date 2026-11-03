@@ -99,7 +99,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
       : uncertain ? `${terminalFiscalReasonLabel(record.reasonCode)}. Проверьте документы; повторно пробивать чек до проверки не нужно.`
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
-    const displayBody=acquiringCopy ? `${terminal}${workstation}${acquiringCopy.body}` : body+(terminalReceiptNumber(record.evidence.terminalReceiptNumber)?` Чек терминала № ${record.evidence.terminalReceiptNumber}.`:'');
+    const displayBody=acquiringCopy ? `${terminal}${workstation}${acquiringCopy.problem}\n${acquiringCopy.body}` : body+(terminalReceiptNumber(record.evidence.terminalReceiptNumber)?` Чек терминала № ${record.evidence.terminalReceiptNumber}.`:'');
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
