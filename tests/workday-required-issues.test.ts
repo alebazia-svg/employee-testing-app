@@ -18,6 +18,7 @@ test('required issues can be limited to the closing workday date', async () => {
     userId: 7,
     status: 'open',
     employeeActionRequired: true,
+    ruleKey: { not: 'terminal_extra_receipt' },
     originDate: { lte: '2026-08-24' },
   });
 });

@@ -1,3 +1,5 @@
+import { deriveExtensionProposal } from '@/lib/workday-extension';
+import { WorkdayExtensionProposal } from './WorkdayExtensionProposal';
 import { createCashInventoryLookup } from '@/lib/cash-inventory-lookup';
 import type { CashInventoryResolution } from '@/lib/cash-inventory-resolution';
 import { kkmCloseConfirmation, hasConfirmedKkmCloseEvidence } from '@/lib/kkm-close-confirmation';
@@ -597,8 +599,9 @@ function buildEmployeeAutoChecks({
           label: 'Наличные в кассе',
           actual: task.numericValue, expected: null,
           status: 'unavailable',
-          summary: snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.',
-          evidence: 'Исторический остаток не реконструируется по движениям задним числом.',
+          historicalCashUnverified: true,
+          summary: 'Пересчёт сохранён. Сверить с 1С не удалось.',
+          evidence: `${snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.'} Исторический остаток не реконструируется по движениям задним числом.`,
         });
         continue;
       }
@@ -1557,6 +1560,7 @@ export default async function AdminWorkdayPage(
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
         && !check.handoverExpenses
+        && !check.historicalCashUnverified
         && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
@@ -1675,7 +1679,7 @@ export default async function AdminWorkdayPage(
         reviewText,
         cannotVerify,
         incompleteCount,
-        incompleteChecks: unresolvedAutoChecks.filter(check => !check.handoverExpenses && check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
+        incompleteChecks: unresolvedAutoChecks.filter(check => !check.handoverExpenses && !check.historicalCashUnverified && check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
         primaryIssueLifecycle,
         completedTaskCount,
         totalTaskCount,
@@ -1731,12 +1735,14 @@ export default async function AdminWorkdayPage(
   ]).values()).filter((item) => item.ref);
   const terminalFiscalPresentation = presentTerminalFiscalWorkdaySummary(terminalFiscalSummary);
   const showTerminalFiscalSummary = selectedDate !== today || terminalFiscalPresentation.status !== 'confirmed';
+  const extensionProposal = selectedDate === today ? deriveExtensionProposal(workDays) : null;
   const showTechnical = searchParams?.technical === '1';
 
   return (
     <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
+        {extensionProposal && <WorkdayExtensionProposal proposal={extensionProposal} name={employees.find(e=>e.id===extensionProposal.userId)?.name??'Сотрудник'} departedName={employees.find(e=>e.id===workDays.find(d=>d.id===extensionProposal.departedId)?.userId)?.name??'Коллега'} />}
         <div className="workday-date-toolbar mb-4 flex flex-wrap items-center gap-2">
             <Link
               href={`/admin/workday?date=${previousDate}`}

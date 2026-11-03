@@ -362,6 +362,29 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   assert.equal(review.status,'open');assert.equal(review.employeeId,users[0].id);assert.equal(review.assignmentScope,'workstation_shift');
   assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),1);
   assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:review.id}}),0);
+  // Real DB regression: the colleague has left, the home terminal still routes
+  // once; another terminal stays with ADMIN until a dated assignment exists.
+  await prisma.workDayEntry.update({where:{id:entries[1].id},data:{status:'completed',endedAt:new Date(at)}});
+  const soloRecord={...record,matchingKey:marker+'-auto-solo'};
+  await sync(soloRecord);await sync(soloRecord);
+  const soloKey='terminal-fiscal-review:'+createHash('sha256').update(soloRecord.matchingKey).digest('hex');
+  const solo=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{reviewKey:soloKey}});
+  assert.equal(solo.employeeId,users[0].id);assert.equal(solo.status,'open');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:solo.id}}),1);
+  await prisma.userOneCCashboxMapping.update({where:{userId:users[0].id},data:{oneCCashRegisterRef:'other-workstation'}});
+  const foreignRecord={...record,matchingKey:marker+'-auto-foreign'};
+  await sync(foreignRecord);
+  const foreignKey='terminal-fiscal-review:'+createHash('sha256').update(foreignRecord.matchingKey).digest('hex');
+  const foreign=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{reviewKey:foreignKey}});
+  assert.equal(foreign.status,'admin_review');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:foreign.id}}),0);
+  await prisma.workdayKkmAssignment.create({data:{date:day,userId:users[0].id,oneCCashRegisterRef:m.oneCCashRegisterRef,effectiveFrom:new Date(at)}});
+  await sync(foreignRecord);await sync(foreignRecord);
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:foreign.id}})).employeeId,users[0].id);
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:foreign.id}}),1);
+  await prisma.userOneCCashboxMapping.update({where:{userId:users[0].id},data:{oneCCashRegisterRef:m.oneCCashRegisterRef}});
+  for(const resolvedRecord of [soloRecord,foreignRecord])await sync({...resolvedRecord,status:'confirmed',reasonCode:'MATCH_CONFIRMED',oneCCheckKey:'late-check'});
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:{in:[solo.id,foreign.id]},status:'pending'}}),0);
   const recent={...record,matchingKey:marker+'-auto-recent',evidence:{bankTransactionDate:day+'T09:28:00Z'}};
   await sync(recent,users[0].id);
   assert.equal(await prisma.terminalFiscalEmployeeReview.count({where:{mappingId:m.id,status:'open'}}),2);
@@ -406,4 +429,43 @@ test('confirmed snapshot survives repeated source outages, with every failed cyc
  assert.equal((await prisma.terminalFiscalMatch.findUniqueOrThrow({where:{id:before.id}})).status,'confirmed');
  await persist({...base,status:'mismatch',reasonCode:'OFD_ELECTRONIC_AMOUNT_MISMATCH',evaluatedAt:'2026-08-10T07:06:00Z'},'-outage-real-mismatch');
  assert.equal((await prisma.terminalFiscalMatch.findUniqueOrThrow({where:{id:before.id}})).status,'mismatch');
+});
+
+test('retained Magomed seating drives real reminder persistence after either home owner leaves',async()=>{
+ const {syncTerminalFiscalEmployeeReviews}=await import('../lib/terminal-fiscal-employee-review');
+ const {terminalFiscalEmployeeReviewKey}=await import('../lib/terminal-fiscal-employee-review');
+ const previous=process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;
+ process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED='true';
+ const day='2026-08-20',at=day+'T15:09:00Z',evaluated=day+'T15:39:00Z';
+ try{
+  for(const [index,name] of ['Абшаева Зухра','Чеченова Милана'].entries()){
+   const admin=await prisma.user.create({data:{login:marker+'-retained-admin-'+index,name:'Local admin',role:'ADMIN',passwordHash:'unused'}});
+   const owner=await prisma.user.create({data:{login:marker+'-retained-owner-'+index,name,role:'EMPLOYEE',department:'retail',passwordHash:'unused'}});
+   const magomed=await prisma.user.create({data:{login:marker+'-retained-magomed-'+index,name:'Костеренко Магомед',role:'EMPLOYEE',department:'retail',passwordHash:'unused'}});
+   const maps=await Promise.all(['2332022071','1010808747019437'].map((terminalKey,i)=>prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey,oneCAcquiringTerminalRef:marker+'-retained-acq-'+index+'-'+i,oneCCashRegisterRef:marker+'-retained-kkm-'+index+'-'+i,kktRegistrationNumber:marker+'-retained-kkt-'+index+'-'+i,effectiveFrom:new Date(day+'T00:00:00Z')}})));
+   const target=maps[index===0?1:0];
+   try{
+    await prisma.workDayEntry.create({data:{userId:owner.id,date:day,department:'retail',shiftCode:'09_18',shiftLabel:'09–18',startedAt:new Date(day+'T06:00:00Z'),endedAt:new Date(day+'T15:00:00Z'),status:'completed'}});
+    await prisma.workDayEntry.create({data:{userId:magomed.id,date:day,department:'retail',shiftCode:'09_20',shiftLabel:'09–20',startedAt:new Date(day+'T06:00:00Z'),status:'active'}});
+    const mapping={id:target.id,terminalKey:target.terminalKey,oneCAcquiringTerminalRef:target.oneCAcquiringTerminalRef,oneCCashRegisterRef:target.oneCCashRegisterRef,kktRegistrationNumber:target.kktRegistrationNumber,activeFrom:target.effectiveFrom.toISOString()};
+    const record:any={matchingKey:marker+'-retained-payment-'+index,mappingId:target.id,status:'pending',reasonCode:'ONE_C_CANDIDATE_PENDING',candidateCount:0,operationType:'sale',amountKopecks:50000,evaluatedAt:evaluated,bankOperationKey:marker+'-retained-bank-'+index,evidence:{bankTransactionDate:at},sourceCheckedAt:{tbank:evaluated,oneC:evaluated,ofd:evaluated},sourceCompleteness:{tbank:true,oneC:true,ofd:true},history:[]};
+    const sync=(r:any)=>syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[r],evaluatedAt:r.evaluatedAt} as any,mapping,oneCChecks:[]});
+    await sync(record);await sync(record);
+    const review=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{reviewKey:terminalFiscalEmployeeReviewKey(record)}});
+    assert.equal(review.employeeId,magomed.id);assert.equal(review.status,'open');
+    assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),1);
+    await sync({...record,status:'confirmed',reasonCode:'MATCH_CONFIRMED',oneCCheckKey:'late-retained-check'});
+    assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}})).status,'resolved');
+    assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id,status:'pending'}}),0);
+   }finally{
+    const reviews=await prisma.terminalFiscalEmployeeReview.findMany({where:{mappingId:{in:maps.map(m=>m.id)}},select:{id:true}});
+    await prisma.adminInboxEvent.deleteMany({where:{sourceId:{in:reviews.map(r=>r.id)}}});
+    await prisma.terminalFiscalEmployeeReview.deleteMany({where:{id:{in:reviews.map(r=>r.id)}}});
+    await prisma.user.deleteMany({where:{id:{in:[admin.id,owner.id,magomed.id]}}});
+    await prisma.terminalFiscalMapping.updateMany({where:{id:{in:maps.map(m=>m.id)}},data:{isActive:false}});
+   }
+  }
+ }finally{
+  if(previous===undefined)delete process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;else process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED=previous;
+ }
 });

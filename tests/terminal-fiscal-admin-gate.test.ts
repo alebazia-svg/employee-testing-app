@@ -304,3 +304,80 @@ test('a genuine ambiguity names its cause and refreshes one existing event witho
  assert.equal(f.events[0].title,'В ОФД отличается сумма оплаты картой');
  assert.match(f.events[0].body,/повторно пробивать чек до проверки не нужно/);
 });
+
+test('home seating survives either colleague leaving without inheriting the vacant terminal',async()=>{
+  const workers=[{id:4,name:'Абшаева Зухра',home:null},{id:3,name:'Чеченова Милана',home:null}];
+  const keys=['2332022071','1010808747019437'];
+  for(let left=0;left<2;left++){
+    const f=routingDb({target:'kkm',workers});
+    const end=new Date(+f.at-60000);
+    f.db.workDayEntry.findMany=async()=>workers.map((u,i)=>({userId:u.id,user:{name:u.name},startedAt:new Date(+end-3600000),endedAt:i===left?end:null}));
+    for(let seat=0;seat<2;seat++){
+      f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:'kkm',terminalKey:keys[seat]});
+      assert.equal((await fiscalProposedRecipients(f.db,new Date(+end-1),'map')).primary?.id,workers[seat].id);
+      for(const at of [end,f.at])assert.equal((await fiscalProposedRecipients(f.db,at,'map')).primary?.id,seat===left?undefined:workers[seat].id);
+    }
+    assert.equal((await fiscalProposedRecipients(f.db,f.at,null)).confidence,'uncertain');
+    assert.equal((await fiscalProposedRecipients(f.db,new Date(+end-7200000),'map')).confidence,'uncertain');
+  }
+});
+test('Magomed replaces only the absent owner and an explicit temporary assignment wins',async()=>{
+  for(const owner of [{id:4,name:'Абшаева Зухра',key:'2332022071'},{id:3,name:'Чеченова Милана',key:'1010808747019437'}]){
+    const f=routingDb({target:'kkm',workers:[{...owner,home:null},{id:5,name:'Костеренко Магомед',home:null}]});
+    f.db.terminalFiscalMapping.findMany=async()=>[{oneCCashRegisterRef:'z',terminalKey:'2332022071'},{oneCCashRegisterRef:'m',terminalKey:'1010808747019437'}];
+    for(const key of ['2332022071','1010808747019437']){
+      f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:key===owner.key?'z':'m',terminalKey:key});
+      assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary?.id,key===owner.key?owner.id:5);
+    }
+  }
+  const f=routingDb({target:'kkm',workers:[{id:3,name:'Чеченова Милана',home:null}],assignedUserId:3});
+  f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:'kkm',terminalKey:'2332022071'});
+  assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).reason,'manual_kkm_assignment');
+  f.db.workdayKkmAssignment.findMany=async()=>[{userId:3},{userId:5}];
+  assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary,null);
+});
+
+test('Magomed retains either established replacement seat only within the same continuous shift',async()=>{
+  for(const owner of [{id:4,name:'Абшаева Зухра',key:'2332022071'},{id:3,name:'Чеченова Милана',key:'1010808747019437'}]){
+    const f=routingDb({target:'kkm',workers:[{...owner,home:null},{id:5,name:'Костеренко Магомед',home:null}]});
+    const end=new Date(+f.at-60000),start=new Date(+end-3600000);
+    const replacementKey=owner.key==='2332022071'?'1010808747019437':'2332022071';
+    f.db.workDayEntry.findMany=async()=>[
+      {userId:owner.id,user:{name:owner.name},startedAt:start,endedAt:end},
+      {userId:5,user:{name:'Костеренко Магомед'},startedAt:start,endedAt:null},
+    ];
+    f.db.terminalFiscalMapping.findMany=async()=>[{oneCCashRegisterRef:'z',terminalKey:'2332022071'},{oneCCashRegisterRef:'m',terminalKey:'1010808747019437'}];
+    for(const key of [owner.key,replacementKey]){
+      f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:key===owner.key?'z':'m',terminalKey:key});
+      for(const at of [new Date(+end-1),end,f.at]){
+        const result=await fiscalProposedRecipients(f.db,at,'map');
+        assert.equal(result.primary?.id,key===replacementKey?5:(at<end?owner.id:undefined));
+        if(key===replacementKey&&at>=end)assert.equal(result.reason,'retained_workstation');
+      }
+    }
+    // A real temporary reassignment overrides the retained automatic seat.
+    f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:'z',terminalKey:owner.key});
+    f.db.workdayKkmAssignment.findMany=async({where}:any)=>where.effectiveFrom.lte>=end?[{userId:5}]:[];
+    assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).reason,'manual_kkm_assignment');
+    // An expired manual assignment is not evidence of automatic seating.
+    f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:'m',terminalKey:replacementKey});
+    f.db.workdayKkmAssignment.findMany=async({where}:any)=>where.effectiveFrom.lte<end?[{userId:5}]:[];
+    assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary,null);
+    f.db.workdayKkmAssignment.findMany=async()=>[];
+    // Starting after the colleague left provides no known seating.
+    f.db.workDayEntry.findMany=async()=>[
+      {userId:owner.id,user:{name:owner.name},startedAt:start,endedAt:end},
+      {userId:5,user:{name:'Костеренко Магомед'},startedAt:end,endedAt:null},
+    ];
+    assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary,null);
+    f.db.workDayEntry.findMany=async()=>[{userId:5,user:{name:'Костеренко Магомед'},startedAt:start,endedAt:end}];
+    assert.equal((await fiscalProposedRecipients(f.db,end,'map')).primary,null);
+  }
+});
+test('an ambiguous prior three-person shift cannot establish Magomed seating',async()=>{
+ const workers=[{id:4,name:'Абшаева Зухра',home:null},{id:3,name:'Чеченова Милана',home:null},{id:5,name:'Костеренко Магомед',home:null}];
+ const f=routingDb({target:'z',workers});
+ f.db.terminalFiscalMapping.findUnique=async()=>({oneCCashRegisterRef:'z',terminalKey:'2332022071'});
+ f.db.workDayEntry.findMany=async()=>workers.map(u=>({userId:u.id,user:{name:u.name},startedAt:new Date(+f.at-3600000),endedAt:u.id===5?null:new Date(+f.at-1000)}));
+ assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary,null);
+});

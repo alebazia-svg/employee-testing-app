@@ -2,7 +2,16 @@
 
 ## Current Purpose
 
-Latest cash-closure baseline (2026-11-01): production 1.20.6 reuses the existing
+Latest cash-closure read path (2026-11-02): production 1.21.3 starts OFD reads
+for a known workplace before existing handover refreshes and in parallel with
+1C receipt/shift reads. Preserve the agreed immediate photo/not-printed fallback;
+there is no mandatory one-minute waiting step or change to notification rules.
+Exact fiscal identity, latest-receipt and reopened-shift guards remain in place.
+OFD request timing/completeness is saved in closure evidence for diagnosis.
+Verified release and unchanged historical facts:
+`../ops/kkm-ofd-read-release-20261102.md`.
+
+Workplace baseline (2026-11-01): production 1.20.6 reuses the existing
 actual-workday/home-workplace responsibility rule when cashier receipts cannot
 identify a KKT, including days without sales. An exact OFD closure remains the
 proof; no new manual employee/device assignment is required for a known home
@@ -709,3 +718,30 @@ not the preferred first channel for this pilot.
   Free disk after deployment: 17 GiB. No migration/manual production DB write.
 - Physical iPhone and actual system push display remain unverified. The photo/
   no-print write scenarios were tested only on the isolated demo, not real staff.
+
+## Owner-approved shift extension — 2026-11-01, prepared locally
+
+Bela approved a one-click ADMIN proposal after an early departure: when the
+09:00–18:00 Retail employee remains alone after the 11:00–20:00 colleague ends
+early, offer 09:00–20:00 in Workday. Never extend automatically. A replacement
+starting before approval invalidates the stale proposal. Confirm under a
+serializable transaction; preserve actual QR/start/end, lateness snapshots,
+completed tasks, cash facts and original shift in WorkdayShiftChange. Pending closing/handover deadlines move by two hours; a future, uncompleted
+midpoint cash recount moves from 13:30 to 14:30. Already due/completed recounts
+retain their original facts and deadline. Persist ADMIN actor and
+one employee notice atomically; repeated clicks produce no duplicates. No schema
+migration or 1C writes. Already approved extension is never silently shortened.
+
+Fiscal manager display may confirm a single active Retail employee only against
+the mapped 1C cashier identity. Missing/unmapped/conflicting cashiers keep their
+existing uncertainty/conflict; employee review routing retains its two-person
+policy. No change to payment matching or financial totals.
+
+Implementation branch codex/workday-extension-confirm, isolated local DB
+workday_extension_test, port 3241. Released 1 November as 1.20.9 / 2249680; actual ADMIN proposal and solo 1C cashier attribution verified. Real shift confirmation remains Bela’s own action.
+
+2026-11-01 owner authorized release for today's real situation: existing minute
+notification job queues one idempotent ADMIN proposal, also visible in inbox.
+Approval retains the employee extension notice and the existing “Завершить
+раньше” path; handover is at 20:00. No automatic approval or new escalation flow.
+A fresh pending-task deadline check prevents dispatching a stale 18:00 reminder.

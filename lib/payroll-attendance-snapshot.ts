@@ -21,6 +21,8 @@ export type PayrollAttendanceSourceSummary = {
   appDates: string[];
   googleFallbackDates: string[];
   overlapDates: string[];
+  /** Explicit owner-confirmed exception, distinct from a QR start. */
+  ownerConfirmedDates?: string[];
 };
 
 export type PayrollAttendanceSnapshotPayload = {
@@ -82,6 +84,9 @@ function isSourceSummary(value: unknown, periodKey: string): value is PayrollAtt
     if (!Array.isArray(dates) || new Set(dates).size !== dates.length
       || !dates.every((date) => validDate(date) && date.startsWith(`${periodKey}-`) && date >= row.fromDate!)) return false;
   }
+  if (row.ownerConfirmedDates !== undefined && (!Array.isArray(row.ownerConfirmedDates)
+    || new Set(row.ownerConfirmedDates).size !== row.ownerConfirmedDates.length
+    || !row.ownerConfirmedDates.every(date => validDate(date) && date.startsWith(periodKey + '-') && date >= row.fromDate!))) return false;
   return row.googleFallbackDates!.every((date) => !row.appDates!.includes(date))
     && row.overlapDates!.every((date) => row.appDates!.includes(date));
 }

@@ -1,5 +1,5 @@
 import type { PayrollCashRead } from './payroll-one-c-payments';
-import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance } from './payroll-payment-breakdown';
+import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance, MUHAMED_ONE_C_REF, MUHAMED_PAYROLL_NAME } from './payroll-payment-breakdown';
 
 type Payment = PayrollCashRead['documents'][number];
 export function payrollPaymentDateColumn(period: string, issuedOn: string): 'first' | 'second' | 'other' {
@@ -12,6 +12,10 @@ export type PaymentMonth = { period: string; advance: number; days: number; basi
 // with the owner on Oct 18. These are bounded allocations, not a date heuristic.
 // Bela's Sep 2 issuance deliberately remains unallocated across older debt.
 const reconciledPayments = [
+  // Owner-confirmed October salary settlement; keep strict document/recipient facts.
+  { employee: MUHAMED_PAYROLL_NAME, key: '1a0d2b56-d604-11f1-95c1-002590803daf:2',
+    employeeRef: MUHAMED_ONE_C_REF, documentNumber: '00OF-002011',
+    documentDate: '2026-11-01', amount: 16500, period: '2026-10' },
   { employee: 'Тохов Астемир', key: 'f2401c90-a79a-11f1-8f0e-002590803daf:1',
     employeeRef: '0fae75a8-b8d2-11ed-a2b7-0025901e48ee', documentNumber: '00OF-001619',
     documentDate: '2026-09-03', amount: 30000, period: '2026-08' },

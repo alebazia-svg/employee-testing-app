@@ -1,3 +1,8 @@
+// Owner-confirmed actual recipient (2026-11-01), distinct from the legacy trainee.
+export const MUHAMED_ONE_C_REF = 'e046e927-d449-11f1-95c1-002590803daf';
+// Retain the saved payroll identity; the shared display helper shows «Мухамед».
+export const MUHAMED_PAYROLL_NAME = 'Кумыков Мухаммед';
+
 export const PROCUREMENT_TRAINEE_REF = '70dbcdd8-ce99-11f0-a343-002590803daf';
 
 /** Owner-confirmed October advance; changed source facts are not inferred. */

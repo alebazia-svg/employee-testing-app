@@ -5,6 +5,7 @@ import ts from 'typescript';
 import * as snapshots from '../lib/payroll-attendance-snapshot';
 import * as summaries from '../lib/payroll-attendance-summary';
 import * as sources from '../lib/payroll-attendance-source';
+import * as muhamedSources from '../lib/payroll-muhamed-day-source';
 import * as dianaSources from '../lib/payroll-diana-day-source';
 import { payrollDayAccountingEnabled } from '../lib/payroll-day-review';
 import { overlayApprovedDays } from '../lib/payroll-day-review-store';
@@ -17,19 +18,26 @@ const savedPayload = snapshots.createPayrollAttendanceSnapshotPayload({
   period: { monthIndex: 9, year: 2026, periodKey: '2026-10' }, attendanceMode: 'google-sheets', attendanceMessage: '', scheduleMode: 'google-sheets', scheduleMessage: '',
   formSummaries: [{ employee, formRows: 1, uniqueFormDates: 1, workedDays: 1, lateCount: 0 }], scheduleSummaries: [{ employee, scheduleDays: 1 }],
 });
-async function run(options: { denied?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
+async function run(options: { denied?: boolean; muhamedError?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
   const calls: string[] = [];
-  const saved = options.noSaved ? null : { payload: savedPayload, sourceCheckedAt: new Date('2026-10-18T06:00:00Z'), updatedAt: new Date('2026-10-18T06:00:00Z') };
+  const month = options.month === 10 ? '11' : '10';
+  const effectiveSaved = month === '11' ? {...savedPayload, period:{monthIndex:10,year:2026,periodKey:'2026-11'}} : savedPayload;
+  const saved = options.noSaved ? null : { payload: effectiveSaved, sourceCheckedAt: new Date('2026-10-18T06:00:00Z'), updatedAt: new Date('2026-10-18T06:00:00Z') };
   const dependencies = {
     withPayrollSourceLock: async (task: () => Promise<Response>) => task(),
-    ...snapshots, ...summaries, ...sources, ...dianaSources, payrollDayAccountingEnabled, overlayApprovedDays,
-    getMoscowDateKey: () => '2026-10-19',
+    ...snapshots, ...summaries, ...sources, ...dianaSources, ...muhamedSources, payrollDayAccountingEnabled, overlayApprovedDays,
+    getMoscowDateKey: () => `2026-${month}-19`,
     requireAdminApi: async () => options.denied ? { ok: false, response: Response.json({}, { status: 403 }) } : { ok: true },
-    getAttendanceRows: async () => { calls.push('google'); if (options.googleError) throw Error('unavailable'); return { mode: 'google-sheets', message: '', rows: options.emptyGoogle ? [] : [{ timestamp: '18.10.2026 08:50:00', employee, date: '2026-10-18', action: 'Начало рабочего дня', time: '08:50', shift: '09:00–19:00', comment: '' }] }; },
-    getScheduleRows: async () => ({ mode: 'google-sheets', message: '', rows: [{ date: '18.10.2026', employee, plannedWork: true }, { date: '18.10.2026', employee: 'Диана', plannedWork: true }, { date: '19.10.2026', employee: 'Диана', plannedWork: false }] }),
+    getAttendanceRows: async () => { calls.push('google'); if (options.googleError) throw Error('unavailable'); return { mode: 'google-sheets', message: '', rows: options.emptyGoogle ? [] : [{ timestamp: `18.${month}.2026 08:50:00`, employee, date: `2026-${month}-18`, action: 'Начало рабочего дня', time: '08:50', shift: '09:00–19:00', comment: '' }] }; },
+    getScheduleRows: async () => ({ mode: 'google-sheets', message: '', rows: [{ date: `18.${month}.2026`, employee, plannedWork: true }, { date: `18.${month}.2026`, employee: 'Диана', plannedWork: true }, { date: `19.${month}.2026`, employee: 'Диана', plannedWork: false }] }),
     prisma: {
       payrollAttendanceSnapshot: { findUnique: async () => saved, upsert: async () => { calls.push('save-source-snapshot'); return { updatedAt: new Date() }; } },
-      user: { findMany: async (query: {where: {OR?: unknown}}) => { if (query.where.OR) { calls.push('diana-pwa'); if (options.dianaError) throw Error('Diana source read failed'); return [{id:9,name:'Кумахова Диана',payrollName:'Кумахова Диана',workDays:[{userId:9,date:'2026-10-19',startedAt:new Date('2026-10-19T09:00:00+03:00'),status:'active'}]}]; } calls.push('pwa'); if(options.appError) throw Error('DB read failed'); return [{ id: 8, name: employee, payrollName: employee, workDays: ['18','19'].map((day) => ({ userId: 8, date: `2026-10-${day}`, startedAt: new Date(`2026-10-${day}T08:46:00+03:00`), status: day === '18' ? 'completed' : 'active' })) }]; } },
+      user: { findMany: async (query: {where: {OR?: Array<{payrollName?:string}>}}) => {
+        if (query.where.OR?.some(row=>row.payrollName===muhamedSources.MUHAMED_DAY_NAME)) {
+          calls.push('muhamed-pwa'); if(options.muhamedError) throw Error('Muhamed QR source failed');
+          return [{id:11,name:'Кумыков Мухамед',payrollName:muhamedSources.MUHAMED_DAY_NAME,role:'EMPLOYEE',department:'procurement',isActive:true,portalArea:'WORKDAY',workDays:[]}];
+        }
+        if (query.where.OR) { calls.push('diana-pwa'); if (options.dianaError) throw Error('Diana source read failed'); return [{id:9,name:'Кумахова Диана',payrollName:'Кумахова Диана',workDays:[{userId:9,date:`2026-${month}-19`,startedAt:new Date(`2026-${month}-19T09:00:00+03:00`),status:'active'}]}]; } calls.push('pwa'); if(options.appError) throw Error('DB read failed'); return sources.PAYROLL_APP_ATTENDANCE_CUTOVERS.map(rule=>({ id: rule.userId, name: rule.employee, payrollName: rule.employee, workDays: rule.userId===8 ? ['18','19'].map((day) => ({ userId: 8, date: `2026-${month}-${day}`, startedAt: new Date(`2026-${month}-${day}T08:46:00+03:00`), status: day === '18' ? 'completed' : 'active' })) : [] })); } },
     },
     console: { error: () => undefined },
   };
@@ -41,7 +49,7 @@ async function run(options: { denied?: boolean; dianaError?: boolean; appError?:
 
 test('refresh writes one source snapshot with unique PWA/Google days; payroll runs are never accessed', async () => {
   const result = await run();
-  assert.equal(result.body.formSummaries[0].uniqueFormDates, 2);
+  assert.equal(result.body.formSummaries.find((row:{employee:string})=>row.employee===employee).uniqueFormDates, 2);
   assert.equal(result.body.attendanceMode, 'google-sheets+pwa');
   assert.equal(result.body.scheduleSummaries.find((row: {employee:string}) => row.employee === 'Кумахова Диана').scheduleDays, 2);
   assert.deepEqual(result.calls, ['google', 'pwa', 'diana-pwa', 'save-source-snapshot']);
@@ -82,3 +90,15 @@ test('pre-cutover refresh never reads PWA', async () => {
   assert.ok(!result.calls.includes('pwa'));
   assert.equal(result.body.attendanceMode, 'google-sheets');
 });
+
+ test('November refresh stores Muhamed owner-confirmed day, never reads or writes payroll runs', async()=>{
+  const result=await run({month:10,noSaved:true});
+  assert.equal(result.response.status,200);
+  assert.equal(result.body.formSummaries.find((r:{employee:string})=>r.employee===muhamedSources.MUHAMED_DAY_NAME).uniqueFormDates,1);
+  assert.deepEqual(result.body.attendanceSources.find((r:{employee:string})=>r.employee===muhamedSources.MUHAMED_DAY_NAME).ownerConfirmedDates,['2026-11-01']);
+  assert.ok(result.calls.includes('save-source-snapshot'));
+ });
+ test('Muhamed source failure keeps last-good source and never saves partial November data',async()=>{
+  const result=await run({month:10,muhamedError:true});assert.equal(result.body.snapshot.servedFrom,'stored');
+  assert.deepEqual(result.body.formSummaries,savedPayload.formSummaries);assert.ok(!result.calls.includes('save-source-snapshot'));
+ });

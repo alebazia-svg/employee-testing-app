@@ -2,6 +2,7 @@ import {buildFiscalTransactions} from './terminal-fiscal-transaction-report';
 import { bankOperationKey, canonicalFiscalKey, type BankOperation, type OneCCheck, type OfdReceipt, type MatchingAuditRecord } from './terminal-fiscal-matching';
 export type DailyFiscalEvidence = {
   bankOperations: BankOperation[]; oneCChecks: OneCCheck[]; ofdReceipts: OfdReceipt[];
+  reversals?:Array<{originalRef:string;refundRef:string}>;
   mapping?:{oneCCashRegisterRef:string;kktRegistrationNumber:string;terminalKey:string};
   records: MatchingAuditRecord[]; complete: {bank:boolean;oneC:boolean;ofd:boolean};
 };

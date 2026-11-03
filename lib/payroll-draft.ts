@@ -93,7 +93,7 @@ export function payrollDraftComparisonFingerprint(draft: PayrollDraft | null, pe
     ...draft,
     manual: Object.fromEntries(Object.entries(draft.manual).flatMap(([name, row]) => {
       const fields = Object.fromEntries(Object.entries(row).filter(([key, value]) =>
-        value !== '' && value !== undefined && !(name === 'Кумыков Мухаммед' && period >= '2026-10' && key === 'workedDays')));
+        value !== '' && value !== undefined && !(name === 'Кумыков Мухаммед' && period === '2026-10' && key === 'workedDays')));
       return Object.keys(fields).length ? [[name, fields]] : [];
     })),
     fixed: Object.fromEntries(Object.entries(draft.fixed).flatMap(([name, row]) => {
@@ -110,7 +110,7 @@ export function payrollDraftDifferences(local: PayrollDraft, saved: PayrollDraft
   const display = (value: unknown) => value === undefined || value === '' ? 'Не указано' : String(value);
   function compare(employee: string, a: Record<string, unknown>, b: Record<string, unknown>) {
     for (const field of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      if (employee === 'Кумыков Мухаммед' && period >= '2026-10' && field === 'workedDays') continue;
+      if (employee === 'Кумыков Мухаммед' && period === '2026-10' && field === 'workedDays') continue;
       if ((a[field] ?? '') !== (b[field] ?? '')) differences.push({ employee, field: labels[field] ?? field, local: display(a[field]), saved: display(b[field]) });
     }
   }

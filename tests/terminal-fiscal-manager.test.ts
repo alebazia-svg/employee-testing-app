@@ -75,3 +75,28 @@ test('an unknown manager becomes an ADMIN question only after the existing quiet
  await syncFiscalManagerAlert(f.db,record,[]);assert.equal(f.events.length,0);
  await syncFiscalManagerAlert(f.db,{...record,evaluatedAt:'2026-10-28T10:00Z'},[]);assert.equal(f.events[0].type,'fiscal_manager.attention');assert.match(f.events[0].body,/однозначного ответственного/);
 });
+
+test('a sole replacement has no guessed workstation; actual 1C cashier remains authoritative',async()=>{
+ const f=dbFixture(),at=new Date('2026-10-28T09:20Z');f.setEnd(new Date('2026-10-28T09:00Z'));
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'magomed',name:magomed.name}]})).state,'one_c');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'milana',name:milana.name}]})).state,'one_c');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'unknown',name:magomed.name}]})).state,'one_c');
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[]})).state,'unknown');
+});
+
+test('remaining home owner is stable before and after 1C arrives; a real cashier conflict still alerts once',async()=>{
+ const f=dbFixture(),at=new Date('2026-11-02T15:09Z');
+ f.db.workDayEntry.findMany=async()=>[
+  {userId:3,startedAt:new Date('2026-11-02T07:30Z'),endedAt:null,user:{name:milana.name}},
+  {userId:4,startedAt:new Date('2026-11-02T05:57Z'),endedAt:new Date('2026-11-02T15:01Z'),user:{name:'Абшаева Зухра'}},
+ ];
+ const record:any={matchingKey:'home-payment',mappingId:'m',amountKopecks:50000,evaluatedAt:'2026-11-02T16:00Z',evidence:{bankTransactionDate:at.toISOString()},sourceCompleteness:{tbank:true,oneC:true,ofd:true}};
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[]})).state,'shift');
+ await syncFiscalManagerAlert(f.db,record,[]);assert.equal(f.events.length,0);
+ assert.equal((await loadFiscalManager(f.db,{at,mappingId:'m',cashiers:[{ref:'milana',name:milana.name}]})).state,'confirmed');
+ const other=[{ref:'magomed',name:magomed.name}];
+ await syncFiscalManagerAlert(f.db,record,other);await syncFiscalManagerAlert(f.db,record,other);
+ assert.equal(f.events.length,1);assert.equal(f.events[0].type,'fiscal_manager.attention');
+ await syncFiscalManagerAlert(f.db,record,[{ref:'milana',name:milana.name}]);
+ assert.equal(f.events[0].type,'fiscal_manager.resolved');
+});

@@ -126,3 +126,17 @@ a.tax-summary-row:hover{background:#faf8f5}
 .tax-income-status[data-recognition="omitted"]{background:#fbeceb;color:#983d37}
 
 .tax-limit-evidence-links{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+
+.tax-source-evidence .tax-panel-head { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.tax-source-evidence .tax-panel-head > div { flex: 1 1 260px; min-width: 0; }
+.tax-source-evidence .tax-panel-head > .tax-status { max-width: 100%; white-space: normal; }
+@media (max-width: 640px) {
+  .tax-source-evidence .tax-table { display: block; min-width: 0; width: 100%; }
+  .tax-source-evidence .tax-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); }
+  .tax-source-evidence .tax-table tbody { display: block; }
+  .tax-source-evidence .tax-table tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 16px 0; border-bottom: 1px solid #eee7df; }
+  .tax-source-evidence .tax-table td { display: block; min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .tax-source-evidence .tax-table td:first-child { grid-column: 1 / -1; }
+  .tax-source-evidence .tax-table td:nth-child(2)::before { content: 'Доход за год'; display: block; font-size: 11px; color: #716b65; margin-bottom: 4px; }
+  .tax-source-evidence .tax-table td:nth-child(3)::before { content: 'Остаток до лимита'; display: block; font-size: 11px; color: #716b65; margin-bottom: 4px; }
+}

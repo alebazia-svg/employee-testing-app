@@ -2208,8 +2208,9 @@ export async function getSalesRealizationFiscalOperations(
   return requestSalesRealizationFiscalOperations(config, normalizedRef);
 }
 
-export async function getCashStatementDimensions(): Promise<OneCCashStatementDimensionsResult> {
+export async function getCashStatementDimensions(options?: { timeoutMs: number }): Promise<OneCCashStatementDimensionsResult> {
   const config = getConfig();
+  if (options && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) config.timeoutMs = Math.min(config.timeoutMs, Math.floor(options.timeoutMs));
   const missingConfig = getMissingConfig(config);
 
   if (missingConfig.length) {
@@ -2230,8 +2231,10 @@ export async function getCashStatementDimensions(): Promise<OneCCashStatementDim
 
 export async function getCashStatementSummary(
   params: OneCCashStatementSummaryParams,
+  options?: { timeoutMs: number },
 ): Promise<OneCCashStatementSummaryResult> {
   const config = getConfig();
+  if (options && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) config.timeoutMs = Math.min(config.timeoutMs, Math.floor(options.timeoutMs));
   const missingConfig = getMissingConfig(config);
 
   if (missingConfig.length) {

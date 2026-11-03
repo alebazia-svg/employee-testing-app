@@ -29,6 +29,21 @@ project from scratch.
 
 ## Read First By Task
 
+- Google Form attendance dates: `../ops/google-attendance-date-release-20261102.md`
+  — released/verified 1.21.6. Parse Russian day/month explicitly, never through
+  native Date guessing. Invalid timestamps fail source refresh; persisted payroll
+  snapshots/runs and schedules were not rewritten. Liana's false November 2 marks
+  were February 11 entries; production UI now shows her day off without hours.
+
+- Daily cash recount source failure: `cash-recount-source-failure-20261102.md` —
+  released/verified 1.21.5 / e39bc5e. Bounded immediate reads, save actual amount
+  on failure, explicit unverified history; never backfill historical balance.
+
+- Retail workstation responsibility and retained Magomed seating: `decision-log.md`
+  (2026-11-02) — released/verified 1.21.4 / a48ee29. Home seating survives a
+  colleague leaving; Magomed keeps a proven replacement seat in the same shift;
+  dated manual assignment wins. Financial matching and the 30-minute grace remain.
+
 - Personal fiscal help and short employee payment copy: `fiscal-help-preview-20261026.md` —
   released/verified 1.18.14 / e778abf on 2026-10-27 after owner visual approval.
   Separate named help push; actual printed terminal check number; 30-minute first
@@ -483,3 +498,21 @@ Audit-date October totals after union: Milana20,Zukhra18,Zalina15,Magomed22.
 Existing Liana/Diana rules, lateness policy and saved FINAL statements retained. Diana has no recorded October app starts or
 working Google schedule cells in this audit. See the note for exact counts/dates
 and source freshness; do not describe all staff days as fully accounted for.
+
+
+Muhamed recipient repair released 2026-11-01 as1.20.10 /6c817cc: see
+`payroll-muhamed-link-candidate-20261101.md`. Exact actual1C recipient and
+October/November1 document facts restore accrued24,000, paid24,000 (advance7,500)
+and zero remaining. Visible name Кумыков Мухамед; saved canonical identity retained.
+Source documents, amounts and stored payroll/rules unchanged. Production ADMIN,
+health, commit, metadata and before/after hashes verified; rollback images retained.
+Separate two-hour schedule-repeat candidate remains unreleased.
+
+
+Muhamed actual-day rule released2026-11-01 as1.21.0 /01754da:
+`payroll-muhamed-november-days-20261101.md`. From November1,2,000 per real QR
+start; one owner-confirmed exceptionNovember1; November2 off in audited calendar.
+No fixed20-day norm, Google/calendar paid-day fallback or automatic schedule copy.
+October, Astemir, saved runs and1C documents unchanged, verified before/after.
+November ADMIN still requires first closed1C source data. Real first QR pending.
+New image registered healthy with current plus two verified rollback reserves.
