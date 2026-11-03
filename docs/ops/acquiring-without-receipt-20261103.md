@@ -107,3 +107,16 @@ owner review retention, incomplete source/peer preservation and confirmed closur
 No extension to PKO/credit-realization policies was implemented; this candidate
 covers the specific acquiring-operation case the owner described. Existing native
 cash receipts with delayed OFD confirmation keep their prior ADMIN policy.
+
+
+## Final owner wording — supersedes the longer copy above
+
+Bela requested simple «эквайринг», then explicitly chose the employee instruction
+«Пробейте чек» rather than another request to check. Employee title is «Пробейте чек»;
+body retains the existing payment amount/time/method/printed terminal number and
+one short line «Эквайринг №00OF-000087.» No repeated explanation or instruction.
+The owner inbox remains descriptive «Нет чека по эквайрингу». Existing missing-
+1C-document notices are unchanged. Receipt metadata accepts both earlier long
+and current short acquiring labels so historical messages remain readable.
+31 focused policy/copy tests and the PostgreSQL transition scenario pass after
+this text change. Current UI preview is local only; no production install or send.
