@@ -92,7 +92,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
     const acquiringCopy = options.missingAcquiringReceipt ? acquiringReceiptCopy({operationAt:at,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,documentNumber:options.acquiringDocumentNumber,relative:false}) : null;
-    const title = acquiringCopy?.title ?? (record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? terminalFiscalReasonLabel(record.reasonCode) : 'В 1С нет чека');
+    const title = acquiringCopy ? 'Нет чека по эквайрингу' : (record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? terminalFiscalReasonLabel(record.reasonCode) : 'В 1С нет чека');
     const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK'
       ? 'Есть возможный чек ОФД. Требуется связать документы; просьба пробить повторный чек не отправляется.'
       : possibleSplit

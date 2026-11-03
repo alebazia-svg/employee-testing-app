@@ -25,6 +25,6 @@ test('fiscal window exposes evidence without offering duplicate or premature rec
  const responsible=render({responsible:'Абшаева Зухра',workstation:'Розница 2 (Абшаева Зухра)'});assert.match(responsible,/Ответственный определён по рабочему месту/);assert.match(responsible,/Розница 2 \(Абшаева Зухра\)/);assert.match(responsible,/Ошибка сотрудника ещё не подтверждена/);assert.doesNotMatch(responsible,/Пока не определён/);
  const hypothesis=render({googleHint:{name:'Магомед',basis:'По отметке Приложение'}});assert.match(hypothesis,/не подтверждено чеком 1С/);
  const acquiring=render({reasonCode:'ACQUIRING_RECEIPT_NOT_FOUND',hasOneCCheck:true,pendingAdmin:false,simpleCheck:false,canApprove:false});
- assert.match(acquiring,/Не найден кассовый чек по эквайрингу/);assert.match(acquiring,/Эквайринговая операция в 1С есть/);assert.match(acquiring,/из этой операции/);assert.doesNotMatch(acquiring,/без найденного чека 1С/);
+ assert.match(acquiring,/Нет чека по эквайрингу/);assert.match(acquiring,/Эквайринг в 1С есть/);assert.match(acquiring,/Проверьте кассовый чек/);assert.doesNotMatch(acquiring,/без найденного чека 1С/);
 
 });

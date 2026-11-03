@@ -9,7 +9,7 @@ import {TerminalFiscalChainEvidence} from './TerminalFiscalChainEvidence';
 import {TerminalFiscalReviewConversation} from './TerminalFiscalReviewConversation';
 export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:FiscalReviewData;onChanged?:()=>void;onBusyChange?:(busy:boolean)=>void}) {
  const explanations:Record<string,[string,string]>={
-  ACQUIRING_RECEIPT_NOT_FOUND:['Не найден кассовый чек по эквайрингу','Эквайринговая операция в 1С есть. Кассовый чек по ней не найден. Проверьте, пробит ли он из этой операции.'],
+  ACQUIRING_RECEIPT_NOT_FOUND:['Нет чека по эквайрингу','Эквайринг в 1С есть. Проверьте кассовый чек.'],
   ONE_C_CANDIDATE_PENDING:['Чек 1С пока не найден','Оплата есть, связанный чек пока не найден. Проверьте продажу перед отправкой сотруднику.'],
   ONE_C_CANDIDATE_NOT_FOUND:['Чек в 1С не найден','В загруженных документах не найдена связь с оплатой. Это основание проверить продажу, а не требование пробить чек повторно.'],
   OFD_RECEIPT_PENDING:['Ожидается чек ОФД','Документ 1С найден. Фискальное подтверждение ещё ожидается.'],

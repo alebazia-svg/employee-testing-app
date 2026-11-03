@@ -9,12 +9,12 @@ export function acquiringReceiptDocumentNumber(check?: OneCCheck) {
 }
 
 export function acquiringReceiptMetadata(notices: Array<{body:string}>) {
-  return /Эквайринговая операция № ([\p{L}\d-]{1,40})\./u.exec(notices.find(notice => notice.body.includes('Эквайринговая операция № '))?.body ?? '')?.[1] ?? null;
+  return /(?:Эквайринг|Эквайринговая операция) № ([\p{L}\d-]{1,40})\./u.exec(notices.find(notice => /(?:Эквайринг|Эквайринговая операция) № /.test(notice.body))?.body ?? '')?.[1] ?? null;
 }
 
 export function acquiringReceiptCopy(input: Parameters<typeof terminalPaymentCopy>[0] & {documentNumber?:string|null}) {
   const payment = terminalPaymentCopy(input);
-  const document = input.documentNumber ? `Эквайринговая операция № ${input.documentNumber}.` : 'Эквайринговая операция в 1С есть.';
-  const problem = `${document} Кассовый чек по ней не найден. Проверьте, пробит ли он из этой операции.`;
-  return {...payment,title:'Не найден кассовый чек по эквайрингу',problem,body:`${payment.payment}\n${problem}`};
+  const document = input.documentNumber ? `Эквайринг № ${input.documentNumber}.` : 'Эквайринг в 1С есть.';
+  const problem = document;
+  return {...payment,title:'Пробейте чек',problem,body:`${payment.payment}\n${problem}`};
 }

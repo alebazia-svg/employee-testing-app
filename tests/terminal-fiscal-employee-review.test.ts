@@ -645,8 +645,8 @@ test('acquiring payment without a fiscal receipt uses the existing missing-recei
 test('acquiring-specific wording distinguishes the payment document from its missing fiscal receipt',async()=>{
  const {ACQUIRING_RECEIPT_NOT_FOUND,acquiringReceiptCopy,acquiringReceiptMetadata,acquiringReceiptDocumentNumber}=await import('../lib/terminal-acquiring-receipt-review');
  const copy=acquiringReceiptCopy({operationAt:new Date('2026-11-03T13:05:37+03:00'),now:new Date('2026-11-03T19:00:00+03:00'),amountKopecks:2550000,receiptNumber:'000507',method:'TERM_CARD',documentNumber:'00OF-000087'});
- assert.equal(copy.title,'Не найден кассовый чек по эквайрингу');
- assert.match(copy.body,/Эквайринговая операция № 00OF-000087/);assert.match(copy.body,/из этой операции/);
+ assert.equal(copy.title,'Пробейте чек');
+ assert.match(copy.body,/Эквайринг № 00OF-000087/);assert.doesNotMatch(copy.body,/Проверьте/);
  assert.equal(acquiringReceiptMetadata([{body:copy.body}]),'00OF-000087');
  assert.equal(acquiringReceiptDocumentNumber({...check(),sourceRef:'Эквайринговая операция 00OF-000087 от 03.11.2026 14:09:28|terminal'}),'00OF-000087');
  assert.doesNotMatch(copy.body,/Кассовый чек по этой оплате в 1С не найден/);
