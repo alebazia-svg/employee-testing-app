@@ -116,7 +116,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
     const orderCompetition = { bankComplete: true, ofdComplete: true };
     const extraReceiptsEnabled=process.env.TERMINAL_FISCAL_EXTRA_RECEIPTS_ENABLED==='true';
     if (extraReceiptsEnabled || oneC.data.some(c => c.acquiringOrderState === 'complete'
-      && c.cardPayments.some(p => p.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef))) {
+      && c.cardPayments.some(p => p.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef))
+      || (input.syncWorkdayControl === true && process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true'
+        && oneC.data.some(c => c.sourceType === 'acquiring_operation'))) {
       let peers: Array<NonNullable<typeof mappingRow>> = [];
       try { peers = await prisma.terminalFiscalMapping.findMany({ where: {
         isActive: true, id: { not: mapping.id }, oneCAcquiringTerminalRef: mapping.oneCAcquiringTerminalRef,
@@ -229,6 +231,8 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
             closingEmployeeId: input.closingEmployeeId,
             mapping,
             oneCChecks: employeeReviewOneCChecks,
+            fiscalEvidenceChecks: periodOneCChecks,
+            ofdReceipts: tbank.complete && oneC.complete && ofd.complete && orderCompetition.bankComplete && orderCompetition.ofdComplete ? matchingOfdReceipts : undefined,
             mode: employeeReviewMode,
           });
         }
@@ -257,7 +261,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }
         : summary,
       employeeReviewContext: input.deferEmployeeReviewSync === true && employeeReviewMode
-        ? { output, mapping, oneCChecks: employeeReviewOneCChecks, mode: employeeReviewMode }
+        ? { output, mapping, oneCChecks: employeeReviewOneCChecks, fiscalEvidenceChecks: periodOneCChecks, ofdReceipts: tbank.complete && oneC.complete && ofd.complete && orderCompetition.bankComplete && orderCompetition.ofdComplete ? matchingOfdReceipts : undefined, mode: employeeReviewMode }
         : undefined,
     };
   } catch (error) {

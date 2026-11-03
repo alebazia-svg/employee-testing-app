@@ -617,3 +617,26 @@ test('an outage batch does not query recipients, create reviews, resolve real ca
  const result=await syncTerminalFiscalEmployeeReviews({} as PrismaClient,{output:{version:'mvp-1',evaluatedAt:records[0].evaluatedAt,records},mapping,oneCChecks:[],mode:'notify'});
  assert.deepEqual(result,{opened:0,resolved:0,adminOnly:0,shadowed:0});
 });
+
+
+test('acquiring payment without a fiscal receipt uses the existing missing-receipt routing, never resolves it as a cash receipt', async () => {
+ const {missingReceiptReviewRecord}=await import('../lib/terminal-fiscal-missing-receipt');
+ const acquiring:OneCCheck={...check({ref:'acquiring-87',amountKopecks:2550000}),sourceType:'acquiring_operation',fiscalState:'unconfirmed',cashier:{ref:'',name:''},cashRegisterRef:'',electronicKopecks:2550000,totalKopecks:2550000};
+ const actual=record({status:'needs_review',reasonCode:'OFD_RECEIPT_NOT_FOUND',oneCCheckKey:acquiring.sourceRef,candidateCount:1,amountKopecks:2550000,sourceCompleteness:{tbank:true,oneC:true,ofd:true}});
+ const routed=missingReceiptReviewRecord(actual,[acquiring],[]);
+ assert.notEqual(routed,actual);assert.equal(actual.oneCCheckKey,'acquiring-87');
+ const decision=(r:MatchingAuditRecord)=>evaluateTerminalFiscalEmployeeReview({record:r,periodRecords:[r],mapping,oneCChecks:[],cashierMappings:[],kkmResponsibilities:[{id:1,userId:4,oneCCashRegisterRef:mapping.oneCCashRegisterRef,effectiveFrom:new Date('2026-08-17T00:00Z'),effectiveTo:null}]});
+ assert.equal(decision(routed).action,'notify');
+ assert.equal(decision({...routed,sourceCheckedAt:{...routed.sourceCheckedAt,oneC:'2026-08-17T17:01:59Z'}}).action,'wait');
+ // A real KKM receipt whose OFD confirmation is delayed stays ADMIN-only.
+ assert.equal(missingReceiptReviewRecord(actual,[{...acquiring,sourceType:'sale_check',fiscalState:'confirmed',fiscalDocumentNumber:'123'}],[]),actual);
+ assert.equal(missingReceiptReviewRecord(actual,[acquiring],undefined),actual);
+ assert.equal(missingReceiptReviewRecord({...actual,sourceCompleteness:{...actual.sourceCompleteness,ofd:false}},[acquiring],[]).oneCCheckKey,actual.oneCCheckKey);
+ assert.equal(missingReceiptReviewRecord({...actual,status:'pending',reasonCode:'OFD_RECEIPT_PENDING'},[acquiring],[]).oneCCheckKey,actual.oneCCheckKey);
+ assert.equal(missingReceiptReviewRecord({...actual,status:'confirmed',reasonCode:'MATCH_CONFIRMED'},[acquiring],[]).oneCCheckKey,actual.oneCCheckKey);
+ // Even on a peer KKT, a possible existing receipt prevents a duplicate-fiscalization request.
+ const possible={fiscalDriveNumber:'fn',fiscalDocumentNumber:'123',fiscalSign:'fp',operationType:1,receiptAt:'2026-08-17T16:35Z',kktRegistrationNumber:'peer',totalKopecks:2550000,electronicKopecks:2550000,items:[]};
+ assert.equal(missingReceiptReviewRecord(actual,[acquiring],[possible]),actual);
+ const covered=check({amountKopecks:2550000});
+ assert.equal(evaluateTerminalFiscalEmployeeReview({record:routed,periodRecords:[routed],mapping,oneCChecks:[covered],cashierMappings:[]}).action,'resolve');
+});

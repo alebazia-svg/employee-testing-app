@@ -1,3 +1,4 @@
+import { missingReceiptReviewRecord } from './terminal-fiscal-missing-receipt';
 import {terminalPaymentCopy} from './terminal-payment-copy';
 import 'server-only';
 
@@ -8,6 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 import type {
   MatchingAuditRecord,
   OneCCheck,
+  OfdReceipt,
   TerminalFiscalMatchingOutput,
   TerminalMapping,
 } from '@/lib/terminal-fiscal-matching';
@@ -427,6 +429,8 @@ export async function syncTerminalFiscalEmployeeReviews(
     output: TerminalFiscalMatchingOutput;
     mapping: TerminalMapping;
     oneCChecks: OneCCheck[];
+    ofdReceipts?: OfdReceipt[];
+    fiscalEvidenceChecks?: OneCCheck[];
     mode?: 'notify' | 'shadow';
     adminFirst?: boolean;
     globalCoverage?: TerminalFiscalGlobalCoverageContext;
@@ -444,10 +448,19 @@ export async function syncTerminalFiscalEmployeeReviews(
   let shadowed = 0;
   const mode = input.mode ?? 'notify';
 
+  const receiptChecks = input.fiscalEvidenceChecks ?? input.globalCoverage?.oneCChecks ?? input.oneCChecks;
+  const forReview = (record: MatchingAuditRecord) => missingReceiptReviewRecord(record, receiptChecks, input.ofdReceipts);
+  const periodReviewRecords = input.output.records.map(forReview);
+  const reviewCoverage = input.globalCoverage ? { ...input.globalCoverage, records: input.globalCoverage.records.map(forReview) } : undefined;
   for (const record of input.output.records) {
+    const reviewRecord = forReview(record);
+    const acquiringWithoutReceipt = reviewRecord !== record;
     // Technical attempts are audited by persistence/source-health, not by the
     // per-payment business lifecycle. Preserve employee help and prior decisions.
     if (terminalFiscalSourceIncomplete(record.reasonCode)) continue;
+    // A failed peer read must not withdraw an already addressed missing-receipt task.
+    if (input.ofdReceipts === undefined && record.reasonCode === 'OFD_RECEIPT_NOT_FOUND'
+      && receiptChecks.some(check => check.sourceRef === record.oneCCheckKey && check.sourceType === 'acquiring_operation')) continue;
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
     const operationAt = new Date(record.evidence.bankTransactionDate);
     const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {
@@ -466,15 +479,15 @@ export async function syncTerminalFiscalEmployeeReviews(
     const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Europe/Moscow'}).format(new Date(input.output.evaluatedAt));
     const proposed = input.adminFirst !== false && mode === 'notify' && operationDate === today && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC && record.sourceCompleteness.ofd
-      && !record.oneCCheckKey && record.candidateCount === 0
-      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode)
+      && !reviewRecord.oneCCheckKey && reviewRecord.candidateCount === 0
+      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(reviewRecord.reasonCode)
       ? await fiscalProposedRecipients(prisma, operationAt, input.mapping.id) : null;
     const primary = proposed?.confidence === 'high' ? proposed.primary : null;
     const activePrimary = primary ? await prisma.workDayEntry.findFirst({where:{userId:primary.id,date:today,status:'active',endedAt:null},select:{userId:true}}) : null;
     const closing = Boolean(activePrimary && input.closingEmployeeId === primary?.id);
     const decision = evaluateTerminalFiscalEmployeeReview({
-      record,
-      periodRecords: input.output.records,
+      record: reviewRecord,
+      periodRecords: periodReviewRecords,
       mapping: input.mapping,
       oneCChecks: input.oneCChecks,
       cashierMappings: cashierMappings.flatMap((item) => item.oneCCashierRef
@@ -482,7 +495,7 @@ export async function syncTerminalFiscalEmployeeReviews(
         : []),
       kkmResponsibilities: activePrimary ? [{id:0,userId:activePrimary.userId,oneCCashRegisterRef:input.mapping.oneCCashRegisterRef,effectiveFrom:operationAt,effectiveTo:null}] : kkmResponsibilities,
       minimumAgeMs: closing ? 0 : undefined,
-      globalCoverage: input.globalCoverage,
+      globalCoverage: reviewCoverage,
     });
     const previousReview = activePrimary ? await prisma.terminalFiscalEmployeeReview.findUnique({where:{reviewKey}}) : null;
     const automaticDelivery = Boolean((!previousReview || ['open','admin_review','shadow_candidate'].includes(previousReview.status)) && activePrimary && decision.action === 'notify' && decision.employeeId === activePrimary.userId);
@@ -490,8 +503,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     const adminFirst = !automaticDelivery && (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
     if (adminFirst && record.status !== 'confirmed') {
       if (decision.action === 'wait' && !record.oneCCheckKey && !handoverReview) continue;
-      // A 1C acquiring document is not proof of fiscalization. Keep its
-      // unresolved fiscal question in ADMIN, retiring any employee request.
+      // Ambiguous fiscal evidence and technical OFD delays remain ADMIN-only.
       await stageFiscalAdminReview(prisma, record, input.mapping, {minimumAgeMs: handoverReview ? 0 : undefined});
       adminOnly += 1;
       continue;
@@ -529,6 +541,11 @@ export async function syncTerminalFiscalEmployeeReviews(
     }
     if (decision.action !== 'notify') continue;
 
+    // Keep the owner's financial review as well as the employee task. An existing
+    // open task must not be reset/cancelled by every polling cycle.
+    if (acquiringWithoutReceipt && automaticDelivery && !previousReview) {
+      await stageFiscalAdminReview(prisma, record, input.mapping);
+    }
     if (Number.isNaN(operationAt.getTime())) continue;
     let participantIds = [decision.employeeId];
     let assignmentScope = 'individual';
