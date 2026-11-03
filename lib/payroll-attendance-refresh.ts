@@ -9,6 +9,7 @@ import {
   attachPayrollAttendanceSnapshotMeta,
   createPayrollAttendanceSnapshotPayload,
   getPayrollAttendanceSnapshotReplacementError,
+  hasGooglePayrollAttendance,
   readPayrollAttendanceSnapshotPayload,
 } from '@/lib/payroll-attendance-snapshot';
 
@@ -81,7 +82,7 @@ export async function refreshPayrollAttendance(request: Request) {
 
   try {
     const [attendanceData, scheduleData] = await Promise.all([getAttendanceRows(), getScheduleRows()]);
-    if (savedPayload?.formSummaries.length && !buildFormSummaries(attendanceData.rows, period.periodKey).length) {
+    if (hasGooglePayrollAttendance(savedPayload) && !buildFormSummaries(attendanceData.rows, period.periodKey).length) {
       throw new Error('Google Sheets неожиданно вернул пустую посещаемость.');
     }
     const sourceCheckedAt = new Date();

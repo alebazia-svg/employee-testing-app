@@ -7,7 +7,7 @@ import { isPayrollSourceSyncEligible } from '../lib/payroll-source-sync-store';
 
 test('PostgreSQL serializes source writers and excludes unsaved, final and closed periods', { skip: !process.env.PAYROLL_DRAFT_TEST_DATABASE_URL }, async () => {
   const url = new URL(process.env.PAYROLL_DRAFT_TEST_DATABASE_URL!);
-  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname === '/payroll_owner_preview_20261021');
+  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && ['/payroll_owner_preview_20261021','/payroll_automatic_month_20261103'].includes(url.pathname));
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const periodKey = '2096-11';
   let userId: number | undefined, periodId: number | undefined;

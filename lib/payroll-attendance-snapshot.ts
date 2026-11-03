@@ -129,6 +129,19 @@ export function attachPayrollAttendanceSnapshotMeta(
   return { ...response, snapshot: meta };
 }
 
+/** App/owner-only days do not prove that Google previously had this month.
+ * Keep disappearance protection for actual Google evidence, including dates
+ * before cutover, overlapping dates, duplicate form rows and lateness. */
+export function hasGooglePayrollAttendance(payload: PayrollAttendanceSnapshotPayload | null) {
+  return payload?.formSummaries.some(row => {
+    const source = payload.attendanceSources?.find(source => source.employee === row.employee);
+    if (!source) return row.formRows > 0 || row.uniqueFormDates > 0 || row.workedDays > 0 || row.lateCount > 0;
+    const ownDates = new Set([...source.appDates, ...(source.ownerConfirmedDates ?? [])]).size;
+    return source.googleFallbackDates.length > 0 || source.overlapDates.length > 0 || row.lateCount > 0
+      || row.uniqueFormDates > ownDates || row.formRows > ownDates;
+  }) ?? false;
+}
+
 export function getPayrollAttendanceSnapshotReplacementError(
   next: PayrollAttendanceSnapshotPayload,
   previous: PayrollAttendanceSnapshotPayload | null,

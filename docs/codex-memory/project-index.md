@@ -29,6 +29,13 @@ project from scratch.
 
 ## Read First By Task
 
+- Closed app workday without submitted handover: `handover-review-candidate-20261103.md`
+  — released/verified 1.21.14 (767c45b), supersedes the faulty archive backfill in
+  1.21.13. Explicit `Проверено` uses the existing
+  manual-review journal; removes only the corresponding reminder while preserving
+  missing handover, original closure and inbox history. Ignore pre-pilot runs before
+  2026-10-18 in active reminders; keep their history. No schema migration.
+
 - Google Form attendance dates: `../ops/google-attendance-date-release-20261102.md`
   — released/verified 1.21.6. Parse Russian day/month explicitly, never through
   native Date guessing. Invalid timestamps fail source refresh; persisted payroll
