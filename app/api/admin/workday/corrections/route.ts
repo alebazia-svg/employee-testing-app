@@ -1,9 +1,11 @@
+import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
 import { activeVacationOverlapWhere } from '@/lib/employee-vacation';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey, scheduleStatuses, usesWorkdayShiftControl } from '@/lib/workday';
+import { getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
 import { isValidScheduleDateKey } from '@/lib/workday-schedule';
-import { changeWorkdayShift, WorkdayShiftChangeError } from '@/lib/workday-shift-change';
+import { WorkdayShiftChangeError } from '@/lib/workday-shift-change';
+import { repairAdminWorkdayShift } from '@/lib/workday-admin-shift-repair';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
@@ -22,15 +24,14 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Проверьте смену и дату.' }, { status: 400, headers: noStoreHeaders });
     }
     try {
-      const workDay = await changeWorkdayShift({
+      const workDay = await repairAdminWorkdayShift(prisma, {
+        adminId: admin.id,
         userId: employee.id,
         department: employee.department,
         date: payload.date,
         toShiftCode: payload.toShiftCode,
-        source: 'admin_repair',
-        shiftControlEnabled: usesWorkdayShiftControl(employee),
-        enforceEmployeeWindow: false,
       });
+      revalidatePath('/admin/workday');
       return Response.json({ ok: true, workDay }, { headers: noStoreHeaders });
     } catch (error) {
       if (error instanceof WorkdayShiftChangeError) {

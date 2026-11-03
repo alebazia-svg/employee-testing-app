@@ -78,7 +78,7 @@ export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, w
             {workDay && !workDay.endedAt && workDay.status === 'active' && (
               <section className='mt-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200'>
                 <h3 className='font-extrabold text-slate-950'>Выбранная смена</h3>
-                <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-500'>Безопасно меняется только пока сотрудник не начал выполнять чек‑лист и денежные операции.</p>
+                <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-500'>Выполненные проверки и денежные операции сохранятся. Изменение останется в истории.</p>
                 <select value={shiftCode} onChange={(event) => setShiftCode(event.target.value)} className='mt-3 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950'>{shiftOptions.map((shift) => <option key={shift.code} value={shift.code}>{shift.label}</option>)}</select>
                 <Button type='button' className='mt-3 h-10 w-full text-xs font-extrabold' disabled={busy || !shiftCode || shiftCode === workDay.shiftCode} onClick={() => void submit({ action: 'change_shift', toShiftCode: shiftCode })}>Исправить смену</Button>
               </section>
