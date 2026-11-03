@@ -9,7 +9,8 @@ const db = new PrismaClient();
 const now = new Date('2026-11-03T11:00:00Z');
 const ids: number[] = [], templates: number[] = [];
 test.after(async () => {
-  await db.adminInboxEvent.deleteMany({ where: { sourceType: 'workday_shift_repair' } });
+  const changes = await db.workdayShiftChange.findMany({ where: { userId: { in: ids } }, select: { id: true } });
+  await db.adminInboxEvent.deleteMany({ where: { sourceType: 'workday_shift_repair', sourceId: { in: changes.map(row => row.id) } } });
   await db.workDayEntry.deleteMany({ where: { userId: { in: ids } } });
   await db.user.deleteMany({ where: { id: { in: ids } } });
   await db.shiftControlTemplate.deleteMany({ where: { id: { in: templates } } });
@@ -60,7 +61,8 @@ test('admin correction preserves money, completed facts, drafts, reviews and IDs
   assert.deepEqual(await db.workdayNotification.findUnique({ where: { id: f.sent.id } }), f.sent);
   assert.equal((await db.workdayNotification.findUniqueOrThrow({ where: { id: f.reminder.id } })).scheduledAt.toISOString(), '2026-11-03T12:30:00.000Z');
   assert.equal(await db.workdayShiftChange.count({ where: { workDayEntryId: f.day.id } }), 1);
-  const audit = await db.adminInboxEvent.findFirstOrThrow({ where: { sourceType: 'workday_shift_repair' } });
+  const change = await db.workdayShiftChange.findFirstOrThrow({ where: { workDayEntryId: f.day.id } });
+  const audit = await db.adminInboxEvent.findFirstOrThrow({ where: { sourceType: 'workday_shift_repair', sourceId: change.id } });
   assert.ok(audit.body.includes(f.admin.name));
 });
 test('employee, completed day and incompatible checks are rejected without deleting or rewriting records', async () => {
