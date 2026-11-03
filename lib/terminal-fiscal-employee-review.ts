@@ -464,6 +464,8 @@ export async function syncTerminalFiscalEmployeeReviews(
     if (input.ofdReceipts === undefined && record.reasonCode === 'OFD_RECEIPT_NOT_FOUND'
       && receiptChecks.some(check => check.sourceRef === record.oneCCheckKey && check.sourceType === 'acquiring_operation')) continue;
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
+    const latestReview = await prisma.terminalFiscalEmployeeReview.findUnique({where:{reviewKey}});
+    if (latestReview?.lastCheckedAt && latestReview.lastCheckedAt > new Date(record.evaluatedAt)) continue;
     const operationAt = new Date(record.evidence.bankTransactionDate);
     const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -499,7 +501,7 @@ export async function syncTerminalFiscalEmployeeReviews(
       minimumAgeMs: closing ? 0 : undefined,
       globalCoverage: reviewCoverage,
     });
-    const previousReview = activePrimary ? await prisma.terminalFiscalEmployeeReview.findUnique({where:{reviewKey}}) : null;
+    const previousReview = activePrimary ? latestReview : null;
     const automaticDelivery = Boolean((!previousReview || ['open','admin_review','shadow_candidate'].includes(previousReview.status)) && activePrimary && decision.action === 'notify' && decision.employeeId === activePrimary.userId);
     const handoverReview = Boolean(input.closingEmployeeId && record.sourceCompleteness.tbank && record.sourceCompleteness.oneC && record.sourceCompleteness.ofd && (!primary || primary.id === input.closingEmployeeId));
     if (acquiringWithoutReceipt && decision.action === 'wait') continue;
@@ -520,8 +522,8 @@ export async function syncTerminalFiscalEmployeeReviews(
           data: { status: 'resolved', reasonCode:record.reasonCode, resolvedAt: new Date(input.output.evaluatedAt), lastCheckedAt: new Date(input.output.evaluatedAt) },
         });
         if (result.count) await tx.workdayNotification.updateMany({
-          where: { review: { reviewKey }, status: 'pending' },
-          data: { status: 'cancelled' },
+          where: { review: { reviewKey }, status: {in:['pending','sent']} },
+          data: { status: 'cancelled', pushStatus:'cancelled', nextPushAttemptAt:null },
         });
         return result.count;
       });

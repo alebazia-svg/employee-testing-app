@@ -365,7 +365,7 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   // Existing ADMIN-only 25,500 acquiring case is addressed in the SAME review.
   const acquiring:any={sourceRef:marker+'-acquiring87',documentNumber:'00OF-000087',sourceType:'acquiring_operation',operationType:'sale',dateTime:at,cashRegisterRef:'',kktRegistrationNumber:'',totalKopecks:2550000,electronicKopecks:2550000,cashier:{ref:'',name:''},cardPayments:[],items:[],fiscalState:'unconfirmed',fiscalStateMeaning:'data_state_only'};
   const acquiringRecord={...record,matchingKey:marker+'-acquiring-case',status:'needs_review',reasonCode:'OFD_RECEIPT_NOT_FOUND',candidateCount:1,oneCCheckKey:acquiring.sourceRef,amountKopecks:2550000,evidence:{bankTransactionDate:at,terminalReceiptNumber:'000507',bankOperationRawType:'TERM_CARD'}};
-  const syncAcquiring=(r:any,receipts:any[]|undefined=[])=>syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[r],evaluatedAt:r.evaluatedAt}as any,mapping,oneCChecks:[],fiscalEvidenceChecks:[acquiring],ofdReceipts:receipts});
+  const syncAcquiring=(r:any,receipts:any[]|undefined=[])=>syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[r],evaluatedAt:r.evaluatedAt}as any,mapping,oneCChecks:[],fiscalEvidenceChecks:[acquiring,structuredClone(acquiring)],ofdReceipts:receipts});
   await stageFiscalAdminReview(prisma,acquiringRecord,mapping);
   const acqReview=await prisma.terminalFiscalEmployeeReview.findFirstOrThrow({where:{reviewKey:'terminal-fiscal-review:'+createHash('sha256').update(acquiringRecord.matchingKey).digest('hex')}}as any);
   assert.equal(acqReview.status,'admin_review');
@@ -383,10 +383,16 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   await syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[acquiringRecord],evaluatedAt:evaluated}as any,mapping,oneCChecks:[],fiscalEvidenceChecks:[acquiring]});
   assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}})).status,'open');
   assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id,status:'pending'}}),1);
+  // A sent push awaiting retry must stop as well as a pending notice.
+  await prisma.workdayNotification.update({where:{id:notice.id},data:{status:'sent',pushStatus:'retry_pending',nextPushAttemptAt:new Date()}});
   // Only a later confirmed fiscal chain resolves it and cancels delivery.
-  await syncAcquiring({...acquiringRecord,status:'confirmed',reasonCode:'MATCH_CONFIRMED'});
+  await syncAcquiring({...acquiringRecord,evaluatedAt:new Date(Date.parse(evaluated)+60_000).toISOString(),status:'confirmed',reasonCode:'MATCH_CONFIRMED'});
   assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}})).status,'resolved');
   assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id,status:'pending'}}),0);
+  const cancelledAcq=await prisma.workdayNotification.findUniqueOrThrow({where:{id:notice.id}});assert.equal(cancelledAcq.status,'cancelled');assert.equal(cancelledAcq.pushStatus,'cancelled');assert.equal(cancelledAcq.nextPushAttemptAt,null);
+  await syncAcquiring(acquiringRecord);
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}})).status,'resolved');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id}}),2);
   // Real DB regression: the colleague has left, the home terminal still routes
   // once; another terminal stays with ADMIN until a dated assignment exists.
   await prisma.workDayEntry.update({where:{id:entries[1].id},data:{status:'completed',endedAt:new Date(at)}});

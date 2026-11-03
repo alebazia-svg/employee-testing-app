@@ -20,7 +20,7 @@ import { loadOneCKkmChecks } from '@/lib/terminal-fiscal-sources';
 import { parseOneCDateTime } from '@/lib/one-c-date';
 import { syncCreditRealizationWorkdayControl } from '@/lib/credit-realization-workday-control';
 
-export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v3';
+export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v4';
 export const CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED = process.env.CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED === 'true';
 export const CREDIT_REALIZATION_CUSTOMER_REF = '537e501e-4640-11ed-8f49-0025901e48ee';
 const PAGE_LIMIT = 500;
@@ -281,8 +281,11 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           resolvedAt: true,
           mismatchFirstDetectedAt: true,
           completeMismatchReads: true,
+          lastCheckedAt: true,
         },
       });
+      // A delayed older poll must not replace a newer confirmed receipt.
+      if (existingCase?.lastCheckedAt && existingCase.lastCheckedAt > snapshot.checkedAt) continue;
       const resolvedAt = row.result.status === 'confirmed'
         ? (existingCase?.status === 'confirmed' ? existingCase.resolvedAt : snapshot.checkedAt)
         : null;

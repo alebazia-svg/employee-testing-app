@@ -460,7 +460,7 @@ test('one review and notification are created without duplicates and a later 1C 
       },
       updateMany: async ({ where, data }: any) => {
         const review = reviews.find((row) => row.reviewKey === where.review.reviewKey);
-        const rows = notifications.filter((row) => row.reviewId === review?.id && row.status === where.status);
+        const rows = notifications.filter((row) => row.reviewId === review?.id && (typeof where.status==='string'?row.status===where.status:where.status.in.includes(row.status)));
         rows.forEach((row) => Object.assign(row, data)); return { count: rows.length };
       },
     },
@@ -625,6 +625,8 @@ test('acquiring payment without a fiscal receipt uses the existing missing-recei
  const actual=record({status:'needs_review',reasonCode:'OFD_RECEIPT_NOT_FOUND',oneCCheckKey:acquiring.sourceRef,candidateCount:1,amountKopecks:2550000,sourceCompleteness:{tbank:true,oneC:true,ofd:true}});
  const routed=missingReceiptReviewRecord(actual,[acquiring],[]);
  assert.notEqual(routed,actual);assert.equal(actual.oneCCheckKey,'acquiring-87');
+ assert.notEqual(missingReceiptReviewRecord(actual,[acquiring,structuredClone(acquiring)],[]),actual);
+ assert.equal(missingReceiptReviewRecord(actual,[acquiring,{...acquiring,electronicKopecks:1}],[]),actual);
  const decision=(r:MatchingAuditRecord)=>evaluateTerminalFiscalEmployeeReview({record:r,periodRecords:[r],mapping,oneCChecks:[],cashierMappings:[],kkmResponsibilities:[{id:1,userId:4,oneCCashRegisterRef:mapping.oneCCashRegisterRef,effectiveFrom:new Date('2026-08-17T00:00Z'),effectiveTo:null}]});
  assert.equal(decision(routed).action,'notify');
  assert.equal(decision({...routed,sourceCheckedAt:{...routed.sourceCheckedAt,oneC:'2026-08-17T17:01:59Z'}}).action,'wait');

@@ -45,6 +45,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
   if (!Number.isFinite(at.getTime())) return;
   await db.$transaction(async (tx) => {
     const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
+    if (existing?.lastCheckedAt && existing.lastCheckedAt > now) return;
     if (existing && terminalFiscalReviewHasFinalResolution(existing)) {
       await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: 'pending' }, data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
       return;
@@ -58,7 +59,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     if (record.status === 'confirmed') {
       if (existing) {
         await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', reasonCode:record.reasonCode, resolvedAt: existing.resolvedAt ?? now, lastCheckedAt: now } });
-        await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
+        await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: {in:['pending','sent']} }, data: { status: 'cancelled', pushStatus:'cancelled', nextPushAttemptAt:null } });
       }
       return;
     }

@@ -714,6 +714,13 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       || receipt.kktRegistrationNumber !== context.mapping.kktRegistrationNumber
       || receipt.totalKopecks !== context.operation.amountKopecks
       || receipt.electronicKopecks !== context.operation.amountKopecks) return false;
+    // An explicit acquiring-document fiscal key is independent of equipment
+    // timestamps. A receipt posted later must close the original missing-check case.
+    if (check.fiscalState === 'confirmed' && !check.fiscalConflict && canonicalFiscalKey(check)) {
+      return canonicalFiscalKey(check) === canonicalFiscalKey(receipt)
+        && check.kktRegistrationNumber === receipt.kktRegistrationNumber
+        && Math.abs(receiptAt - bankAt) <= TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS;
+    }
     // Preserve the existing narrow full-settlement fallback for unlinked
     // documents. Prepayment always requires the explicit order/item proof.
     if (check.acquiringOrderState === undefined || (check.acquiringOrderState === 'unlinked'
@@ -811,6 +818,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       if ((checkCandidateUse.get(oneCCheck.sourceRef) ?? 0) > 1
         || (fiscalCandidateUse.get(canonicalFiscalKey(oneCCheck) ?? '') ?? 0) > 1) {
         reasonCode = 'ONE_C_CHECK_REUSED';
+      } else if (oneCCheck.fiscalConflict) {
+        reasonCode = 'FISCAL_KEY_CONFLICT';
       } else if (isAcquiringOperation(oneCCheck)) {
         const receipts = input.ofdReceipts.filter(receipt => acquiringReceiptCandidate(context, oneCCheck!, receipt));
         if (receipts.length === 0) {

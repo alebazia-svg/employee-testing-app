@@ -150,14 +150,15 @@ export async function persistTerminalFiscalCycle(prisma: PrismaClient, input: {
             ...(data.ofdFiscalKeyHash ? [{ ofdFiscalKeyHash: data.ofdFiscalKeyHash }] : []),
           ],
         },
-        select: { id: true, bankOperationHash: true, status: true },
+        select: { id: true, bankOperationHash: true, status: true, checkedAt:true },
       });
       const identityIds = [...new Set(identities.map(({ id }) => id))];
       if (identityIds.length > 1) throw new Error('TERMINAL_FISCAL_ASSIGNMENT_CONFLICT');
       // An incomplete read cannot revoke a confirmed financial fact. Preserve its
       // original checkedAt/identity; append the failed attempt below for audit/health.
       const confirmed = identities.find(item => item.bankOperationHash === data.bankOperationHash && item.status === 'confirmed');
-      const match = confirmed && terminalFiscalSourceIncomplete(record.reasonCode)
+      const newer = identities.find(item => item.bankOperationHash === data.bankOperationHash && item.checkedAt > data.checkedAt);
+      const match = newer ? {id:newer.id} : confirmed && terminalFiscalSourceIncomplete(record.reasonCode)
         ? { id: confirmed.id }
         : identityIds.length === 1
         ? await tx.terminalFiscalMatch.update({ where: { id: identityIds[0] }, data, select: { id: true } })
