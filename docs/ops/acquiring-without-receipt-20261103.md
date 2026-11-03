@@ -120,3 +120,12 @@ The owner inbox remains descriptive «Нет чека по эквайрингу�
 and current short acquiring labels so historical messages remain readable.
 31 focused policy/copy tests and the PostgreSQL transition scenario pass after
 this text change. Current UI preview is local only; no production install or send.
+
+
+Latest owner correction supersedes even the short title above: «Пробейте чек с
+эквайринга №00OF-000087». Employee body is compact facts only: amount, payment
+method, Moscow date/time and printed terminal receipt number. No repeated
+instruction or explanation. Acquiring metadata reads the title plus body and
+retains compatibility with both older body labels. Owner inbox remains descriptive;
+its body retains the acquiring number. Focused policy/copy31, PostgreSQL lifecycle1
+and TypeScript pass. Still local-only, not installed or sent in production.
