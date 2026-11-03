@@ -124,3 +124,16 @@ test('uncertain payment, conflicting identities, missing ledger and duplicate ca
   assert.equal(projectPersonalSettlement('2026-09', name, cash, { ...ledger, employees: [...ledger.employees, { employeeRef: 'other', employeeName: name }] }), null);
   assert.deepEqual(projectPersonalSettlement('2026-09', name, { ...cash, documents: [...cash.documents, cash.documents[0]] }, ledger), { accrued: 66000, paid: null, remaining: null });
 });
+
+test('FINAL monthly accrual overrides partial or absent 1C accrual without changing payments', () => {
+  const { employeeName, paymentSource, ledgerSource } = previousCreditCase();
+  // 1C currently contains only the day component for September.
+  ledgerSource.allocationEvidence!.movements = ledgerSource.allocationEvidence!.movements.filter(row => row.key !== 'sep-sales');
+  assert.deepEqual(projectPersonalSettlement('2026-09', employeeName, paymentSource, ledgerSource, 95000),
+    { accrued: 95000, paid: 89000, creditedFromEarlier: 100, remaining: 5900 });
+  ledgerSource.allocationEvidence!.movements = ledgerSource.allocationEvidence!.movements.filter(row => row.key !== 'sep-days');
+  assert.deepEqual(projectPersonalSettlement('2026-09', employeeName, paymentSource, ledgerSource, 95000),
+    { accrued: 95000, paid: 89000, creditedFromEarlier: 100, remaining: 5900 });
+  assert.deepEqual(projectPersonalSettlement('2026-09', employeeName, paymentSource, ledgerSource, 88000),
+    { accrued: 88000, paid: null, remaining: null });
+});

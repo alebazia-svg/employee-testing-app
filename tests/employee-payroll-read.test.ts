@@ -4,22 +4,22 @@ import { readEmployeePayroll, type PersonalPayrollRun, type PayrollViewer } from
 
 const viewer = { id: 7, role: 'EMPLOYEE', isActive: true, portalArea: 'WORKDAY' };
 const run: PersonalPayrollRun = { status: 'FINAL', period: { periodKey: '2026-09' }, employeeResults: [
-  { userId: 7, grossPay: 66528.68, advance: 2000 },
+  { userId: 7, grossPay: 66000, advance: 2000 },
   { userId: 8, grossPay: 999999, advance: 10000 },
 ] };
 const query = () => new URLSearchParams('month=2026-09');
 const deps = (value: PersonalPayrollRun | null = run) => ({ currentPeriod: () => '2026-10', findFinal: async () => value,
   findSettlement: async () => ({ accrued: 66000, paid: 66000, remaining: 0 }) });
 
-test('only the signed-in employee receives authoritative settlement, not automatic gross or internal details', async () => {
+test('only the signed-in employee receives approved FINAL accrual without internal details', async () => {
   let received: unknown;
   const result = await readEmployeePayroll(viewer, query(), { ...deps(), findFinal: async (...args) => { received = args; return run; } });
   assert.deepEqual(received, ['2026-09', 7]);
   assert.deepEqual(result, { status: 200, body: { month: '2026-09', state: 'confirmed', accrued: 66000, paid: 66000, remaining: 0 } });
 });
-test('missing 1C accrual never falls back to automatic FINAL gross', async () => {
+test('missing 1C evidence preserves approved FINAL accrual with unknown payments', async () => {
   const result = await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => null });
-  assert.deepEqual(result.body, { month: '2026-09', state: 'unavailable' });
+  assert.deepEqual(result.body, { month: '2026-09', state: 'confirmed', accrued: 66000, paid: null, remaining: null });
 });
 test('authentication and role checks happen before any payroll read', async () => {
   for (const user of [null, { ...viewer, isActive: false }, { ...viewer, role: 'ADMIN' },
@@ -75,16 +75,16 @@ test('missing earnings never falls back to gross with hidden bonuses; verified a
 test('confirmed first payment does not replace full posted salary, unknown payments never become zero', async () => {
   for (const settlement of [{ accrued: 66500, paid: 12000, remaining: 54500 },
     { accrued: 66500, paid: null, remaining: null }, { accrued: 66500, paid: 66500, remaining: 0 }]) {
-    const result = await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => settlement });
+    const result = await readEmployeePayroll(viewer, query(), { ...deps({ ...run, employeeResults: [{ ...run.employeeResults[0], grossPay: settlement.accrued }] }), findSettlement: async () => settlement });
     assert.deepEqual(result.body, { month: '2026-09', state: 'confirmed', ...settlement });
   }
 });
 test('verified earlier credit is disclosed, not added to cash paid or removed from accrued', async () => {
   const settlement = { accrued: 89100, paid: 89000, remaining: 0, creditedFromEarlier: 100 };
-  assert.deepEqual((await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => settlement })).body,
+  assert.deepEqual((await readEmployeePayroll(viewer, query(), { ...deps({ ...run, employeeResults: [{ ...run.employeeResults[0], grossPay: settlement.accrued }] }), findSettlement: async () => settlement })).body,
     { month: '2026-09', state: 'confirmed', ...settlement });
   for (const creditedFromEarlier of [-1, NaN, 50, 200]) {
-    const result = await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => ({ ...settlement, creditedFromEarlier }) });
+    const result = await readEmployeePayroll(viewer, query(), { ...deps({ ...run, employeeResults: [{ ...run.employeeResults[0], grossPay: settlement.accrued }] }), findSettlement: async () => ({ ...settlement, creditedFromEarlier }) });
     assert.equal((result.body as any).remaining, null);
     assert.equal((result.body as any).creditedFromEarlier, undefined);
   }
@@ -99,4 +99,25 @@ test('missing-day state is allowlisted only for the current projection; FINAL ta
   assert.equal((result.body as any).estimatedAccrued,1200);
   const final = await readEmployeePayroll(viewer,query(),{...deps(),findCurrent:async()=>{throw Error('must not read');}});
   assert.equal((final.body as any).state,'confirmed'); assert.equal((final.body as any).daysUnmarked,undefined);
+});
+
+test('partial 1C accrual cannot replace full FINAL, and payment outages preserve it', async () => {
+  for (const findSettlement of [async () => ({ accrued: 12000, paid: 12000, remaining: 0 }), async () => { throw Error('1C offline'); }]) {
+    assert.deepEqual((await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement })).body,
+      { month: '2026-09', state: 'confirmed', accrued: 66000, paid: null, remaining: null });
+  }
+  let amount: number | undefined;
+  await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async (_period, _user, accrued) => {
+    amount = accrued; return { accrued, paid: 12000, remaining: accrued - 12000 };
+  } });
+  assert.equal(amount, 66000);
+});
+
+test('a replacement FINAL changes the monthly accrual without recomputation or a 1C read dependency', async () => {
+  for (const grossPay of [66000, 71000]) {
+    const final = { ...run, employeeResults: [{ ...run.employeeResults[0], grossPay }] };
+    assert.deepEqual((await readEmployeePayroll(viewer, query(), {
+      currentPeriod: () => '2026-10', findFinal: async () => final,
+    })).body, { month: '2026-09', state: 'confirmed', accrued: grossPay, paid: null, remaining: null });
+  }
 });
