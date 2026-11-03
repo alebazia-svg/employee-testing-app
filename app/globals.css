@@ -3079,6 +3079,11 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 @media(min-width:1201px){.team-employee,.team-column-head{grid-template-columns:minmax(140px,1.1fr) minmax(110px,1fr) 90px minmax(95px,.85fr) minmax(140px,1.2fr) 156px}}
 .team-shift-backdrop .team-shift-panel{max-width:760px!important;width:min(760px,calc(100vw - 64px))!important;background:white!important}
 .team-shift-facts{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;background:#faf7f3;border-radius:10px;padding:16px;margin-bottom:20px}
+.team-start-comment{margin:0 0 14px;padding:0 13px;font-size:13px;line-height:1.5;color:#443d36}
+.team-start-comment>b{display:block;margin-bottom:3px;font-size:11px;font-weight:600;color:#80664f}
+.team-start-comment>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.team-start-comment>p.is-collapsed{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.team-start-comment>button{margin-top:4px;padding:3px 7px;border:1px solid #e3d9cf;border-radius:6px;background:#faf7f3;color:#735039;font-size:11px;font-weight:600}
 .team-shift-facts>div{display:flex;flex-direction:column;align-items:flex-start;gap:5px}.team-shift-facts small{font-size:11px;color:#7a6c60}.team-shift-facts b{font-size:17px;font-weight:600}.team-shift-facts span{font-size:12px}
 .team-shift-result{padding:14px 16px;background:#f7faf8;border:1px solid #dce7df;border-radius:10px;margin-top:16px;font-size:13px}.team-shift-result>b{color:#425749;font-weight:600}.team-shift-result p{line-height:1.6;margin:8px 0}.team-shift-result small{color:#7b7066;font-size:11px}
 @media(min-width:701px) and (max-width:900px){.team-employee{grid-template-columns:1fr 1fr}.team-employee>div:nth-child(5){grid-column:1/-1}.team-employee>div:nth-child(6){grid-column:1/-1}}
