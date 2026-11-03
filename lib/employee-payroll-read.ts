@@ -2,7 +2,7 @@ import type { PayrollRequiredAction } from './employee-payroll-access';
 /** Private response boundary. Never serialize a payroll database row directly. */
 import type { PersonalCurrentPayroll } from './payroll-current-read';
 import type { PersonalSettlement } from './employee-payroll-history';
-import { roundEmployeeEarnings } from './employee-payroll-estimate';
+import { roundEmployeeAccrued, roundEmployeeEarnings } from './employee-payroll-estimate';
 export type PayrollViewer = { id: number; role: string; isActive: boolean; portalArea: string };
 export type PersonalPayrollRow = {
   userId: number | null;
@@ -70,7 +70,8 @@ export async function readEmployeePayroll(
     const row = rows[0];
     if (![row.grossPay, row.advance].every(Number.isFinite) || row.grossPay < 0 || row.advance < 0) return unavailable;
     // A source outage cannot hide an administrator-approved monthly accrual.
-    const accrued = row.grossPay;
+    // Preserve the agreed employee rounding when FINAL replaces the 1C source.
+    const accrued = roundEmployeeAccrued(row.grossPay);
     const settlement = await dependencies.findSettlement?.(period, viewer.id, accrued).catch(() => null);
     const verifiedPayments = settlement?.accrued === accrued && settlement.paid !== null && settlement.remaining !== null
       && [settlement.paid, settlement.remaining].every(value => Number.isFinite(value) && value >= 0)

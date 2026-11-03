@@ -121,3 +121,16 @@ test('a replacement FINAL changes the monthly accrual without recomputation or a
     })).body, { month: '2026-09', state: 'confirmed', accrued: grossPay, paid: null, remaining: null });
   }
 });
+
+test('FINAL retains agreed nearest-100 employee display and reconciles real 1C payments against it', async () => {
+  for (const [grossPay, expected] of [[98961.78883000002, 99000], [66528.68, 66500], [66550, 66600], [0, 0]]) {
+    const final = { ...run, employeeResults: [{ ...run.employeeResults[0], grossPay }] };
+    const before = JSON.stringify(final);
+    const result = await readEmployeePayroll(viewer, query(), { ...deps(final),
+      findSettlement: async (_period, _user, accrued) => ({ accrued, paid: expected, remaining: 0 }) });
+    assert.deepEqual(result.body, { month: '2026-09', state: 'confirmed', accrued: expected, paid: expected, remaining: 0 });
+    assert.equal(JSON.stringify(final), before);
+    assert.deepEqual((await readEmployeePayroll(viewer, query(), { ...deps(final), findSettlement: async () => null })).body,
+      { month: '2026-09', state: 'confirmed', accrued: expected, paid: null, remaining: null });
+  }
+});
