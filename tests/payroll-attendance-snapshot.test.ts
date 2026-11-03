@@ -4,6 +4,7 @@ import {
   attachPayrollAttendanceSnapshotMeta,
   createPayrollAttendanceSnapshotPayload,
   getPayrollAttendanceSnapshotReplacementError,
+  hasGooglePayrollAttendance,
   readPayrollAttendanceSnapshotPayload,
 } from '../lib/payroll-attendance-snapshot';
 
@@ -61,4 +62,12 @@ test('mixed attendance snapshot keeps source dates and supports legacy snapshots
   assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: undefined }, '2026-10'), null);
   assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: [{ ...mixed.attendanceSources![0], googleFallbackDates: ['2026-10-18'] }] }, '2026-10'), null);
   assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: [{ ...mixed.attendanceSources![0], appDates: ['2026-11-01'] }] }, '2026-10'), null);
+});
+
+test('Google disappearance protection distinguishes actual Google evidence from PWA and owner-only dates',()=>{
+ const p={...payload,attendanceMode:'google-sheets+pwa' as const,formSummaries:[{employee:'Сотрудник',formRows:2,uniqueFormDates:2,workedDays:2,lateCount:0}],attendanceSources:[{employee:'Сотрудник',userId:8,fromDate:'2026-09-01',appDates:['2026-09-02'],ownerConfirmedDates:['2026-09-01'],googleFallbackDates:[],overlapDates:[]}]};
+ assert.equal(hasGooglePayrollAttendance(p),false);assert.equal(hasGooglePayrollAttendance(null),false);assert.equal(hasGooglePayrollAttendance(payload),true);
+ for(const patch of [{googleFallbackDates:['2026-09-03']},{overlapDates:['2026-09-02']}])assert.equal(hasGooglePayrollAttendance({...p,attendanceSources:[{...p.attendanceSources[0],...patch}]}),true);
+ for(const patch of [{uniqueFormDates:3},{formRows:3},{lateCount:1}])assert.equal(hasGooglePayrollAttendance({...p,formSummaries:[{...p.formSummaries[0],...patch}]}),true);
+ assert.equal(hasGooglePayrollAttendance({...p,attendanceSources:[]}),true,'legacy Google sources remain protected');
 });
