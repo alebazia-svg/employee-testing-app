@@ -1488,3 +1488,24 @@ Bela approved an ADMIN-confirmed extension proposal, not automatic reassignment.
 See workday-playbook.md “Owner-approved shift extension”. Preserve original
 shift and attendance facts. Solo-shift fiscal display requires mapped 1C identity;
 existing employee-error routing stays unchanged. Prepared locally, not released.
+
+## 2026-11-03 — ADMIN may correct an active shift after work has started
+
+Bela approved a separate fix: allow ADMIN to correct an already started shift,
+retaining completed checks, cash and history. Employee self-correction rules
+are unchanged. The existing empty-checklist rebuild cannot serve this scope;
+a dedicated ADMIN transaction updates shift/deadlines in place, preserves IDs
+and facts, records the actor/change and refuses incompatible checklist purposes.
+This is a locally verified candidate; no production shift change or release.
+Exact scope/files/checks: `../ops/admin-shift-repair-20261103.md`.
+
+## 2026-11-03 — Employee FINAL accrual released as 1.21.7
+
+Owner-approved source change is deployed and independently verified:
+`fb96ab7ca8ba98a0277e89092420d9b402fb15d4`, version 1.21.7, built
+14:19:27 MSK. Existing 1.21.6 changes were merged and preserved. All saved
+payroll/configuration hashes, env and mounts match before/after. Actual Zukhra
+preview shows FINAL 98,961.79 RUB; 1C paid is 99,000 RUB. Their 38.21 RUB
+mismatch retains the existing unknown paid/remaining guard, disclosed to Bela;
+no rounding/formula adjustment or production payroll write was performed.
+Exact files/evidence: `../ops/payroll-monthly-accrual-release-20261103.md`.
