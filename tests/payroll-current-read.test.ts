@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculateLastVerifiedPersonalPayroll, calculatePersonalCurrentPayroll, getPrivatePayrollBinding, type CurrentPayrollEvidence, type PersonalPayrollSourceMemo } from '../lib/payroll-current-read';
 import type { PayrollOneCControlSlice } from '../lib/payroll-one-c-control-snapshots';
+import { payrollDraftForAutomaticEstimate } from '../lib/payroll-draft';
 import { prepareDailyPayrollInputs } from '../lib/payroll-daily-calculation';
 import { buildDailyPayrollBase } from '../lib/payroll-daily-calculation';
 import * as engine from '../lib/payroll-calculation-engine';
@@ -207,4 +208,21 @@ test('Diana partial view never bypasses source, identity, attendance or invalid 
     (e: CurrentPayrollEvidence) => { e.finboxAmount = '-1'; },
     (e: CurrentPayrollEvidence) => { e.finboxAmount = 'invalid'; },
   ]) { const input = dianaEvidence(); mutate(input); assert.equal(calculatePersonalCurrentPayroll('2026-10', 7, input), null); }
+});
+
+test('automatic month preview follows refreshed attendance and retains existing rounding without an ADMIN save',async()=>{
+ const input=evidence();
+ const now=new Date('2026-10-02T12:00:00Z');
+ input.draft=payrollDraftForAutomaticEstimate('2026-10',null,now);
+ const attendance=input.attendance!.payload as {formSummaries:unknown[]};
+ attendance.formSummaries=[{employee:'Абшаева Зухра',formRows:2,uniqueFormDates:2,workedDays:2,lateCount:0}];
+ const first=calculatePersonalCurrentPayroll('2026-10',7,input,now);assert.ok(first);assert.equal(first.draftRevision,0);
+ const {readEmployeePayroll}=await import('../lib/employee-payroll-read');
+ const read=()=>readEmployeePayroll({id:7,role:'EMPLOYEE',isActive:true,portalArea:'WORKDAY'},new URLSearchParams('month=2026-10'),{currentPeriod:()=> '2026-10',findFinal:async()=>null,findCurrent:async()=>calculatePersonalCurrentPayroll('2026-10',7,input,now)});
+ const before=await read();assert.equal(before.body.state,'current_estimate');assert.equal('estimatedAccrued' in before.body&&before.body.estimatedAccrued,1200);
+ attendance.formSummaries=[{employee:'Абшаева Зухра',formRows:3,uniqueFormDates:3,workedDays:3,lateCount:0}];
+ const after=await read();assert.equal('estimatedAccrued' in after.body&&after.body.estimatedAccrued,1800);
+ assert.equal(input.draft?.revision,0);
+ input.draft=evidence().draft;
+ assert.equal(calculatePersonalCurrentPayroll('2026-10',7,input,now)?.dayPay,1200,'saved manual correction wins over refreshed days');
 });

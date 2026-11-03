@@ -8,9 +8,10 @@ import type { PayrollOneCControlSlice } from '../lib/payroll-one-c-control-snaps
 test('real PostgreSQL current read uses persisted drafts, hides foreign rows and respects FINAL', { skip: !process.env.PAYROLL_DRAFT_TEST_DATABASE_URL }, async () => {
   const url = new URL(process.env.PAYROLL_DRAFT_TEST_DATABASE_URL!);
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname)
-    && ['/payroll_owner_preview_20261021', '/payroll_pwa_repair_20261027'].includes(url.pathname));
+    && ['/payroll_owner_preview_20261021', '/payroll_pwa_repair_20261027', '/payroll_automatic_month_20261103'].includes(url.pathname));
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
-  const periodKey = '2097-12';
+  const automaticMonth = url.pathname === '/payroll_automatic_month_20261103';
+  const periodKey = automaticMonth ? new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit'}).format(new Date()) : '2097-12';
   const date = `${periodKey}-01`;
   const name = `Payroll QA ${randomUUID()}`;
   let userId: number | undefined;
@@ -26,7 +27,7 @@ test('real PostgreSQL current read uses persisted drafts, hides foreign rows and
     assert.equal(await db.payrollDraftRevision.count({ where: { periodKey } }), 0);
     userId = (await db.user.create({ data: { name, login: name, passwordHash: 'not-a-login-fixture', role: 'EMPLOYEE', department: 'retail',
       payrollName: name, payrollSalaryType: 'fixed_salary', payrollFixedSalary: 43210 } })).id;
-    periodId = (await db.payrollPeriod.create({ data: { periodKey, year: 2097, month: 11 } })).id;
+    periodId = (await db.payrollPeriod.create({ data: { periodKey, year: Number(periodKey.slice(0,4)), month: Number(periodKey.slice(5))-1 } })).id;
     assert.equal(await readStoredPersonalCurrentPayroll(periodKey, userId, db), null);
     const slice: PayrollOneCControlSlice = { version: 2, dateFrom: date, dateTo: date,
       close: { date, ready: true, executionDate: date, finishedAt: date, costDocument: 'QA', blockingIssues: [] },
@@ -38,9 +39,14 @@ test('real PostgreSQL current read uses persisted drafts, hides foreign rows and
     sourceId = (await db.payrollOneCControlSnapshot.create({ data: { periodKey, kind: 'DAILY', dateFrom: date, dateTo: date,
       payload: JSON.parse(JSON.stringify(slice)), contentHash: 'QA', sourceCheckedAt: new Date() } })).id;
     attendanceId = (await db.payrollAttendanceSnapshot.create({ data: { periodKey, sourceCheckedAt: new Date(), payload: {
-      version: 1, period: { periodKey, year: 2097, monthIndex: 11 }, attendanceMode: 'google-sheets', attendanceMessage: '',
+      version: 1, period: { periodKey, year: Number(periodKey.slice(0,4)), monthIndex: Number(periodKey.slice(5))-1 }, attendanceMode: 'google-sheets', attendanceMessage: '',
       scheduleMode: 'not-configured', scheduleMessage: '', formSummaries: [], scheduleSummaries: [],
     } } })).id;
+    if(automaticMonth){
+      const automatic=await readStoredPersonalCurrentPayroll(periodKey,userId,db,async()=>null);
+      assert.equal(automatic?.grossPay,43210);assert.equal(automatic?.draftRevision,0);
+      assert.equal(await db.payrollDraftRevision.count({where:{periodKey}}),0,'automatic read never creates ADMIN revisions');
+    }
     draftId = (await db.payrollDraftRevision.create({ data: { periodKey, revision: 1, requestId: randomUUID(), createdByUserId: userId,
       payload: { manual: {}, fixed: { [name]: { bonus: '789', advance: '', deduction: '', comment: 'QA' } },
         purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] } } })).id;

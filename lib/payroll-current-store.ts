@@ -10,6 +10,7 @@ import type { PayrollAdvanceRead } from './payroll-one-c-advances';
 import { createHash } from 'node:crypto';
 import type { PersonalPayrollSourceMemo } from './payroll-current-read';
 import { employeePayrollMonthAt, employeePayrollMonths } from './employee-payroll-view';
+import { payrollDraftForAutomaticEstimate } from './payroll-draft';
 
 const memoHost = globalThis as typeof globalThis & { __moboPersonalSalesMemoV1?: Map<string, { fingerprint: string; value: PersonalPayrollSourceMemo }> };
 const sourceMemos = memoHost.__moboPersonalSalesMemoV1 ??= new Map();
@@ -34,7 +35,7 @@ export async function readStoredPersonalCurrentPayroll(periodKey: string, userId
     ]);
     const rawAttendance = attendance ? readPayrollAttendanceSnapshotPayload(attendance.payload, periodKey) : null;
     const personalAttendance = attendance && rawAttendance ? { ...attendance, payload: await overlayApprovedDays(tx, rawAttendance, userId) } : attendance;
-    return { users, slices, attendance: personalAttendance, draft,
+    return { users, slices, attendance: personalAttendance, draft: payrollDraftForAutomaticEstimate(periodKey, draft),
       finboxAmount: finbox ? (finbox.amountCents / 100).toFixed(2) : null,
       classificationRules: classificationRules as unknown as PayrollSalesClassificationRule[], supplierRules };
   }, { isolationLevel: 'RepeatableRead' });

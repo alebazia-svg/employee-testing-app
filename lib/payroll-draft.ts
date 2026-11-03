@@ -12,6 +12,17 @@ export type PayrollDraftRead = {
   periodKey: string; revision: number; savedAt: string | null;
   payload: PayrollDraft | null; locked: boolean;
 };
+
+/** Current-month preview needs no invented persisted ADMIN confirmation.
+ * Existing revisions always win; past months still require saved inputs. */
+export function payrollDraftForAutomaticEstimate<T extends { payload: unknown; revision: number }>(
+  periodKey: string, saved: T | null, now = new Date(),
+): T | { payload: PayrollDraft; revision: number } | null {
+  if (saved) return saved;
+  const current = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit' }).format(now);
+  if (periodKey !== current) return null;
+  return { revision: 0, payload: { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] } };
+}
 const fail = () => { throw new Error('Проверьте введённые дни, суммы и комментарии.'); };
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail();
