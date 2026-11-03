@@ -1397,3 +1397,19 @@ No compensation formula, employee historical 1C-accrual authority, 1C document,
 production payroll data or schema was changed. Released together with the
 owner-approved tax-limit block as 1.20.8 / `8c4bee8`; server, public metadata,
 authenticated UI and unchanged payroll hashes verified. Exact files/checks: `../ops/payroll-final-correction-20261101.md`.
+
+## 2026-11-03 — Employee monthly accrual authority: approved FINAL statement
+
+Bela explicitly approved: «Полное начисление — из финальной ведомости,
+выплаты — из 1С. Только расчёты и интерфейс не меняй».
+This supersedes the employee monthly-accrual authority agreed on October 22:
+posted 1C accruals may contain only days and must no longer replace the full
+monthly total from the uniquely bound active FINAL portal statement.
+
+Local implementation reads the employee's FINAL grossPay unchanged. Documented
+payments and verified prior credit retain the existing 1C identity, month and
+reconciliation guards; remaining is reconciled against that FINAL amount.
+Missing/failed 1C evidence leaves payments/remaining unknown while preserving
+the approved monthly accrual. No FINAL means the existing availability policy;
+current estimates, formulas, UI, saved runs and 1C documents are unchanged.
+This is a local candidate, not a production release.
