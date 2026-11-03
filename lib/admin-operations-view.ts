@@ -189,7 +189,7 @@ export function adminInboxSourceState(input: {
       ? { active: true, label: 'Требует внимания', tone: 'attention' }
       : { active: false, label: 'Уровень риска изменился', tone: 'resolved' };
   }
-  if (input.sourceType === 'workday_handover_review') return input.current ? {active:true,label:'Нужна проверка',tone:'attention'} : {active:false,label:input.businessStatus==='acknowledged'?'Проверено':'Больше не требует проверки',tone:'resolved'};
+  if (input.sourceType === 'workday_handover_review') return input.current ? {active:true,label:'Нужна проверка',tone:'attention'} : {active:false,label:input.businessStatus==='pre_pilot'?'До начала пилота':input.businessStatus==='acknowledged'?'Проверено':'Больше не требует проверки',tone:'resolved'};
   if (input.sourceType === 'workday_control_issue') {
     const active = input.businessStatus === 'open' && (input.employeeActionRequired === true || input.adminVerificationRequired === true);
     return active

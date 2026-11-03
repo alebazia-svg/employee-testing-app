@@ -1,6 +1,6 @@
 import 'server-only';
 import { Prisma } from '@prisma/client';
-import { HANDOVER_REVIEW_DECISION, HANDOVER_REVIEW_EVENT, HANDOVER_REVIEW_SOURCE, handoverReviewCheckId, handoverReviewHref, handoverReviewRecord, needsHandoverReview } from './workday-handover-review';
+import { HANDOVER_REVIEW_FROM_DATE, HANDOVER_REVIEW_DECISION, HANDOVER_REVIEW_EVENT, HANDOVER_REVIEW_SOURCE, handoverReviewCheckId, handoverReviewHref, handoverReviewRecord, needsHandoverReview } from './workday-handover-review';
 
 type Db = Pick<Prisma.TransactionClient, 'shiftControlTask' | 'shiftControlManualReview' | 'user' | 'adminInboxEvent' | 'adminInboxReceipt'>;
 export const handoverReviewInclude = {
@@ -12,7 +12,7 @@ export async function loadOpenHandoverReviews(db: Db, input: {dateBefore?: strin
   const tasks = await db.shiftControlTask.findMany({
     where: {category:'handover',required:true,status:{not:'done'},
       run:{department:{in:['retail','wholesale']},workDayEntry:{endedAt:{not:null}},
-        ...(input.dateBefore ? {date:{lt:input.dateBefore}} : {}),
+        date:{gte:HANDOVER_REVIEW_FROM_DATE,...(input.dateBefore?{lt:input.dateBefore}:{})},
         ...(input.workDayEntryId ? {workDayEntryId:input.workDayEntryId} : {})},
     }, include:handoverReviewInclude, orderBy:[{run:{date:'asc'}},{id:'asc'}],
   });

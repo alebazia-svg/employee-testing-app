@@ -1870,7 +1870,7 @@ export default async function AdminWorkdayPage(
                       />
                         <AdminShiftControlDetails
                           handoverReview={(() => {
-                            const task=row.run?.tasks.find(task=>needsHandoverReview(task,{endedAt:row.workDay?.endedAt??null,department:row.employee.department}));
+                            const task=row.run?.tasks.find(task=>needsHandoverReview(task,{date:selectedDate,endedAt:row.workDay?.endedAt??null,department:row.employee.department}));
                             if(!task)return null;
                             const review=handoverReviewRecord(task.id,task.manualReviews);
                             return {taskId:task.id,review:review?{id:review.id,reviewedAt:review.reviewedAt.toISOString(),reviewedBy:review.reviewedBy.name}:null};

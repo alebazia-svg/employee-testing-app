@@ -1,5 +1,7 @@
 import { completedWithoutEncashment, handoverClosedByAdmin } from './workday-close-view';
 
+// Owner-confirmed real employee pilot began on 2026-10-18. Earlier runs are archive/test history.
+export const HANDOVER_REVIEW_FROM_DATE = '2026-10-18';
 export const HANDOVER_REVIEW_SOURCE = 'workday_handover_review';
 export const HANDOVER_REVIEW_EVENT = 'workday.handover_review_required';
 export const HANDOVER_REVIEW_DECISION = 'acknowledged';
@@ -7,8 +9,8 @@ export function handoverReviewCheckId(taskId: number) { return `unsubmitted-hand
 export type HandoverReviewTask = {
   id: number; category: string; required: boolean; status: string; handoverData?: unknown;
 };
-export function needsHandoverReview(task: HandoverReviewTask, day: {endedAt: Date | string | null; department: string}) {
-  return Boolean(day.endedAt) && ['retail','wholesale'].includes(day.department)
+export function needsHandoverReview(task: HandoverReviewTask, day: {date: string; endedAt: Date | string | null; department: string}) {
+  return day.date >= HANDOVER_REVIEW_FROM_DATE && Boolean(day.endedAt) && ['retail','wholesale'].includes(day.department)
     && task.category === 'handover' && task.required && task.status !== 'done'
     && !handoverClosedByAdmin(task) && !completedWithoutEncashment(task);
 }

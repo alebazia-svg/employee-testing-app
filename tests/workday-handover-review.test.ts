@@ -4,7 +4,7 @@ import {handoverReviewRequestAllowed,needsHandoverReview,handoverReviewRecord,ha
 import {adminInboxSourceState} from '../lib/admin-operations-view';
 import {selectAdminAttention} from '../lib/admin-inbox-attention-policy';
 const task={id:7,category:'handover',required:true,status:'missed',handoverData:null};
-const day={endedAt:'2026-11-03T06:57:00Z',department:'wholesale'};
+const day={date:'2026-11-02',endedAt:'2026-11-03T06:57:00Z',department:'wholesale'};
 test('closed unsubmitted handover needs review; open, optional and other-role workdays do not',()=>{
  assert.equal(needsHandoverReview(task,day),true);
  for(const status of ['pending','missed'])assert.equal(needsHandoverReview({...task,status},day),true);
@@ -47,4 +47,12 @@ test('review POST accepts the real proxy origin and rejects cross-site or non-JS
  assert.equal(handoverReviewRequestAllowed(request({origin:'not a url'})),false);
  assert.equal(handoverReviewRequestAllowed(request({'sec-fetch-site':'cross-site'})),false);
  assert.equal(handoverReviewRequestAllowed(request({'content-type':'text/plain'})),false);
+});
+
+test('pre-pilot runs remain history and cannot become active review reminders',()=>{
+ assert.equal(needsHandoverReview(task,{...day,date:'2026-10-17'}),false);
+ assert.equal(needsHandoverReview(task,{...day,date:'2026-10-18'}),true);
+ for(const date of ['2026-06-07','2026-07-29','2026-09-17','2026-10-06'])assert.equal(needsHandoverReview(task,{...day,date}),false);
+ const state=adminInboxSourceState({sourceType:'workday_handover_review',current:false,businessStatus:'pre_pilot'});
+ assert.equal(state.active,false);assert.equal(state.label,'До начала пилота');
 });

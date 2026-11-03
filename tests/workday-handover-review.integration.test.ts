@@ -24,6 +24,10 @@ test('PostgreSQL: backfill, read, simultaneous acknowledgement, reload and retai
    const task=run.tasks[0];taskIds.push(task.id);return {day,task};
   }
   const missing=await make('2026-11-02','missed',true,{personalCash:{cashBalance:2890},oneCAudit:{capturedAt:'2026-11-02T16:06:00Z',personalCash:{balance:2890,status:'captured'}}});
+  const archive=await make('2026-06-07','missed',true);
+  // Recover the already-created faulty event without deleting it or inventing an acknowledgement.
+  const archivedEvent=await prisma.adminInboxEvent.create({data:{eventKey:`workday:handover-review:${archive.task.id}`,type:'workday.handover_review_required',sourceType:HANDOVER_REVIEW_SOURCE,sourceId:String(archive.task.id),title:'Не сдана смена',body:'Допилотный архив',href:'/',occurredAt:now}});
+  await prisma.adminInboxReceipt.createMany({data:[admin,other].map(actor=>({eventId:archivedEvent.id,userId:actor.id}))});
   const originalDay=await prisma.workDayEntry.findUniqueOrThrow({where:{id:missing.day.id}});
   const originalTask=await prisma.shiftControlTask.findUniqueOrThrow({where:{id:missing.task.id}});
   await make('2026-11-01','done',true);
@@ -34,6 +38,9 @@ test('PostgreSQL: backfill, read, simultaneous acknowledgement, reload and retai
   const event=await prisma.adminInboxEvent.findUniqueOrThrow({where:{eventKey:`workday:handover-review:${missing.task.id}`}});
   assert.equal(await prisma.adminInboxEvent.count({where:{sourceType:HANDOVER_REVIEW_SOURCE,sourceId:String(missing.task.id)}}),1);
   assert.equal(await prisma.adminInboxReceipt.count({where:{eventId:event.id}}),2);
+  const archiveAfter=await prisma.shiftControlTask.findUniqueOrThrow({where:{id:archive.task.id}});
+  assert.equal(archiveAfter.status,'missed');
+  assert.equal(await prisma.shiftControlManualReview.count({where:{taskId:archive.task.id}}),0);
   const inbox=()=>loadAdminInbox({userId:admin.id,limit:100,view:'attention',now});
   assert.equal((await inbox()).items.filter(item=>item.event.sourceType===HANDOVER_REVIEW_SOURCE).length,1);
   await prisma.adminInboxReceipt.updateMany({where:{eventId:event.id},data:{readAt:now}});
@@ -54,7 +61,9 @@ test('PostgreSQL: backfill, read, simultaneous acknowledgement, reload and retai
   await syncClosedHandoverReviews(prisma,{now:new Date(+now+60000)});
   assert.equal(await prisma.adminInboxEvent.count({where:{sourceType:HANDOVER_REVIEW_SOURCE,sourceId:String(missing.task.id)}}),1,'runner must not recreate a resolved reminder');
   const history=await loadAdminInbox({userId:admin.id,limit:100,view:'history',now});
-  const historical=history.items.find(item=>item.event.sourceType===HANDOVER_REVIEW_SOURCE);
+  const historical=history.items.find(item=>item.event.sourceType===HANDOVER_REVIEW_SOURCE && item.event.sourceId===String(missing.task.id));
+  const archiveHistory=history.items.find(item=>item.event.sourceId===String(archive.task.id) && item.event.sourceType===HANDOVER_REVIEW_SOURCE);
+  assert.ok(archiveHistory);assert.equal(archiveHistory.sourceState.label,'До начала пилота');
   assert.ok(historical);assert.equal(historical.sourceState.active,false);assert.equal(historical.sourceState.label,'Проверено');
   const reloaded=await prisma.shiftControlTask.findUniqueOrThrow({where:{id:missing.task.id},include:handoverReviewInclude});
   assert.ok(handoverReviewRecord(reloaded.id,reloaded.manualReviews)?.reviewedBy.name);
