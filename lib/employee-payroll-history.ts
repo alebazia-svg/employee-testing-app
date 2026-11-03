@@ -62,7 +62,7 @@ function earlierPayrollCreditMinor(period: string, name: string, ref: string, ca
 }
 
 export type PersonalSettlement = { accrued: number; paid: number | null; remaining: number | null; creditedFromEarlier?: number; sourceFallback?: boolean; checkedAt?: string };
-export function projectPersonalSettlement(period: string, name: string, cash: PayrollCashRead, ledger: PayrollLedgerRead): PersonalSettlement | null {
+export function projectPersonalSettlement(period: string, name: string, cash: PayrollCashRead, ledger: PayrollLedgerRead, finalAccrued?: number): PersonalSettlement | null {
   if (cash.dateFrom > `${period}-01` || ledger.dateFrom > `${period}-01` || cash.dateTo !== ledger.dateTo) return null;
   // Strict personal identity, not the ADMIN's broader reviewed alias resolver.
   const normalize = (value: string) => value.trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
@@ -78,7 +78,7 @@ export function projectPersonalSettlement(period: string, name: string, cash: Pa
   if (refs.size !== 1) return null;
   const ref = [...refs][0];
   if ([...ledger.employees, ...cash.documents].some(row => row.employeeRef.toLowerCase() === ref && !samePerson(row.employeeName))) return null;
-  const accrued = payrollPostedAccrual(ledger, ref, period);
+  const accrued = finalAccrued ?? payrollPostedAccrual(ledger, ref, period);
   if (accrued === null || !Number.isFinite(accrued) || accrued < 0) return null;
   let paidMinor = 0;
   const seen = new Set<string>();

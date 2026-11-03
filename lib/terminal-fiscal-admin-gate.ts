@@ -26,7 +26,7 @@ export type FiscalProposedRecipients = {
   users: ProposedUser[];
   primary: ProposedUser | null;
   confidence: 'high' | 'uncertain';
-  reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'solo_shift' | 'ambiguous';
+  reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'retained_workstation' | 'ambiguous';
 };
 
 function money(value: number) {
@@ -111,25 +111,21 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
 
 export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   'workDayEntry' | 'terminalFiscalMapping' | 'workdayKkmAssignment' | 'userOneCCashboxMapping'
->, at: Date, mappingId?: string | null, options: { allowSolo?: boolean } = {}): Promise<FiscalProposedRecipients> {
+>, at: Date, mappingId?: string | null): Promise<FiscalProposedRecipients> {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
   const entries = await db.workDayEntry.findMany({ where: { date, department: 'retail', status: { in: ['active', 'completed'] }, user: { role: 'EMPLOYEE', isActive: true } },
     select: { userId: true, startedAt: true, endedAt: true, user: { select: { name: true } } }, orderBy: { userId: 'asc' } });
-  const active = entries.filter((e) => e.startedAt <= at && (!e.endedAt || e.endedAt >= at));
+  const active = entries.filter((e) => e.startedAt <= at && (!e.endedAt || e.endedAt > at));
   const selected = active.length ? active : entries;
   const users = [...new Map(selected.map((e) => [e.userId, { id: e.userId, name: e.user.name }])).values()];
   const ambiguous = (): FiscalProposedRecipients => ({
     scope: active.length ? 'retail_shift' : 'retail_day', users, primary: null, confidence: 'uncertain', reason: 'ambiguous',
   });
-  // A personal proposal is safe only for the normal two-person retail shift.
-  // Otherwise the ADMIN keeps the existing shared delivery instead of guessing.
-  if (!mappingId || !((active.length === 2 && users.length === 2) || (options.allowSolo && active.length === 1 && users.length === 1))) return ambiguous();
+  if (!mappingId || !active.length) return ambiguous();
   const mapping = await db.terminalFiscalMapping.findUnique({
     where: { id: mappingId }, select: { oneCCashRegisterRef: true, terminalKey: true },
   });
   if (!mapping?.oneCCashRegisterRef) return ambiguous();
-  // Display attribution only; employee review routing keeps its two-person policy.
-  if (options.allowSolo && active.length === 1 && users.length === 1) return { scope: 'workstation_shift', users, primary: users[0], confidence: 'high', reason: 'solo_shift' };
   const userIds = users.map((user) => user.id);
   const assignments = await db.workdayKkmAssignment.findMany({
     where: { date, userId: { in: userIds }, oneCCashRegisterRef: mapping.oneCCashRegisterRef,
@@ -143,6 +139,8 @@ export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   };
   if (assignedIds.length === 1) return ordered(assignedIds[0], 'manual_kkm_assignment');
   if (assignedIds.length > 1) return ambiguous();
+  // Without an explicit assignment only the agreed one/two-person seating is known.
+  if (users.length > 2) return ambiguous();
 
   const homeMappings = await db.userOneCCashboxMapping.findMany({
     where: { userId: { in: userIds }, isActive: true }, select: { userId: true, oneCCashRegisterRef: true },
@@ -155,6 +153,22 @@ export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   const directIds = [...new Set(homeMappings.filter((item) => item.oneCCashRegisterRef === mapping.oneCCashRegisterRef).map((item) => item.userId).concat(policyIds))];
   if (directIds.length === 1) return ordered(directIds[0], 'home_workstation');
   if (directIds.length > 1) return ambiguous();
+  // A home owner never inherits a colleague's terminal. Magomed alone may keep
+  // only a seat established during his current continuous shift with a home owner.
+  if (users.length === 1) {
+    if (!isRetailWorkstationReplacement(users[0].name)) return ambiguous();
+    const replacement = active.find(entry => entry.userId === users[0].id)!;
+    const departures = entries.filter(entry => entry.userId !== replacement.userId
+      && entry.endedAt && entry.endedAt <= at && entry.endedAt > replacement.startedAt
+      && entry.startedAt < entry.endedAt);
+    const lastDeparture = departures.sort((a,b) => +b.endedAt! - +a.endedAt!)[0]?.endedAt;
+    if (!lastDeparture) return ambiguous();
+    // Immediately before this departure at least one colleague was present,
+    // so this historical lookup cannot re-enter the one-person branch.
+    const previous = await fiscalProposedRecipients(db, new Date(+lastDeparture - 1), mappingId);
+    return previous.primary?.id === replacement.userId && previous.reason === 'floating_employee'
+      ? ordered(replacement.userId, 'retained_workstation') : ambiguous();
+  }
 
   const activeMappings = await db.terminalFiscalMapping.findMany({
     where: { isActive: true, effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },

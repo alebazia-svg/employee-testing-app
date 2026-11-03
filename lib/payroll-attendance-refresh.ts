@@ -125,8 +125,8 @@ export async function refreshPayrollAttendance(request: Request) {
     if (period.periodKey >= DIANA_DAY_SOURCE_FROM.slice(0, 7)) {
       if (scheduleData.mode !== 'google-sheets') throw new Error('График Google недоступен.');
       const dianaUsers = await prisma.user.findMany({
-        where: { role: 'EMPLOYEE', isActive: true, department: 'retail', OR: [{ payrollName: DIANA_DAY_SOURCE_NAME }, { name: DIANA_DAY_SOURCE_NAME }] },
-        select: { id: true, name: true, payrollName: true, workDays: {
+        where: { role: 'EMPLOYEE', department: 'retail', OR: [{ payrollName: DIANA_DAY_SOURCE_NAME }, { name: DIANA_DAY_SOURCE_NAME }] },
+        select: { id: true, name: true, payrollName: true, isActive: true, workDays: {
           where: { date: { gte: `${period.periodKey}-01`, lte: throughDate } },
           select: { userId: true, date: true, startedAt: true, status: true },
         } },

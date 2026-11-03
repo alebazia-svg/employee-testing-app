@@ -2,7 +2,16 @@
 
 ## Current Purpose
 
-Latest cash-closure baseline (2026-11-01): production 1.20.6 reuses the existing
+Latest cash-closure read path (2026-11-02): production 1.21.3 starts OFD reads
+for a known workplace before existing handover refreshes and in parallel with
+1C receipt/shift reads. Preserve the agreed immediate photo/not-printed fallback;
+there is no mandatory one-minute waiting step or change to notification rules.
+Exact fiscal identity, latest-receipt and reopened-shift guards remain in place.
+OFD request timing/completeness is saved in closure evidence for diagnosis.
+Verified release and unchanged historical facts:
+`../ops/kkm-ofd-read-release-20261102.md`.
+
+Workplace baseline (2026-11-01): production 1.20.6 reuses the existing
 actual-workday/home-workplace responsibility rule when cashier receipts cannot
 identify a KKT, including days without sales. An exact OFD closure remains the
 proof; no new manual employee/device assignment is required for a known home

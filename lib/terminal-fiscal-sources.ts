@@ -15,6 +15,7 @@ import { loadAqsiOperations } from '@/lib/aqsi-acquiring';
 export type SourceSnapshot<T> = {
   complete: boolean;
   checkedAt: string;
+  providerFetchedAt?: string;
   data: T[];
   errorCode?: string;
   windows?: number;
@@ -449,7 +450,7 @@ export async function loadPlatformaOfdZReports(input: {
   const meta = record(root.meta);
   const providerComplete = root.complete === true || dataRoot?.complete === true || meta?.complete === true;
   const complete = providerComplete && normalized.length === rows.length;
-  return { complete, checkedAt, data: normalized, errorCode: complete ? undefined : normalized.length !== rows.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE' };
+  return { complete, checkedAt, ...(typeof meta?.fetchedAt==='string'?{providerFetchedAt:meta.fetchedAt}:{}), data: normalized, errorCode: complete ? undefined : normalized.length !== rows.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE' };
 }
 
 export async function previewTerminalFiscalMappings(input: { from: string; to: string }) {

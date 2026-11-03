@@ -31,15 +31,15 @@ export async function employeePayrollResponse(viewer: PayrollViewer | null, quer
     currentPeriod: () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit' }).format(new Date()),
     findAccess: readPayrollAccess,
     findCurrent: storedOnly ? (period, userId) => readStoredPersonalCurrentPayroll(period, userId, prisma, async () => null) : readStoredPersonalCurrentPayroll,
-    findSettlement: async (period, userId) => {
-      // First paint must not wait for 1C. No invented historical paid/accrued sum.
+    findSettlement: async (period, userId, accrued) => {
+      // Payments remain 1C evidence; the approved FINAL supplies monthly accrual.
       const users = await prisma.user.findMany({ select: directorySelect });
       const name = getPrivatePayrollBinding(users, userId);
       if (!name || name !== historicalName) return null;
       const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date());
       const snapshot = await readPersonalPayrollSettlementSource(period, today, storedOnly);
       if (!snapshot) return null;
-      const result = projectPersonalSettlement(period, name, snapshot.source.cash, snapshot.source.ledger);
+      const result = projectPersonalSettlement(period, name, snapshot.source.cash, snapshot.source.ledger, accrued);
       return result ? { ...result, ...(snapshot.sourceFallback ? { sourceFallback: true, checkedAt: snapshot.checkedAt } : {}) } : null;
     },
     findFinal: async (periodKey, userId) => {

@@ -1,5 +1,74 @@
 ﻿# Portal Decision Log
 
+## 2026-11-02 - Retail receipt responsibility follows the actual workstation
+
+Owner reconfirmed the seating policy: Zukhra and Milana use their own terminals;
+Magomed replaces the absent home owner when the other owner is working. A sole
+remaining owner keeps only her own workstation; she does not inherit the departed
+colleague's terminal. Owner explicitly approved retaining Magomed's replacement
+seat after the home owner leaves, until Magomed's same continuous shift ends.
+The resolver reconstructs the last actual overlapping seating, never invents a
+seat without that evidence, and does not carry expired manual assignments forward.
+Dated explicit KKM assignments take priority; conflicts stay ambiguous.
+Use actual shift intervals at payment time, with an exclusive end boundary, rather
+than using the current shift or the schedule as proof of historical presence.
+
+Released and verified as 1.21.4 / `a48ee29` on 2026-11-02: report attribution and review routing
+use the same workstation resolver without the old cashier-dependent solo bypass.
+Actual 1C cashier evidence remains separate from operational responsibility;
+matching, the 30-minute reminder grace, source-health safeguards and automatic
+review retirement are unchanged. The earlier approved FISCAL_DATA_PENDING wording
+fix is included. No production DB edits, migrations or 1C publication were performed.
+
+Candidate code commit: `0cfabb7`. Verification: 284 fiscal tests passed (one
+optional external fixture skipped), 258 workday, 38 adjacent notification tests,
+and 13 real PostgreSQL integration tests; TypeScript and optimized build passed.
+Database integration used disposable local PostgreSQL, current schema plus the
+three existing matching uniqueness indexes. The historical empty-database
+migration order fails at 20260830143000; it was not changed or presented as a
+successful migration rehearsal. No schema change is needed by this candidate.
+
+Authenticated visual review used the actual app and synthetic local records at
+127.0.0.1:3279 on a separate fiscal_seating_preview database. Normal home seating
+and Magomed before/after the colleague's departure were rendered on mobile and
+desktop; the vacant other terminal stayed unassigned, and financial mismatch
+remained independent of responsibility. External providers were unconfigured/
+loopback-only; the UI correctly kept the saved demo report when refresh failed.
+Screenshot: /tmp/mobo-seating-desktop-verified.png. Preview seed helper is guarded
+to the exact local DB at /tmp/mobo-seating-preview.cjs. Native phone push display remains unverified. Owner separately authorized production
+release after the explanations and visual preview; no fabricated help was sent.
+
+### Production verification, 2026-11-02
+
+- Runtime/server commit: `a48ee29b6f6b996397338609540c69c30b1e8f9a`;
+  prior runtime `879da68d6117df5259e2f92e5106fa87c367e34c` / 1.21.3.
+- Public release metadata and authenticated ADMIN footer agree: 1.21.4,
+  builtAt `2026-11-02T16:34:48.524Z` (19:34 Moscow). Existing revision metadata
+  remains null/source unknown; source identity was checked independently by SSH.
+- Container healthy; public /api/health ok; server.env digest and canonicalized
+  file mounts unchanged. Only portal-app replaced; no schema, timer or 1C changes.
+- First attempt automatically restored 1.21.3 because raw mount-array order
+  differed. Full records compared equal after sorting by destination. Reviewed
+  retry installed the identical already-built image with the same version/date;
+  no second build, no relaxed mount-content checks. Final remote/local exit 0.
+- Pre-build free space 17.46 GiB; after build 14.51 GiB. Exact-image retry did not
+  build or extract another image. Reapply the 15 GiB pre-build gate and approved
+  maintenance before a future build. Earlier storage-service failure was an old
+  unregistered-current-image refusal; registry matched the live image at preflight.
+- After independent public/server/UI checks, registered current image
+  `sha256:534a8700cb529b39acd8fa790268750430e57e326370349bd8fcec0118451a03`,
+  previous `sha256:518d132292ed950879f49b3bd03554b31c249afbe8ffad0a568aadd70b4eba9f`,
+  reserve `sha256:5e7b0869590711076a0c8e73cdc0edbae81ee9db140762c91c98acefd666c00e`.
+  All images verified present; lock released before registration.
+- Actual refreshed day report (19:42 Moscow): bank/1C/OFD each 5,900 RUB,
+  no fiscal amount difference. The 18:09 500 RUB payment is matched to check 3316:
+  1C document 19:05, OFD receipt 18:57, actual cashier in 1C Zukhra. Source document
+  availability is distinct from this release; do not claim the patch created it.
+  Bank settlement statement remains incomplete, as before, independently of fiscal
+  matching. Screenshot `/tmp/mobo-seating-1.21.4-production.png`.
+- Reviewed scripts/logs: `/tmp/mobo-seating-release-1.21.4-r2.sh` and native
+  `.command`; server `/home/bela/mobo-seating-release-1.21.4-r2.log` and `.exit`.
+
 ## 2026-10-25 - AUSN Control Is An Isolated ADMIN Tax Module
 
 The portal exposes AUSN control under `/admin/taxes`, separate from the
@@ -1376,9 +1445,99 @@ No volumes/uploads/backups were pruned. Primary checkout WIP remained untouched.
 Newer sales classification beyond the displayed cutoff and November preparation
 remain separate work; this release does not claim to resolve those items.
 
+## 2026-11-01 — Final payroll corrections released in 1.20.8
+
+Bela explicitly approved saving a payroll statement as final and later correcting
+it through a new final version, retaining the prior version in history. She then
+restricted the scope: preserve the current interface and all calculation formulas;
+add only the convenient saving/correction actions.
+
+Released implementation adds `Исправить ведомость` to the existing final overview and
+`Сохранить финальную ведомость` / `Сохранить новую финальную` to the existing save
+confirmation. Existing draft save, comparison, export, employee cards, source
+checks and remarks acceptance remain. The old final stays authoritative until an
+atomic replacement succeeds; stale-final conflicts are rejected. Draft/Finbox
+editing requires the exact active final ID; a closed month is opened through the
+existing ADMIN period action when correction begins. Original runs and details
+remain immutable, with replacement/actor/time history. Documented 1C advances are
+re-read once, while genuine manual advances and deductions are preserved.
+
+No compensation formula, employee historical 1C-accrual authority, 1C document,
+production payroll data or schema was changed. Released together with the
+owner-approved tax-limit block as 1.20.8 / `8c4bee8`; server, public metadata,
+authenticated UI and unchanged payroll hashes verified. Exact files/checks: `../ops/payroll-final-correction-20261101.md`.
+
+## 2026-11-03 — Employee monthly accrual authority: approved FINAL statement
+
+Bela explicitly approved: «Полное начисление — из финальной ведомости,
+выплаты — из 1С. Только расчёты и интерфейс не меняй».
+This supersedes the employee monthly-accrual authority agreed on October 22:
+posted 1C accruals may contain only days and must no longer replace the full
+monthly total from the uniquely bound active FINAL portal statement.
+
+Local implementation reads the employee's FINAL grossPay unchanged. Documented
+payments and verified prior credit retain the existing 1C identity, month and
+reconciliation guards; remaining is reconciled against that FINAL amount.
+Missing/failed 1C evidence leaves payments/remaining unknown while preserving
+the approved monthly accrual. No FINAL means the existing availability policy;
+current estimates, formulas, UI, saved runs and 1C documents are unchanged.
+This is a local candidate, not a production release.
 ### 2026-11-01 — approved proposal for extending a remaining Retail shift
 
 Bela approved an ADMIN-confirmed extension proposal, not automatic reassignment.
 See workday-playbook.md “Owner-approved shift extension”. Preserve original
 shift and attendance facts. Solo-shift fiscal display requires mapped 1C identity;
 existing employee-error routing stays unchanged. Prepared locally, not released.
+
+## 2026-11-03 — ADMIN may correct an active shift after work has started
+
+Bela approved a separate fix: allow ADMIN to correct an already started shift,
+retaining completed checks, cash and history. Employee self-correction rules
+are unchanged. The existing empty-checklist rebuild cannot serve this scope;
+a dedicated ADMIN transaction updates shift/deadlines in place, preserves IDs
+and facts, records the actor/change and refuses incompatible checklist purposes.
+This is a locally verified candidate; no production shift change or release.
+Exact scope/files/checks: `../ops/admin-shift-repair-20261103.md`.
+
+## 2026-11-03 — Employee FINAL accrual released as 1.21.7
+
+Owner-approved source change is deployed and independently verified:
+`fb96ab7ca8ba98a0277e89092420d9b402fb15d4`, version 1.21.7, built
+14:19:27 MSK. Existing 1.21.6 changes were merged and preserved. All saved
+payroll/configuration hashes, env and mounts match before/after. Actual Zukhra
+preview shows FINAL 98,961.79 RUB; 1C paid is 99,000 RUB. Their 38.21 RUB
+mismatch retains the existing unknown paid/remaining guard, disclosed to Bela;
+no rounding/formula adjustment or production payroll write was performed.
+Exact files/evidence: `../ops/payroll-monthly-accrual-release-20261103.md`.
+
+## 2026-11-03 — Active-shift ADMIN repair released separately, 1.21.9
+
+Bela explicitly approved verifying preservation and releasing the shift repair
+while the salary audit continued. Deployed `8383db6` / 1.21.9, built 16:22:32
+MSK; source/public/authenticated UI, data preservation and verified-image
+registration succeeded. Existing 1.21.8 arrival-comment UI retained. No actual
+production shift was corrected during QA. Details:
+`../ops/admin-shift-repair-20261103.md`.
+
+Separately, Bela reminded that employee salary display must retain nearest-100
+rounding. Restoring that agreed precision is prepared as `cc2074a` on
+`codex/payroll-rounded-final-20261103`; it is not included in 1.21.9. Read-only
+October audit found additional 1C/FINAL differences (Liana 114,000 posted/paid
+versus FINAL 113,874.78; Marianna 50,000 posted/paid versus FINAL 30,000) and
+unassigned November 2 cash (Zalina 7,500; Milana 2,500). Do not silently assign
+those documents to October, rewrite FINALs or treat day-only posted accrual as
+full monthly salary. Working evidence/query: `.wip/payroll-display-audit-20261103.ts`
+and `.wip/payroll-display-audit-20261103/`. No new source-authority policy was
+approved merely by the owner's question about already paid amounts.
+
+## 2026-11-03 — Agreed employee salary rounding restored, 1.21.10
+
+Bela reminded that changing the employee total's source must not drop the
+previously agreed nearest-100 display precision. Restoration was tested and
+released separately after the shift repair, preserving FINAL raw amounts,
+formulas and UI. Server `e2e91a2`, version1.21.10, built17:38:03MSK; public,
+server, authenticated UI and all five private monthly outputs verified, plus
+unchanged saved-finance/configuration hashes and successful image registration.
+No new month allocations, 1C-total authority policy or production salary/shift
+mutation was included. Exact files/checks/evidence:
+`../ops/payroll-rounded-final-release-20261103.md`.

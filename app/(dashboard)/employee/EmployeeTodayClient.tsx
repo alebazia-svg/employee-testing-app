@@ -3214,7 +3214,7 @@ export function EmployeeTodayClient({
               })()
           : JSON.stringify(payload);
       const result = requestBody instanceof FormData
-        ? await uploadFormData<{ task: ShiftControlTask }>(
+        ? await uploadFormData<{ task: ShiftControlTask; cashRecountUnverified?: boolean }>(
             `/api/employee/shift-control/tasks/${task.id}`,
             'PATCH',
             requestBody,
@@ -3229,7 +3229,7 @@ export function EmployeeTodayClient({
             });
             const responsePayload = await response.json();
             if (!response.ok) throw new Error(responsePayload.error || 'Не удалось обновить задачу');
-            return responsePayload as { task: ShiftControlTask };
+            return responsePayload as { task: ShiftControlTask; cashRecountUnverified?: boolean };
           })();
 
       if (!result) return;
@@ -3249,6 +3249,7 @@ export function EmployeeTodayClient({
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
       await syncCurrentWorkdayState(true);
+      if (task.category === 'cash' && result.cashRecountUnverified) setMessage('Пересчёт сохранён. Сверить с 1С не удалось.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {

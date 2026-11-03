@@ -6,6 +6,38 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import { createKkmCloseConfirmation } from '../lib/kkm-close-confirmation';
 
+test('a later OFD report resolves the existing attention workflow with an open 1C document and preserves cash history', {skip:process.env.KKM_CONFIRMATION_INTEGRATION!=='1'},async()=>{
+ assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55479/kkm_close_empty_20261101');
+ const {prisma:db}=await import('../lib/prisma');const {verifyEmployeeKkmShiftClose:verify,syncKkmShiftCloseIssue:sync}=await import('../lib/kkm-shift-close-control');
+ const {adminInboxSourceState}=await import('../lib/admin-operations-view');
+ const key=String(Date.now()),start=new Date('2026-11-01T17:03:17Z');
+ const user=await db.user.create({data:{login:'propagation-'+key,name:'Учебный сотрудник',passwordHash:'disabled',role:'EMPLOYEE',department:'retail'}});
+ const day=await db.workDayEntry.create({data:{userId:user.id,date:'2026-11-01',department:'retail',shiftCode:'09_18',shiftLabel:'09–18',status:'active',startedAt:new Date('2026-11-01T05:57:00Z')}});
+ const run=await db.shiftControlRun.create({data:{userId:user.id,workDayEntryId:day.id,date:day.date,department:'retail'}});
+ const task=await db.shiftControlTask.create({data:{runId:run.id,title:'Сдать смену',category:'handover',sortOrder:1}});
+ const original={personalCash:{cashBalance:750},reserveCash:{cashBalance:60000},photos:{zReport:null},cashRecountInputHistory:[{kind:'initial',value:750,enteredAt:start.toISOString()}]};
+ await db.userOneCCashboxMapping.create({data:{userId:user.id,oneCCashboxRef:'cash',oneCCashboxName:'Учебная касса',oneCCashierRef:'cashier'}});
+ const check={cashier:{ref:'cashier'},cashRegisterRef:'kkm',kktRegistrationNumber:'kkt',dateTime:'2026-11-01T16:55:15Z',fiscalDateTime:'2026-11-01T16:47:00Z',fiscalDriveNumber:'fn',fiscalDocumentNumber:'3306',fiscalSign:'20'};
+ let reports:any[]=[];
+ const sources:any={loadOneCKkmChecks:async()=>({complete:true,data:[check]}),getCashShifts:async()=>({ok:true,shifts:[{cashRegister:{ref:'kkm',name:'Учебная касса'},posted:true,number:'1093',fiscalShiftNumber:'348',status:'Открыта',openedAt:'2026-11-01T05:59:04Z',closedAt:'',datetime:'2026-11-01T05:59:04Z'}]}),loadPlatformaOfdZReports:async()=>({complete:true,data:reports})};
+ try{
+  const first=await verify({db,userId:user.id,date:day.date},sources);
+  await db.shiftControlTask.update({where:{id:task.id},data:{handoverData:{...original,kkmCloseCheck:{status:first.status,startedAt:start.toISOString(),evidence:first}}}});
+  const input={userId:user.id,taskId:task.id,workDayEntryId:day.id,date:day.date,evidence:first,now:start};
+  const issue=await sync(db,input);assert.equal(issue?.employeeActionRequired,true);
+  assert.equal(adminInboxSourceState({sourceType:'workday_control_issue',businessStatus:issue?.status,employeeActionRequired:issue?.employeeActionRequired,adminVerificationRequired:(issue?.sourceData as any)?.ownerVerificationRequired}).active,true);
+  assert.equal(await db.workdayNotification.count({where:{issueId:issue!.id,status:'pending'}}),0);
+  reports=[{kktRegistrationNumber:'kkt',fiscalDriveNumber:'fn',shiftNumber:'348',openedAt:'2026-11-01T05:50:00Z',closedAt:'2026-11-01T16:55:00Z',documentLink:'report'}];
+  const confirmed=await verify({db,userId:user.id,date:day.date},sources);assert.equal(confirmed.status,'confirmed');assert.equal(confirmed.oneCClosedAt,'');
+  await sync(db,{...input,evidence:confirmed,now:new Date(+start+25_000)});
+  const saved=(await db.shiftControlTask.findUniqueOrThrow({where:{id:task.id}})).handoverData as any;
+  for(const field of Object.keys(original))assert.deepEqual(saved[field],original[field as keyof typeof original]);
+  assert.equal(saved.kkmCloseCheck.status,'confirmed');assert.deepEqual(saved.kkmCloseCheck.firstEvidence,first);
+  assert.equal((await db.workdayControlIssue.findUniqueOrThrow({where:{id:issue!.id}})).status,'resolved');
+  assert.equal(await db.workdayNotification.count({where:{issueId:issue!.id,status:'pending'}}),0);
+ }finally{const issues=await db.workdayControlIssue.findMany({where:{userId:user.id},select:{id:true}});await db.adminInboxEvent.deleteMany({where:{sourceType:'workday_control_issue',sourceId:{in:issues.map(i=>String(i.id))}}});await db.user.delete({where:{id:user.id}});await db.$disconnect();}
+});
+
 test('prefetched OFD closes a completed empty shift without touching cash, photo, history or its original end time', {skip:process.env.KKM_CONFIRMATION_INTEGRATION!=='1'},async()=>{
  assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55479/kkm_close_empty_20261101','dedicated isolated test database only');
  const {prisma:db}=await import('../lib/prisma'),{recheckOpenKkmShiftCloseIssues:recheck}=await import('../lib/kkm-shift-close-control');

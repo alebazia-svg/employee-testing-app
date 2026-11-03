@@ -1,3 +1,4 @@
+import { captureCashRecountWithRetry } from '@/lib/cash-recount-capture';
 import { after } from 'next/server';
 import { createKkmCloseConfirmation, preserveKkmCloseFacts, kkmCloseConfirmation as readKkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
@@ -22,7 +23,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { prefetchEmployeeKkmClose, firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -166,12 +167,15 @@ async function captureOneCCashAudit({
   date,
   includeReserve,
   capturedAt,
+  deadline,
 }: {
   userId: number;
   date: string;
   includeReserve: boolean;
   capturedAt: Date;
+  deadline?: number;
 }) {
+  const readOptions = () => deadline === undefined ? undefined : { timeoutMs: Math.max(1, Math.min(2000, deadline - Date.now())) };
   const unavailable = (cashboxName: string, error: string) => ({
     status: 'unavailable',
     cashboxName,
@@ -183,7 +187,7 @@ async function captureOneCCashAudit({
   try {
     const [mapping, dimensions] = await Promise.all([
       prisma.userOneCCashboxMapping.findUnique({ where: { userId } }),
-      getCashStatementDimensions(),
+      getCashStatementDimensions(readOptions()),
     ]);
     if (!dimensions.ok) {
       const error = dimensions.error || dimensions.diagnostics.join('; ') || '1С не вернула список касс.';
@@ -221,7 +225,7 @@ async function captureOneCCashAudit({
         date,
         organizationRef: organization.ref,
         cashboxRef: cashbox.ref,
-      });
+      }, readOptions());
       if (!statement.ok || statement.closingBalance === null) {
         return unavailable(
           cashbox.name,
@@ -459,6 +463,9 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     }
 
     const refreshReceipts = () => refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
+    if(user.department==='retail'&&!closeConfirmationRequested&&!readKkmCloseConfirmation(task.handoverData)) {
+      void prefetchEmployeeKkmClose(prisma,user.id,task.run.date).catch(()=>undefined);
+    }
     if (closeConfirmationRequested || readKkmCloseConfirmation(task.handoverData)?.userId===user.id) after(refreshReceipts); else await refreshReceipts();
 
     const earlyFinishDeviation = await prisma.workdayDeviation.findUnique({
@@ -1004,12 +1011,13 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     const oneCAudit = existingStage === 'comment_required' && existingAudit && existingFact === numericValue
       ? existingAudit
       : {
-          ...(await captureOneCCashAudit({
+          ...(await captureCashRecountWithRetry(deadline => captureOneCCashAudit({
           userId: user.id,
           date: task.run.date,
           includeReserve: false,
           capturedAt: editedAt,
-          })),
+          deadline,
+          }))),
           factCashBalance: numericValue,
         };
     const personalAudit = readRecord(oneCAudit, 'personalCash');
@@ -1092,5 +1100,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
 
   await resolveTaskNotifications(prisma, [task.id], editedAt);
 
-  return Response.json({ task: taskForEmployee(updatedTask) });
+  return Response.json({
+    task: taskForEmployee(updatedTask),
+    cashRecountUnverified: cashComparison?.status === 'unavailable' && cashComparison.expected === null,
+  });
 }

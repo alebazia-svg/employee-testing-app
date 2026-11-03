@@ -114,7 +114,7 @@ const limitReport = (full?: PortalReport, current?: PortalReport) => full?.avail
 function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
   const { full, current, risk, forecast, outlook, months, base, missingTypes } = props;
   const report = limitReport(full, current);
-  if (!report) return <section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section>;
+  if (!report) return <><TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} /><section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section></>;
   const used = report.usedPercent ?? 0;
   const year = report.year || report.dataCutoff?.slice(0, 4) || '';
   const closed = months.filter((month) => !month.partial);
@@ -128,21 +128,21 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
   const range = outlook && outlook.state !== 'exceeded' && outlook.cautious.withinYear ? (outlook.usual.withinYear && outlook.cautious.date !== outlook.usual.date ? (outlook.cautious.date?.slice(0, 7) === outlook.usual.date?.slice(0, 7) ? `${dayNum(outlook.cautious.date)}–${dayMonth(outlook.usual.date)}` : `${dayMonth(outlook.cautious.date)} – ${dayMonth(outlook.usual.date)}`) : dayMonth(outlook.cautious.date)) : undefined;
   const barLevel = risk.level !== 'unknown' ? risk.level : used >= 95 ? 'urgent' : used >= 90 ? 'plan' : used >= 80 ? 'early' : 'normal';
   return <>
-    <section className='tax-panel' aria-label='Годовой лимит дохода'>
-      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>Годовой лимит дохода — 60 млн ₽<More><p>Считается весь доход за год с 1 января, включая январь–март до перехода на АУСН.</p><p className='mt-1.5'>Если доход превысит 60 млн ₽, АУСН перестаёт действовать с 1 числа месяца превышения. До 15 числа следующего месяца нужно уведомить налоговую и выбрать режим (обычно УСН), иначе — общий режим с НДС.</p></More></h2><p>Данные по {dayMonth(report.dataCutoff)}</p></div><span className='tax-status' data-tone={status[0]}>{status[1]}</span></div>
+    <TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} />
+    <section className='tax-panel' aria-label='Учётный расчёт 1С и ККТ'>
+      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>Учётный расчёт 1С и ККТ — требует проверки<More><p>Считается весь доход за год с 1 января, включая январь–март до перехода на АУСН.</p><p className='mt-1.5'>Если доход превысит 60 млн ₽, АУСН перестаёт действовать с 1 числа месяца превышения. До 15 числа следующего месяца нужно уведомить налоговую и выбрать режим (обычно УСН), иначе — общий режим с НДС.</p></More></h2><p>Данные по {dayMonth(report.dataCutoff)}. Возвраты и повторения ещё не устранены; это не подтверждённый фактический доход.</p></div><span className='tax-status' data-tone='warn'>Непроверенный расчёт</span></div>
       <div className='tax-kpis'>
-        <div className='tax-kpi' data-accent='true'><small>Осталось до лимита</small><strong>{mln(report.remaining)}</strong><span>из 60 млн ₽</span></div>
-        <div className='tax-kpi'><small>Получено за год</small><strong>{mln(report.totalIncome)}</strong><span>использовано {used.toLocaleString('ru-RU')}%</span></div>
-        <div className='tax-kpi'><small>Лимит закончится</small><strong>{outlook?.state === 'exceeded' ? 'уже превышен' : range ? `≈ ${range}` : outlook ? 'не в этом году' : '—'}</strong><span>{range ? 'при нынешних продажах' : outlook ? 'даже при сильных продажах' : 'нужно 3 полных месяца'}</span></div>
+        <div className='tax-kpi' data-accent='true'><small>Расчётный остаток, не подтверждён</small><strong>{mln(report.remaining)}</strong><span>из 60 млн ₽</span></div>
+        <div className='tax-kpi'><small>Доход по общему отчёту</small><strong>{mln(report.totalIncome)}</strong><span>использовано {used.toLocaleString('ru-RU')}%</span></div>
+        <div className='tax-kpi'><small>Прогноз по учётному расчёту</small><strong>{outlook?.state === 'exceeded' ? 'уже превышен' : range ? `≈ ${range}` : outlook ? 'не в этом году' : '—'}</strong><span>{range ? 'при нынешних продажах' : outlook ? 'даже при сильных продажах' : 'нужно 3 полных месяца'}</span></div>
       </div>
       <div className='tax-body pt-1'>
         <div className='tax-limit-bar' data-level={barLevel} role='meter' aria-label='Использовано лимита' aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, used)}><i style={{ width: `${Math.min(100, Math.max(0, used))}%` }} />{[80, 90, 95].map((mark) => <b key={mark} style={{ left: `${mark}%` }} data-label={`${mark}%`} />)}</div>
-        {outlook && <DecisionCallout outlook={outlook} />}
+        {outlook && <><p className='tax-small mb-2'>Условный прогноз по непроверенному общему отчёту; не рекомендация по допустимому объёму продаж.</p><DecisionCallout outlook={outlook} /></>}
         {forecast && <details className='tax-details group mt-3 border-t border-[#eee7df] pt-2'><summary className='flex items-center justify-between gap-3 py-1'><span className='text-[13px] font-semibold'>Посчитать свой вариант продаж</span><AdminDisclosureAction /></summary><div className='mt-3'><LimitScenario remaining={forecast.remaining} cutoff={forecast.cutoff} year={year} average={forecast.average} /></div></details>}
       </div>
     </section>
 
-    <TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} />
 
     <section className='tax-panel' aria-label='Налоги коротко'>
       <SummaryRow title='Налог' tone={unpaidDue.length ? 'error' : underpaid.length ? 'warn' : 'muted'} status={unpaidDue.length ? 'Не оплачен' : underpaid.length ? 'Разница с платежом' : paid > 0 ? 'Найдены платежи' : 'Оплаты не сверялись'} href={`${withTab(base)}reconciliation`}>
@@ -161,10 +161,10 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
 }
 
 function DecisionCallout({ outlook }: { outlook: LimitOutlook }) {
-  if (outlook.state === 'exceeded') return <div className='tax-callout' data-tone='error'><strong>Лимит превышен.</strong> Срочно к бухгалтеру: уведомить налоговую и выбрать режим до 15 числа следующего месяца.</div>;
-  if (outlook.state === 'enough') return <div className='tax-callout' data-tone='ok'><strong>Лимита хватит до конца года</strong>, даже при самых сильных продажах.</div>;
+  if (outlook.state === 'exceeded') return <div className='tax-callout' data-tone='warn'><strong>В учётной модели лимит превышен.</strong> Сначала подтвердите фактический доход по первичным документам.</div>;
+  if (outlook.state === 'enough') return <div className='tax-callout' data-tone='ok'><strong>По учётной модели лимита хватает до конца года.</strong> Вывод требует подтверждения фактического дохода.</div>;
   return <div className='tax-callout' data-tone={outlook.state === 'decide_now' ? 'error' : 'warn'}>
-    <strong>{outlook.state === 'decide_now' ? 'Решение по лимиту нужно сейчас.' : `Решить по лимиту до ${dayMonth(outlook.decisionDate)}.`}</strong>{outlook.safeMonthly !== undefined && <> Чтобы дотянуть до 31 декабря — не больше {mln(outlook.safeMonthly)} дохода в месяц.</>}
+    <strong>{outlook.state === 'decide_now' ? 'Учётная модель показывает риск превышения.' : `Срок решения в учётной модели: ${dayMonth(outlook.decisionDate)}.`}</strong>{outlook.safeMonthly !== undefined && <> Ограничение в этой модели — {mln(outlook.safeMonthly)} в месяц; фактический допустимый объём продаж пока не подтверждён.</>}
     <More><p>Если продажи будут {mln(outlook.cautious.monthly)} в месяц{outlook.cautious.month ? ` (как в ${monthPrepositional(outlook.cautious.month)})` : ''}, лимит закончится около {dayMonth(outlook.cautious.date)}{outlook.usual.withinYear && outlook.usual.date !== outlook.cautious.date ? `; при среднем темпе ${mln(outlook.usual.monthly)} (${outlook.usual.months.map(monthName).join(', ')}) — около ${dayMonth(outlook.usual.date)}` : ''}. Перед праздниками продажи растут, поэтому берём более раннюю дату. Срок решения — за 45 дней до неё.</p></More>
   </div>;
 }
@@ -178,7 +178,7 @@ function IncomeStructurePanel({ full, base, compact }: TaxesWorkspaceProps & { c
   const structure = full.incomeStructure || {};
   const total = full.ausnIncome;
   return <section className='tax-panel' aria-label='Доход по видам поступлений'>
-    <div className='tax-panel-head'><div><h2>Доход с апреля по видам поступлений</h2><p>Всего {mln(total)}</p></div>{compact && <Link href={`${withTab(base)}income`} className='tax-link'>По месяцам <ArrowRight /></Link>}</div>
+    <div className='tax-panel-head'><div><h2>Доход общего отчёта с апреля по видам поступлений</h2><p>Всего {mln(total)}</p></div>{compact && <Link href={`${withTab(base)}income`} className='tax-link'>По месяцам <ArrowRight /></Link>}</div>
     <div className='tax-body'>
       <div className='tax-stack'>{channels.map((channel) => { const value = structure[channel.key]; return value && total ? <i key={channel.key} title={`${channel.label}: ${rub(value)}`} style={{ width: `${(value / total) * 100}%`, background: channel.color }} /> : null; })}</div>
       <div className='tax-channels'>{channels.map((channel) => { const value = structure[channel.key]; return <div key={channel.key} className='tax-channel'><span><i style={{ background: channel.color }} /><T title={channel.term}>{channel.label}</T></span><strong>{mln(value)}</strong><span>{value !== undefined && total ? `${(Math.round((value / total) * 1000) / 10).toLocaleString('ru-RU')}% дохода` : 'нет разбивки'}</span></div>; })}</div>

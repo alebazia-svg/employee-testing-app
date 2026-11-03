@@ -1,3 +1,4 @@
+import { syncClosedHandoverReviews } from '@/lib/workday-handover-review-server';
 import { needsWorkdayEndReminder, validateReportedWorkdayEnd, WORKDAY_END_REMINDER_KIND, workdayEndReminderKey, WORKDAY_END_REMINDER_OFFSETS } from '@/lib/workday-end-policy';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { getCurrentUser } from '@/lib/auth';
@@ -123,6 +124,8 @@ export async function POST(req: Request) {
         occurredAt: now,
       });
     }
+
+    await syncClosedHandoverReviews(tx,{now,workDayEntryId:activeWorkDay.id});
 
     if (closeException) {
       await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });
