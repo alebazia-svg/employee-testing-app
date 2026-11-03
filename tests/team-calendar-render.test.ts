@@ -34,6 +34,8 @@ test('real calendar server selection and rendering include active Procurement wi
         { employee: 'Ахобекова Залина', date: '2026-11-03', plannedWork: false, scheduleNote: '' },
         { employee: 'Ахобекова Залина', date: '2026-11-04', plannedWork: true, scheduleNote: '' },
         { employee: 'Абшаева Зухра', date: '2026-11-03', plannedWork: true, scheduleNote: '' },
+        { employee: 'Ахобекова Залина', date: '2026-11-06', plannedWork: true, scheduleNote: '' },
+        { employee: 'Ахобекова Залина', date: '2026-11-06', plannedWork: false, scheduleNote: '' },
       ],
     }) },
     './TeamSourceRefresh': { TeamSourceRefresh: () => null },
@@ -60,5 +62,6 @@ test('real calendar server selection and rendering include active Procurement wi
   const missing = await render('2026-11-05');
   assert.match(missing, /Ахобекова Залина<small>Нет записи<\/small>/);
   assert.match(missing, /aria-label="Астемир Тохов, 2026-11-05, Отпуск"/);
+  assert.match(await render('2026-11-06'), /Ахобекова Залина<small>Google<\/small>/);
   assert.equal(JSON.stringify(schedules), before, 'calendar reads never modify saved plans');
 });

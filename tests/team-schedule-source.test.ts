@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTeamSchedule, teamCalendarSourceLabel } from '../lib/team-control';
+import { googleDay, resolveTeamSchedule, teamCalendarSourceLabel } from '../lib/team-control';
 import { resolveTeamAttendance } from '../lib/team-attendance';
 
 const input = { name: 'Ахобекова Залина', googlePlan: null, googleAvailable: true, vacation: false };
@@ -97,4 +97,12 @@ test('calendar preserves actual sources, outages, vacations and the original app
   assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, vacation: true })), 'Приложение');
   assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, googleAvailable: false })), 'Google');
   assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, name: 'Ляна' })), 'Приложение');
+});
+
+test('conflicting Google plans are not mislabeled as absent records', () => {
+  const google = googleDay(input.name, '2026-11-06', [true, false].map(plannedWork => ({ employee: input.name, date: '2026-11-06', plannedWork, scheduleNote: '' })), []);
+  const plan = resolveTeamSchedule({ ...input, googlePlan: google.plan });
+  assert.equal(google.ambiguous, true);
+  assert.equal(plan.state, 'unknown');
+  assert.equal(teamCalendarSourceLabel(plan, google.ambiguous), 'Google');
 });

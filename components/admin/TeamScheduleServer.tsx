@@ -16,7 +16,7 @@ export async function TeamScheduleServer({date,view}:{date:string;view?:string})
   const g=googleDay(u.name,d,google.plans,google.marks);const gp=google.planAvailable?g.plan??'unknown':'unavailable';
   const vacation=vacations.some(v=>v.userId===u.id&&v.dateFrom<=d&&v.dateTo>=d);
   const plan=resolveTeamSchedule({name:u.name,appStatus:app,googlePlan:g.plan,googleAvailable:google.planAvailable,vacation});
-  return {date:d,app,google:gp,plan:plan.state==='unknown'&&plan.app?'unset':plan.state,source:teamCalendarSourceLabel(plan),vacation,note:g.note};
+  return {date:d,app,google:gp,plan:plan.state==='unknown'&&plan.app?'unset':plan.state,source:teamCalendarSourceLabel(plan,g.ambiguous),vacation,note:g.note};
  });return {...u,source:days.find(d=>d.date===date)?.source??'Приложение',days};});
  return <TeamSchedule people={people} month={month} date={date} initialView={view} readAt={formatTime(new Date(google.readAt))} warning={!google.planAvailable?'График Google сейчас недоступен.':''}/>;
 }
