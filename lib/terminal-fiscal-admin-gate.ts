@@ -1,3 +1,4 @@
+import { ACQUIRING_RECEIPT_NOT_FOUND, acquiringReceiptCopy } from './terminal-acquiring-receipt-review';
 import {terminalPaymentCopy,terminalPaymentMetadata,terminalReceiptNumber} from './terminal-payment-copy';
 import { retailHomeTerminalKey, isRetailWorkstationReplacement } from './retail-workstation-responsibility';
 import { terminalFiscalSourceIncomplete, terminalFiscalReasonLabel } from './terminal-fiscal-reason-view';
@@ -33,7 +34,7 @@ function money(value: number) {
   return `${(value / 100).toLocaleString('ru-RU')} ₽`;
 }
 
-export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping, options: {minimumAgeMs?:number} = {}) {
+export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping, options: {minimumAgeMs?:number;missingAcquiringReceipt?:boolean;acquiringDocumentNumber?:string|null} = {}) {
   // An unavailable dependency is a technical incident, never one new case per payment.
   // Keep existing financial reviews and employee responses unchanged until a complete read.
   if (terminalFiscalSourceIncomplete(record.reasonCode)) return;
@@ -66,19 +67,19 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     if (!admins.length) throw new Error('TERMINAL_FISCAL_ADMIN_RECIPIENT_MISSING');
     const approved = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(existing.id) } });
     const possibleSplit = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || isFiscalChainReason(record.reasonCode);
-    const keepOpen = Boolean((approved || existing?.assignmentScope === 'workstation_shift') && existing?.status === 'open' && !possibleSplit && !record.oneCCheckKey
-      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode));
+    const keepOpen = Boolean((approved || existing?.assignmentScope === 'workstation_shift') && existing?.status === 'open' && !possibleSplit && (options.missingAcquiringReceipt || !record.oneCCheckKey
+      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode)));
     const review = await tx.terminalFiscalEmployeeReview.upsert({
       where: { reviewKey },
       create: { reviewKey, matchingHash: hash, mappingId: record.mappingId ?? null,
         employeeId: admins[0].id, assignmentScope: 'admin_gate', status: 'admin_review',
-        reasonCode: record.reasonCode, bankOperationAt: at, amountKopecks: record.amountKopecks,
+        reasonCode: options.missingAcquiringReceipt ? ACQUIRING_RECEIPT_NOT_FOUND : record.reasonCode, bankOperationAt: at, amountKopecks: record.amountKopecks,
         cashierRefHash: hash, detectedAt: now, lastCheckedAt: now },
-      update: { lastCheckedAt: now, reasonCode: record.reasonCode,
+      update: { lastCheckedAt: now, reasonCode: options.missingAcquiringReceipt ? ACQUIRING_RECEIPT_NOT_FOUND : record.reasonCode,
         ...(!keepOpen ? { status: 'admin_review', resolvedAt: null } : {}) },
     });
     if (!keepOpen) await tx.workdayNotification.updateMany({ where: { reviewId: review.id, status: 'pending' }, data: { status: 'cancelled' } });
-    if (keepOpen && !approved && existing?.assignmentScope === 'workstation_shift') return;
+    if (keepOpen && !approved && existing?.assignmentScope === 'workstation_shift' && !options.missingAcquiringReceipt) return;
     const when = at.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
     const elapsedMinutes = Math.max(0, Math.floor((now.getTime() - at.getTime()) / 60_000));
     const proposed = await fiscalProposedRecipients(tx, at, record.mappingId);
@@ -90,14 +91,15 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
-    const title = record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? terminalFiscalReasonLabel(record.reasonCode) : 'В 1С нет чека';
+    const acquiringCopy = options.missingAcquiringReceipt ? acquiringReceiptCopy({operationAt:at,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,documentNumber:options.acquiringDocumentNumber,relative:false}) : null;
+    const title = acquiringCopy?.title ?? (record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? terminalFiscalReasonLabel(record.reasonCode) : 'В 1С нет чека');
     const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK'
       ? 'Есть возможный чек ОФД. Требуется связать документы; просьба пробить повторный чек не отправляется.'
       : possibleSplit
       ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
       : uncertain ? `${terminalFiscalReasonLabel(record.reasonCode)}. Проверьте документы; повторно пробивать чек до проверки не нужно.`
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
-    const displayBody=body+(terminalReceiptNumber(record.evidence.terminalReceiptNumber)?` Чек терминала № ${record.evidence.terminalReceiptNumber}.`:'');
+    const displayBody=acquiringCopy ? `${terminal}${workstation}${acquiringCopy.body}` : body+(terminalReceiptNumber(record.evidence.terminalReceiptNumber)?` Чек терминала № ${record.evidence.terminalReceiptNumber}.`:'');
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',

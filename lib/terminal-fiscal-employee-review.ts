@@ -1,3 +1,4 @@
+import { ACQUIRING_RECEIPT_NOT_FOUND, acquiringReceiptCopy, acquiringReceiptDocumentNumber } from './terminal-acquiring-receipt-review';
 import { missingReceiptReviewRecord } from './terminal-fiscal-missing-receipt';
 import {terminalPaymentCopy} from './terminal-payment-copy';
 import 'server-only';
@@ -455,6 +456,7 @@ export async function syncTerminalFiscalEmployeeReviews(
   for (const record of input.output.records) {
     const reviewRecord = forReview(record);
     const acquiringWithoutReceipt = reviewRecord !== record;
+    const acquiringNumber = acquiringWithoutReceipt ? acquiringReceiptDocumentNumber(receiptChecks.find(check => check.sourceRef === record.oneCCheckKey)) : null;
     // Technical attempts are audited by persistence/source-health, not by the
     // per-payment business lifecycle. Preserve employee help and prior decisions.
     if (terminalFiscalSourceIncomplete(record.reasonCode)) continue;
@@ -500,11 +502,13 @@ export async function syncTerminalFiscalEmployeeReviews(
     const previousReview = activePrimary ? await prisma.terminalFiscalEmployeeReview.findUnique({where:{reviewKey}}) : null;
     const automaticDelivery = Boolean((!previousReview || ['open','admin_review','shadow_candidate'].includes(previousReview.status)) && activePrimary && decision.action === 'notify' && decision.employeeId === activePrimary.userId);
     const handoverReview = Boolean(input.closingEmployeeId && record.sourceCompleteness.tbank && record.sourceCompleteness.oneC && record.sourceCompleteness.ofd && (!primary || primary.id === input.closingEmployeeId));
+    if (acquiringWithoutReceipt && decision.action === 'wait') continue;
+    const missingAcquiringReceipt = acquiringWithoutReceipt && (decision.action === 'notify' || decision.action === 'admin_only' && !decision.reason.startsWith('PERIOD_'));
     const adminFirst = !automaticDelivery && (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
     if (adminFirst && record.status !== 'confirmed') {
       if (decision.action === 'wait' && !record.oneCCheckKey && !handoverReview) continue;
       // Ambiguous fiscal evidence and technical OFD delays remain ADMIN-only.
-      await stageFiscalAdminReview(prisma, record, input.mapping, {minimumAgeMs: handoverReview ? 0 : undefined});
+      await stageFiscalAdminReview(prisma, record, input.mapping, {minimumAgeMs: handoverReview ? 0 : undefined, missingAcquiringReceipt, acquiringDocumentNumber: acquiringNumber});
       adminOnly += 1;
       continue;
     }
@@ -543,8 +547,8 @@ export async function syncTerminalFiscalEmployeeReviews(
 
     // Keep the owner's financial review as well as the employee task. An existing
     // open task must not be reset/cancelled by every polling cycle.
-    if (acquiringWithoutReceipt && automaticDelivery && !previousReview) {
-      await stageFiscalAdminReview(prisma, record, input.mapping);
+    if (acquiringWithoutReceipt && automaticDelivery) {
+      await stageFiscalAdminReview(prisma, record, input.mapping, {missingAcquiringReceipt: true, acquiringDocumentNumber: acquiringNumber});
     }
     if (Number.isNaN(operationAt.getTime())) continue;
     let participantIds = [decision.employeeId];
@@ -589,7 +593,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           employeeId,
           assignmentScope,
           status: mode === 'shadow' ? 'shadow_candidate' : 'open',
-          reasonCode: record.reasonCode,
+          reasonCode: acquiringWithoutReceipt ? ACQUIRING_RECEIPT_NOT_FOUND : record.reasonCode,
           bankOperationAt: operationAt,
           amountKopecks: record.amountKopecks,
           cashierRefHash: digest(attributionKey),
@@ -598,6 +602,7 @@ export async function syncTerminalFiscalEmployeeReviews(
         },
         update: {
           lastCheckedAt: evaluatedAt,
+          reasonCode: acquiringWithoutReceipt ? ACQUIRING_RECEIPT_NOT_FOUND : record.reasonCode,
           assignmentScope,
           ...(mode === 'shadow' ? { status: 'shadow_candidate' } : automaticDelivery ? {status:'open',employeeId} : {}),
         },
@@ -606,18 +611,23 @@ export async function syncTerminalFiscalEmployeeReviews(
           data: participantIds.map((userId) => ({ reviewId: review.id, userId })),
           skipDuplicates: true,
         });
-      if (mode === 'notify' && review.status === 'open' && existing?.status !== 'open') {
+      if (mode === 'notify' && review.status === 'open' && acquiringWithoutReceipt) await tx.workdayNotification.updateMany({
+        where:{reviewId:review.id,kind:'terminal_fiscal_review',status:'pending',NOT:{fingerprint:{startsWith:`${reviewKey}:acquiring-receipt-created:`}}},
+        data:{status:'cancelled',pushStatus:'cancelled',nextPushAttemptAt:null},
+      });
+      if (mode === 'notify' && review.status === 'open' && (existing?.status !== 'open' || acquiringWithoutReceipt)) {
         for (const userId of participantIds) {
-          if (automaticDelivery && await tx.workdayNotification.findFirst({where:{reviewId:review.id,userId,kind:'terminal_fiscal_review'},select:{id:true}})) continue;
+          const fingerprint = `${reviewKey}:${acquiringWithoutReceipt?'acquiring-receipt-created':'created'}:${userId}`;
+          if (automaticDelivery && await tx.workdayNotification.findFirst({where:acquiringWithoutReceipt?{fingerprint}:{reviewId:review.id,userId,kind:'terminal_fiscal_review'},select:{id:true}})) continue;
           await tx.workdayNotification.upsert({
-          where: { fingerprint: `${reviewKey}:created:${userId}` },
+          where: { fingerprint },
           create: {
             userId,
             reviewId: review.id,
-            fingerprint: `${reviewKey}:created:${userId}`,
+            fingerprint,
             kind: 'terminal_fiscal_review',
-            title: 'Проверьте чек',
-            body: terminalPaymentCopy({ operationAt, amountKopecks: record.amountKopecks, receiptNumber:record.evidence.terminalReceiptNumber, method:record.evidence.bankOperationRawType, shared:sharedAssignment(assignmentScope), relative:false }).body,
+            title: acquiringWithoutReceipt ? acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks}).title : 'Проверьте чек',
+            body: (acquiringWithoutReceipt ? acquiringReceiptCopy : terminalPaymentCopy)({ operationAt, amountKopecks: record.amountKopecks, receiptNumber:record.evidence.terminalReceiptNumber, method:record.evidence.bankOperationRawType, shared:sharedAssignment(assignmentScope), relative:false, documentNumber:acquiringNumber }).body,
             scheduledAt: evaluatedAt,
           },
           update: {},
@@ -626,8 +636,8 @@ export async function syncTerminalFiscalEmployeeReviews(
       }
       // Enrich an active notice from the exact bank operation; history stays intact.
       if (mode === 'notify' && record.evidence.terminalReceiptNumber && review.status === 'open') await tx.workdayNotification.updateMany({
-        where:{reviewId:review.id,kind:'terminal_fiscal_review',status:{in:['pending','sent']}},
-        data:{body:terminalPaymentCopy({operationAt,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,shared:sharedAssignment(assignmentScope),relative:false}).body},
+        where:{reviewId:review.id,kind:'terminal_fiscal_review',status:{in:['pending','sent']},...(acquiringWithoutReceipt?{fingerprint:{startsWith:`${reviewKey}:acquiring-receipt-created:`}}:{})},
+        data:{...(acquiringWithoutReceipt?{title:acquiringReceiptCopy({operationAt,amountKopecks:record.amountKopecks}).title}:{}),body:(acquiringWithoutReceipt?acquiringReceiptCopy:terminalPaymentCopy)({operationAt,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,shared:sharedAssignment(assignmentScope),relative:false,documentNumber:acquiringNumber}).body},
       });
       if (mode === 'notify' && !automaticDelivery && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([

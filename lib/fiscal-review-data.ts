@@ -1,3 +1,4 @@
+import { ACQUIRING_RECEIPT_NOT_FOUND } from './terminal-acquiring-receipt-review';
 import { fiscalWorkstationLabel } from './retail-workstation-responsibility';
 import { portalPersonName } from '@/lib/portal-person';
 import 'server-only';
@@ -107,7 +108,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
     canArchiveUnresolved:pendingAdmin,
     canTest:pendingAdmin&&!match?.oneCSourceRef,
     hasOneCCheck:Boolean(match?.oneCSourceRef),
-    reasonCode:match?.reasonCode??review.reasonCode,
+    reasonCode:review.reasonCode===ACQUIRING_RECEIPT_NOT_FOUND&&match?.reasonCode==='OFD_RECEIPT_NOT_FOUND'?ACQUIRING_RECEIPT_NOT_FOUND:match?.reasonCode??review.reasonCode,
     sources:{bank:match?.tbankComplete??null,oneC:match?.oneCComplete??null,ofd:match?.ofdComplete??null},
     checkedAt:review.lastCheckedAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     rawType:match?.reasonCode==='BANK_OPERATION_UNSUPPORTED'?match.bankOperationRawType:null,
