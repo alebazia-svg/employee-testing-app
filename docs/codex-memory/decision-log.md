@@ -1445,6 +1445,43 @@ No volumes/uploads/backups were pruned. Primary checkout WIP remained untouched.
 Newer sales classification beyond the displayed cutoff and November preparation
 remain separate work; this release does not claim to resolve those items.
 
+## 2026-11-01 — Final payroll corrections released in 1.20.8
+
+Bela explicitly approved saving a payroll statement as final and later correcting
+it through a new final version, retaining the prior version in history. She then
+restricted the scope: preserve the current interface and all calculation formulas;
+add only the convenient saving/correction actions.
+
+Released implementation adds `Исправить ведомость` to the existing final overview and
+`Сохранить финальную ведомость` / `Сохранить новую финальную` to the existing save
+confirmation. Existing draft save, comparison, export, employee cards, source
+checks and remarks acceptance remain. The old final stays authoritative until an
+atomic replacement succeeds; stale-final conflicts are rejected. Draft/Finbox
+editing requires the exact active final ID; a closed month is opened through the
+existing ADMIN period action when correction begins. Original runs and details
+remain immutable, with replacement/actor/time history. Documented 1C advances are
+re-read once, while genuine manual advances and deductions are preserved.
+
+No compensation formula, employee historical 1C-accrual authority, 1C document,
+production payroll data or schema was changed. Released together with the
+owner-approved tax-limit block as 1.20.8 / `8c4bee8`; server, public metadata,
+authenticated UI and unchanged payroll hashes verified. Exact files/checks: `../ops/payroll-final-correction-20261101.md`.
+
+## 2026-11-03 — Employee monthly accrual authority: approved FINAL statement
+
+Bela explicitly approved: «Полное начисление — из финальной ведомости,
+выплаты — из 1С. Только расчёты и интерфейс не меняй».
+This supersedes the employee monthly-accrual authority agreed on October 22:
+posted 1C accruals may contain only days and must no longer replace the full
+monthly total from the uniquely bound active FINAL portal statement.
+
+Local implementation reads the employee's FINAL grossPay unchanged. Documented
+payments and verified prior credit retain the existing 1C identity, month and
+reconciliation guards; remaining is reconciled against that FINAL amount.
+Missing/failed 1C evidence leaves payments/remaining unknown while preserving
+the approved monthly accrual. No FINAL means the existing availability policy;
+current estimates, formulas, UI, saved runs and 1C documents are unchanged.
+This is a local candidate, not a production release.
 ### 2026-11-01 — approved proposal for extending a remaining Retail shift
 
 Bela approved an ADMIN-confirmed extension proposal, not automatic reassignment.

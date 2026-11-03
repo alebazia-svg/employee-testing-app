@@ -21,7 +21,7 @@ export type EmployeePayrollDependencies = {
   findFinal: (period: string, userId: number) => Promise<PersonalPayrollRun | null>;
   findAccess?: (userId:number) => Promise<PayrollRequiredAction|null>;
   findCurrent?: (period: string, userId: number) => Promise<PersonalCurrentPayroll | null>;
-  findSettlement?: (period: string, userId: number) => Promise<PersonalSettlement | null>;
+  findSettlement?: (period: string, userId: number, accrued: number) => Promise<PersonalSettlement | null>;
 };
 
 export async function readEmployeePayroll(
@@ -68,21 +68,22 @@ export async function readEmployeePayroll(
     const rows = run.employeeResults.filter(row => row.userId === viewer.id);
     if (rows.length !== 1) return unavailable;
     const row = rows[0];
-    if (![row.grossPay, row.advance].every(Number.isFinite) || row.advance < 0) return unavailable;
-    const settlement = await dependencies.findSettlement?.(period, viewer.id);
-    if (!settlement || !Number.isFinite(settlement.accrued) || settlement.accrued < 0) return unavailable;
-    const verifiedPayments = settlement.paid !== null && settlement.remaining !== null
+    if (![row.grossPay, row.advance].every(Number.isFinite) || row.grossPay < 0 || row.advance < 0) return unavailable;
+    // A source outage cannot hide an administrator-approved monthly accrual.
+    const accrued = row.grossPay;
+    const settlement = await dependencies.findSettlement?.(period, viewer.id, accrued).catch(() => null);
+    const verifiedPayments = settlement?.accrued === accrued && settlement.paid !== null && settlement.remaining !== null
       && [settlement.paid, settlement.remaining].every(value => Number.isFinite(value) && value >= 0)
       && Number.isFinite(settlement.creditedFromEarlier ?? 0) && (settlement.creditedFromEarlier ?? 0) >= 0
       && Math.round((settlement.paid + settlement.remaining + (settlement.creditedFromEarlier ?? 0)) * 100) === Math.round(settlement.accrued * 100);
     return { status: 200, body: {
       month: period,
       state: 'confirmed' as const,
-      accrued: settlement.accrued,
-      paid: verifiedPayments ? settlement.paid : null,
-      remaining: verifiedPayments ? settlement.remaining : null,
-      ...(verifiedPayments && settlement.creditedFromEarlier ? { creditedFromEarlier: settlement.creditedFromEarlier } : {}),
-      ...(settlement.sourceFallback ? { sourceFallback: true, checkedAt: settlement.checkedAt } : {}),
+      accrued,
+      paid: verifiedPayments ? settlement!.paid : null,
+      remaining: verifiedPayments ? settlement!.remaining : null,
+      ...(verifiedPayments && settlement!.creditedFromEarlier ? { creditedFromEarlier: settlement!.creditedFromEarlier } : {}),
+      ...(settlement?.sourceFallback ? { sourceFallback: true, checkedAt: settlement.checkedAt } : {}),
     } };
   } catch {
     return { status: 503, body: { error: 'Расчёт временно недоступен. Попробуйте позже.' } };
