@@ -39,3 +39,20 @@ test('existing schedule-only application changes days only, preserving lateness,
  const result=applyAutomaticAttendanceInputs([name],inputs,preview,'2026-10');assert.deepEqual(result[name],{...previous,workedDays:'3'});assert.deepEqual(result['Абшаева Зухра'],inputs['Абшаева Зухра']);
  const manual={[name]:{...previous,source:'manualCorrection' as const}};assert.deepEqual(applyAutomaticAttendanceInputs([name],manual,preview,'2026-10'),manual);
 });
+
+test('inactive Diana without monthly evidence does not fabricate zero or block other employees',()=>{
+ const input={googleRows:[row('01.11.2026',true,'Зухра')],appUsers:[{id:9,name,payrollName:name,isActive:false,workDays:[]}],periodKey:'2026-11',throughDate:'2026-11-03'};
+ const result=mergeDianaPayrollDays(input);
+ assert.deepEqual(result.summaries,[{employee:'Зухра',scheduleDays:1}]);
+ assert.deepEqual(result.dates,[]);
+ assert.throws(()=>mergeDianaPayrollDays({...input,appUsers:[{...input.appUsers[0],isActive:true}]}),/отсутствует график/);
+ assert.throws(()=>mergeDianaPayrollDays({...input,appUsers:[]}),/однозначно/);
+ assert.throws(()=>mergeDianaPayrollDays({...input,appUsers:[input.appUsers[0],input.appUsers[0]]}),/однозначно/);
+});
+
+test('disabling access retains historical days, overlaps and invalid-source protection',()=>{
+ const input={googleRows:[row('01.10.2026',true),row('02.10.2026',true)],appUsers:[{id:9,name,payrollName:name,isActive:false,workDays:[day('2026-10-01')]}],periodKey:'2026-10',throughDate:'2026-10-30'};
+ assert.deepEqual(mergeDianaPayrollDays(input),mergeDianaPayrollDays({...input,appUsers:[{...input.appUsers[0],isActive:true}]}));
+ assert.throws(()=>mergeDianaPayrollDays({...input,googleRows:[]}),/отсутствует график/);
+ assert.throws(()=>mergeDianaPayrollDays({...input,appUsers:[{...input.appUsers[0],workDays:[day('2026-10-01','cancelled')]}]}),/отметки/);
+});

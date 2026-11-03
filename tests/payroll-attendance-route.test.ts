@@ -18,7 +18,7 @@ const savedPayload = snapshots.createPayrollAttendanceSnapshotPayload({
   period: { monthIndex: 9, year: 2026, periodKey: '2026-10' }, attendanceMode: 'google-sheets', attendanceMessage: '', scheduleMode: 'google-sheets', scheduleMessage: '',
   formSummaries: [{ employee, formRows: 1, uniqueFormDates: 1, workedDays: 1, lateCount: 0 }], scheduleSummaries: [{ employee, scheduleDays: 1 }],
 });
-async function run(options: { denied?: boolean; muhamedError?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
+async function run(options: { denied?: boolean; inactiveDiana?: boolean; muhamedError?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
   const calls: string[] = [];
   const month = options.month === 10 ? '11' : '10';
   const effectiveSaved = month === '11' ? {...savedPayload, period:{monthIndex:10,year:2026,periodKey:'2026-11'}} : savedPayload;
@@ -29,15 +29,15 @@ async function run(options: { denied?: boolean; muhamedError?: boolean; dianaErr
     getMoscowDateKey: () => `2026-${month}-19`,
     requireAdminApi: async () => options.denied ? { ok: false, response: Response.json({}, { status: 403 }) } : { ok: true },
     getAttendanceRows: async () => { calls.push('google'); if (options.googleError) throw Error('unavailable'); return { mode: 'google-sheets', message: '', rows: options.emptyGoogle ? [] : [{ timestamp: `18.${month}.2026 08:50:00`, employee, date: `2026-${month}-18`, action: 'Начало рабочего дня', time: '08:50', shift: '09:00–19:00', comment: '' }] }; },
-    getScheduleRows: async () => ({ mode: 'google-sheets', message: '', rows: [{ date: `18.${month}.2026`, employee, plannedWork: true }, { date: `18.${month}.2026`, employee: 'Диана', plannedWork: true }, { date: `19.${month}.2026`, employee: 'Диана', plannedWork: false }] }),
+    getScheduleRows: async () => ({ mode: 'google-sheets', message: '', rows: [{ date: `18.${month}.2026`, employee, plannedWork: true }, { date: `18.${month}.2026`, employee: options.inactiveDiana ? 'Другой сотрудник' : 'Диана', plannedWork: true }, { date: `19.${month}.2026`, employee: options.inactiveDiana ? 'Другой сотрудник' : 'Диана', plannedWork: false }] }),
     prisma: {
       payrollAttendanceSnapshot: { findUnique: async () => saved, upsert: async () => { calls.push('save-source-snapshot'); return { updatedAt: new Date() }; } },
-      user: { findMany: async (query: {where: {OR?: Array<{payrollName?:string}>}}) => {
+      user: { findMany: async (query: {where: {isActive?: boolean; OR?: Array<{payrollName?:string}>}}) => {
         if (query.where.OR?.some(row=>row.payrollName===muhamedSources.MUHAMED_DAY_NAME)) {
           calls.push('muhamed-pwa'); if(options.muhamedError) throw Error('Muhamed QR source failed');
           return [{id:11,name:'Кумыков Мухамед',payrollName:muhamedSources.MUHAMED_DAY_NAME,role:'EMPLOYEE',department:'procurement',isActive:true,portalArea:'WORKDAY',workDays:[]}];
         }
-        if (query.where.OR) { calls.push('diana-pwa'); if (options.dianaError) throw Error('Diana source read failed'); return [{id:9,name:'Кумахова Диана',payrollName:'Кумахова Диана',workDays:[{userId:9,date:`2026-${month}-19`,startedAt:new Date(`2026-${month}-19T09:00:00+03:00`),status:'active'}]}]; } calls.push('pwa'); if(options.appError) throw Error('DB read failed'); return sources.PAYROLL_APP_ATTENDANCE_CUTOVERS.map(rule=>({ id: rule.userId, name: rule.employee, payrollName: rule.employee, workDays: rule.userId===8 ? ['18','19'].map((day) => ({ userId: 8, date: `2026-${month}-${day}`, startedAt: new Date(`2026-${month}-${day}T08:46:00+03:00`), status: day === '18' ? 'completed' : 'active' })) : [] })); } },
+        if (query.where.OR) { calls.push('diana-pwa'); if(options.inactiveDiana && query.where.isActive === true) return []; if (options.dianaError) throw Error('Diana source read failed'); return [{id:9,name:'Кумахова Диана',payrollName:'Кумахова Диана',isActive:!options.inactiveDiana,workDays:options.inactiveDiana ? [] : [{userId:9,date:`2026-${month}-19`,startedAt:new Date(`2026-${month}-19T09:00:00+03:00`),status:'active'}]}]; } calls.push('pwa'); if(options.appError) throw Error('DB read failed'); return sources.PAYROLL_APP_ATTENDANCE_CUTOVERS.map(rule=>({ id: rule.userId, name: rule.employee, payrollName: rule.employee, workDays: rule.userId===8 ? ['18','19'].map((day) => ({ userId: 8, date: `2026-${month}-${day}`, startedAt: new Date(`2026-${month}-${day}T08:46:00+03:00`), status: day === '18' ? 'completed' : 'active' })) : [] })); } },
     },
     console: { error: () => undefined },
   };
@@ -101,4 +101,13 @@ test('pre-cutover refresh never reads PWA', async () => {
  test('Muhamed source failure keeps last-good source and never saves partial November data',async()=>{
   const result=await run({month:10,muhamedError:true});assert.equal(result.body.snapshot.servedFrom,'stored');
   assert.deepEqual(result.body.formSummaries,savedPayload.formSummaries);assert.ok(!result.calls.includes('save-source-snapshot'));
+ });
+
+ test('inactive Diana with no November sources does not block the first complete attendance snapshot',async()=>{
+  const result=await run({month:10,noSaved:true,inactiveDiana:true});
+  assert.equal(result.response.status,200);
+  assert.equal(result.body.snapshot.servedFrom,'refreshed');
+  assert.equal(result.body.formSummaries.find((r:{employee:string})=>r.employee===employee).uniqueFormDates,2);
+  assert.ok(!result.body.scheduleSummaries.some((r:{employee:string})=>r.employee==='Кумахова Диана'));
+  assert.ok(result.calls.includes('save-source-snapshot'));
  });

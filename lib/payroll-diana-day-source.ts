@@ -6,7 +6,7 @@ export const DIANA_DAY_SOURCE_FROM = '2026-10-01';
 export const DIANA_DAY_SOURCE_NAME = 'Кумахова Диана';
 const normalize = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
 const aliases = new Set(['диана', 'кумахова диана']);
-type AppUser = { id: number; name: string; payrollName: string | null; workDays: { userId: number; date: string; startedAt: Date; status: string }[] };
+type AppUser = { id: number; name: string; payrollName: string | null; isActive?: boolean; workDays: { userId: number; date: string; startedAt: Date; status: string }[] };
 function dateKey(value: string) {
   const ru = value.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   const key = ru ? `${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}` : value;
@@ -26,13 +26,22 @@ export function mergeDianaPayrollDays(input: { googleRows: ScheduleRow[]; appUse
     if (googleDays.has(date) && googleDays.get(date) !== row.plannedWork) throw new Error('Противоречивый график Дианы.');
     googleDays.set(date, row.plannedWork);
   }
-  if (!googleDays.size) throw new Error('В Google отсутствует график Дианы за выбранный месяц.');
   const appDates = new Set<string>();
   for (const day of user.workDays) {
     if (day.date < DIANA_DAY_SOURCE_FROM || !day.date.startsWith(input.periodKey + '-') || day.date > input.throughDate) continue;
     if (day.userId !== user.id || !['active', 'completed'].includes(day.status) || !Number.isFinite(day.startedAt.getTime()) || getMoscowDateKey(day.startedAt) !== day.date || appDates.has(day.date)) throw new Error('Проверьте отметки рабочего дня Дианы.');
     appDates.add(day.date);
   }
+  // Disabled access must preserve historical attendance, without requiring a
+  // departed employee to have new source rows in every subsequent month.
+  if (!googleDays.size && !appDates.size && user.isActive === false) {
+    return {
+      summaries: summaries.filter(row => !aliases.has(normalize(row.employee))),
+      dates: [],
+      message: 'Диана: нет отметок за выбранный месяц.',
+    };
+  }
+  if (!googleDays.size) throw new Error('В Google отсутствует график Дианы за выбранный месяц.');
   const fallbackDates = [...googleDays].filter(([date, working]) => working === true && !appDates.has(date)).map(([date]) => date).sort();
   const countedDates = new Set([...appDates, ...fallbackDates]);
   return {
