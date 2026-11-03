@@ -766,3 +766,14 @@ notifications before and after flag activation. Do not send Zukhra this case.
 Enabled and Notify flags are true. Runtime sourcec71ee65; verification and concurrent
 tax-release registration handoff: ../ops/terminal-extra-receipts-20261101.md.
 No1C/OFD writes or migration. Physical phone push remains unverified.
+
+## Corrected receipt lifecycle — 2026-11-03 / 1.21.19
+
+Acquiring receipts may be absent from the general KKM export. Follow existing
+explicit settlement basis → realization links → exact acquiring fiscal operation;
+confirm its fiscal identity in OFD before closing the review. Do not infer payment
+receipt identity from equal amount alone. A correct full credit receipt confirmed
+in OFD can supersede an unposted, unfiscalized payment draft. Closed case retries
+are cancelled and older observations cannot reopen newer saved results. Existing
+notification style, source safeguards and actual-shift routing remain.
+Production evidence and exact changes: docs/ops/receipt-lifecycle-20261103.md.
