@@ -1,3 +1,5 @@
+import { handoverReviewInclude } from './workday-handover-review-server';
+import { HANDOVER_REVIEW_FROM_DATE, handoverReviewRecord, needsHandoverReview } from './workday-handover-review';
 import { syncWorkdayExtensionProposal } from './workday-extension';
 import { payrollDayReviewEnabled } from './payroll-day-review';
 import { loadScheduleCoverageQuestions } from './schedule-coverage-reconciliation';
@@ -104,6 +106,9 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const dayReviews = payrollDayReviewEnabled() && dayReviewIds.length ? await prisma.payrollDayReview.findMany({where:{id:{in:dayReviewIds}},select:{id:true,status:true}}) : [];
   const dayReviewStatuses = new Map(dayReviews.map(row=>[row.id,row.status]));
   const expenseRefs = rows.filter((row) => row.event.sourceType === 'expense_request').map((row) => row.event.sourceId);
+  const handoverTaskIds = rows.filter(row=>row.event.sourceType==='workday_handover_review').map(row=>Number(row.event.sourceId)).filter(Number.isSafeInteger);
+  const handoverTasks = handoverTaskIds.length ? await prisma.shiftControlTask.findMany({where:{id:{in:handoverTaskIds}},include:handoverReviewInclude}) : [];
+  const handoverStates = new Map(handoverTasks.map(task=>[String(task.id),{prePilot:task.run.date<HANDOVER_REVIEW_FROM_DATE,active:needsHandoverReview(task,task.run.workDayEntry)&&!handoverReviewRecord(task.id,task.manualReviews),reviewed:Boolean(handoverReviewRecord(task.id,task.manualReviews))}]));
   const issueIds = rows.filter((row) => row.event.sourceType === 'workday_control_issue').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
   const reviewIds = rows.filter((row) => row.event.sourceType === 'terminal_fiscal_review').map((row) => row.event.sourceId);
   const exceptionIds = rows.filter((row) => row.event.sourceType === 'workday_close_exception').map((row) => row.event.sourceId);
@@ -251,14 +256,14 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: sourceType === 'workday_shift_extension' ? (extensionProposal===undefined ? row.event.type==='workday.extension_requested' : String(extensionProposal?.workDayId??'')===sourceId) : sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
+      current: sourceType === 'workday_handover_review' ? handoverStates.get(sourceId)?.active === true : sourceType === 'workday_shift_extension' ? (extensionProposal===undefined ? row.event.type==='workday.extension_requested' : String(extensionProposal?.workDayId??'')===sourceId) : sourceType === 'work_schedule_coverage' ? scheduleQuestions.get(sourceId)?.active === true : sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
         : sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
         : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
         : sourceType === 'tax_freshness' || sourceType === 'tax_limit_decision' ? currentTaxAttentionKeys.has(row.event.eventKey)
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),
-      businessStatus: dayReviewStatuses.get(sourceId) ?? plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
+      businessStatus: (sourceType==='workday_handover_review' ? handoverStates.get(sourceId)?.prePilot ? 'pre_pilot' : handoverStates.get(sourceId)?.reviewed ? 'acknowledged' : undefined : undefined) ?? dayReviewStatuses.get(sourceId) ?? plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode ?? review?.reasonCode,
       sourceDate: exception?.workDayEntry.date,
       today,

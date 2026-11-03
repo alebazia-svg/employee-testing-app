@@ -3430,3 +3430,6 @@ body:has(#pwa-copper-theme) .employee-material-nav .attention-preview-nav-label{
 .employee-attention-row strong{display:block;font-size:14px;font-weight:700;line-height:1.3;letter-spacing:-.15px;color:#493c2e}
 .employee-attention-caption{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.4;color:#88745e;margin-top:3px}.employee-attention-caption:empty{display:none}
 .employee-attention-new{display:inline-flex;border-radius:5px;padding:2px 5px;background:#edd1b9;color:#7a431f;font-size:10px;font-weight:700;line-height:13px;white-space:nowrap}
+
+/* Explicit review acknowledges the case without marking the handover complete. */
+.team-handover-review-status p{margin:7px 0}.team-handover-review-status .team-button{display:inline-flex;border:1px solid #dac8b7;border-radius:7px;padding:7px 12px;margin:5px 0;background:#fff}.team-handover-review-status small{display:block;color:#85786b;font-size:10px;margin-top:8px}

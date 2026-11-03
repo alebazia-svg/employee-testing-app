@@ -1,3 +1,4 @@
+import { syncClosedHandoverReviews } from './workday-handover-review-server';
 import { syncWorkdayExtensionProposal } from './workday-extension';
 import { reconcileCashInventoryIssues } from './cash-inventory-reconciliation';
 import { activeWorkdayEndReminders, queueWorkdayEndReminders, workdayEndReminderDelivery } from './workday-end-notifications';
@@ -392,6 +393,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
+  await syncClosedHandoverReviews(prisma,{now}).catch(()=>undefined);
   await syncWorkdayExtensionProposal(prisma,now).catch(()=>undefined);
   await queueWorkdayEndReminders(prisma, now);
   await queueScheduleFillQuestions(prisma, now).catch(() => undefined);
