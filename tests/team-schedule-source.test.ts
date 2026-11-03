@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTeamSchedule } from '../lib/team-control';
+import { resolveTeamSchedule, teamCalendarSourceLabel } from '../lib/team-control';
 import { resolveTeamAttendance } from '../lib/team-attendance';
 
 const input = { name: 'Ахобекова Залина', googlePlan: null, googleAvailable: true, vacation: false };
@@ -76,4 +76,25 @@ test('a direct saved edit immediately changes the resolved plan without waiting 
   const google = { ...input, googlePlan: 'working' as const };
   assert.equal(resolveTeamSchedule({ ...google, appStatus: 'working' }).state, 'working');
   assert.equal(resolveTeamSchedule({ ...google, appStatus: 'off' }).state, 'off');
+});
+
+
+test('calendar never claims an empty fallback is a saved Google plan', () => {
+  for (const appStatus of [undefined, null, '', 'unset', 'unknown']) {
+    const plan = resolveTeamSchedule({ ...input, appStatus });
+    assert.equal(teamCalendarSourceLabel(plan), 'Нет записи');
+    assert.equal(plan.source, 'Google', 'the underlying fallback policy is unchanged');
+    assert.equal(plan.state, 'unknown');
+    assert.equal(plan.status, undefined);
+  }
+});
+
+test('calendar preserves actual sources, outages, vacations and the original app-only pilot', () => {
+  for (const status of ['working', 'off'] as const) {
+    assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, appStatus: status, googlePlan: status === 'working' ? 'off' : 'working' })), 'Приложение');
+    assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, googlePlan: status })), 'Google');
+  }
+  assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, vacation: true })), 'Приложение');
+  assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, googleAvailable: false })), 'Google');
+  assert.equal(teamCalendarSourceLabel(resolveTeamSchedule({ ...input, name: 'Ляна' })), 'Приложение');
 });

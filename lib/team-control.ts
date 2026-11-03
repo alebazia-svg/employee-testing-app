@@ -29,6 +29,12 @@ export function resolveTeamSchedule(input: {
       : app ? 'Нет записи графика приложения' : 'Нет записи графика Google',
   } as const;
 }
+
+// A fallback channel is not proof that it contains a saved plan.
+// Keep source resolution unchanged; this is only the calendar caption.
+export function teamCalendarSourceLabel(plan: ReturnType<typeof resolveTeamSchedule>) {
+  return plan.source === 'Google' && plan.state === 'unknown' ? 'Нет записи' : plan.source;
+}
 export function dateKeyFromGoogle(value: string) {
   const ru = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
   if (ru) return `${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}`;
