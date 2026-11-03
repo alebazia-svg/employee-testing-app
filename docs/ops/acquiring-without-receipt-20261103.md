@@ -1,3 +1,15 @@
+> Production status: 1.21.19 supersedes the candidate notes below. See
+> [receipt lifecycle verification](receipt-lifecycle-20261103.md): both the
+> 25,500 RUB acquiring check and the credit case are now confirmed/resolved.
+>
+> Prior 1.21.17 was independently installed and registered: runtime
+> 68cc2e6551ff370c5dbd66d6ffe0211306f1fa4c, build2026-11-03T16:55:28.842Z,
+> image sha256:4b16f272cf1a57463d71e69c1aa6c409f21852ee08b1d13e7b87039f9011e3c3.
+> Its resumed verification finished RESUME_EXIT=0. The actual employee shift
+> had ended, so no after-hours acquiring notification was forced. A subsequent
+> owner report exposed the missing direct acquiring fiscal source and stale
+> credit-draft classification, corrected in 1.21.19.
+
 # Acquiring payment without fiscal receipt — local candidate, 2026-11-03
 
 Bela approved routing an acquiring payment without a cash receipt to the employee,
