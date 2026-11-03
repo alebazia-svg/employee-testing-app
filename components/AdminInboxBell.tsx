@@ -116,13 +116,14 @@ export function AdminInboxBell() {
     const changed = () => { void load(); };
     window.addEventListener('expense-status-changed', changed);
     window.addEventListener('payroll-days-changed', changed);
+    window.addEventListener('workday-handover-reviewed', changed);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     }
     function escape(event: KeyboardEvent) { if (event.key === 'Escape') setOpen(false); }
     document.addEventListener('keydown', escape);
     document.addEventListener('mousedown', close);
-    return () => { attentionSequence.current++;historySequence.current++;window.removeEventListener('expense-status-changed', changed);window.removeEventListener('payroll-days-changed', changed); document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
+    return () => { attentionSequence.current++;historySequence.current++;window.removeEventListener('expense-status-changed', changed);window.removeEventListener('payroll-days-changed', changed);window.removeEventListener('workday-handover-reviewed', changed); document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
   }, []);
 
   async function markRead(id:string) {

@@ -1,3 +1,5 @@
+import { loadOpenHandoverReviews } from '@/lib/workday-handover-review-server';
+import { handoverReviewRecord, handoverReviewHref, needsHandoverReview } from '@/lib/workday-handover-review';
 import { deriveExtensionProposal } from '@/lib/workday-extension';
 import { WorkdayExtensionProposal } from './WorkdayExtensionProposal';
 import { createCashInventoryLookup } from '@/lib/cash-inventory-lookup';
@@ -1271,6 +1273,13 @@ export default async function AdminWorkdayPage(
     }),
   ]) : [[],[]];
   const ownerActions = pastOwnerActions(pastRequests,pastCash,selectedDate,today).map(action=>({...action,context:action.context.replace(action.originDate,formatDateLabel(action.originDate))}));
+  const openHandoverReviews = selectedDate === today ? await loadOpenHandoverReviews(prisma,{dateBefore:today}) : [];
+  ownerActions.push(...openHandoverReviews.map(task => ({
+    key:`past-handover-${task.id}`, kind:'check' as const, department:task.run.department,
+    name:task.run.user.name, employeeId:task.run.userId, originDate:task.run.date,
+    label:`Не сдана смена · ${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(new Date(`${task.run.date}T12:00:00Z`))}`,
+    context:'', href:handoverReviewHref(task.run.date,task.run.userId),
+  })));
   const fiscalReviews = await prisma.terminalFiscalEmployeeReview.findMany({
     where: { status: { in: ['admin_review', 'open'] }, bankOperationAt: selectedDate === today
       ? { lt: selectedDayRange.periodTo } : { gte: selectedDayRange.periodFrom, lt: selectedDayRange.periodTo } },
@@ -1428,7 +1437,7 @@ export default async function AdminWorkdayPage(
     const latestManualReviewByCheckId = new Map<string, ShiftAutoCheckManualReview>();
     for (const task of run?.tasks ?? []) {
       for (const review of task.manualReviews) {
-        if (latestManualReviewByCheckId.has(review.checkId)) continue;
+        if (!['confirmed_ok','confirmed_issue'].includes(review.decision) || latestManualReviewByCheckId.has(review.checkId)) continue;
         latestManualReviewByCheckId.set(review.checkId, {
           id: review.id,
           decision: review.decision === 'confirmed_issue' ? 'confirmed_issue' : 'confirmed_ok',
@@ -1549,7 +1558,7 @@ export default async function AdminWorkdayPage(
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
-      const activeTimingViolations = timingViolations.filter((violation) => isActiveWorkdayTimingViolation(violation.kind));
+      const activeTimingViolations = timingViolations.filter((violation) => isActiveWorkdayTimingViolation(violation.kind) && !run?.tasks.some(task=>task.id===violation.taskId && task.category==='handover' && handoverReviewRecord(task.id,task.manualReviews)));
       const manualReviewCount = visibleAutoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
       const manualIssueCount = visibleAutoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
       const unresolvedAutoChecks = visibleAutoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
@@ -1563,10 +1572,11 @@ export default async function AdminWorkdayPage(
         && !check.historicalCashUnverified
         && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
-      const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
+      const acknowledgedHandoverIds = new Set((run?.tasks ?? []).filter(task => task.category === 'handover' && handoverReviewRecord(task.id,task.manualReviews)).map(task=>task.id));
+      const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed' && !acknowledgedHandoverIds.has(task.id) && !(workDay?.endedAt && handoverClosedByAdmin(task))).length;
       const businessAttentionReasons = [
         plan.app && !schedule && !vacation ? 'Нет записи графика приложения' : null,
-        hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
+        hasStaleCloseViolation(workDay, run) && !acknowledgedHandoverIds.size ? 'Закрыто без сдачи смены' : null,
         missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
         mismatchCount > 0
           ? manualIssueCount > 0
@@ -1819,7 +1829,7 @@ export default async function AdminWorkdayPage(
             if (startControl.unknownTime) alerts.push('Выход запланирован · уточните время начала смены');
             const nextTask = row.run?.tasks.filter(t=>t.status!=='done'&&t.status!=='missed'&&t.plannedTimeMinutes!==null).sort((a,b)=>a.plannedTimeMinutes!-b.plannedTimeMinutes!)[0];
             const completedTask = row.run?.tasks.filter(t=>t.status==='done'&&t.completedAt).sort((a,b)=>b.completedAt!.getTime()-a.completedAt!.getTime())[0];
-            const timing = hasAppControl ? row.timingViolations.map(v=>v.detail) : [];
+            const timing = hasAppControl ? row.timingViolations.filter(v=>!v.taskId || !row.run?.tasks.some(task=>task.id===v.taskId && task.category==='handover' && handoverReviewRecord(task.id,task.manualReviews))).map(v=>v.detail) : [];
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
             return {id:row.employee.id,sourceUnavailable:row.attendance ? !row.attendance.marksAvailable : !app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,name:row.employee.name,department:row.employee.department,source:row.attendance?.sourceLabel ?? (app?'Приложение · пилот':'Google'),planState,
@@ -1859,6 +1869,12 @@ export default async function AdminWorkdayPage(
                         vacation={row.vacation ? { id: row.vacation.id, dateFrom: row.vacation.dateFrom, dateTo: row.vacation.dateTo } : null}
                       />
                         <AdminShiftControlDetails
+                          handoverReview={(() => {
+                            const task=row.run?.tasks.find(task=>needsHandoverReview(task,{endedAt:row.workDay?.endedAt??null,department:row.employee.department}));
+                            if(!task)return null;
+                            const review=handoverReviewRecord(task.id,task.manualReviews);
+                            return {taskId:task.id,review:review?{id:review.id,reviewedAt:review.reviewedAt.toISOString(),reviewedBy:review.reviewedBy.name}:null};
+                          })()}
                           employeeId={row.employee.id}
                           employeeName={row.employee.name}
                           department={row.employee.department}

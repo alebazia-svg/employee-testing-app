@@ -14,6 +14,7 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'workday.handover_review_required': {category:'decisions',typeLabel:'Не сдана смена',actionLabel:'Проверить смену'},
   'workday.extension_requested': {category:'decisions',typeLabel:'Продление смены',actionLabel:'Подтвердить смену'},
   'workday.shift_extended': {category:'decisions',typeLabel:'Смена продлена',actionLabel:'Открыть рабочий день'},
   'payroll.days_requested': {category:'decisions',typeLabel:'Выходы на подтверждение',actionLabel:'Посмотреть запрос'},
@@ -188,6 +189,7 @@ export function adminInboxSourceState(input: {
       ? { active: true, label: 'Требует внимания', tone: 'attention' }
       : { active: false, label: 'Уровень риска изменился', tone: 'resolved' };
   }
+  if (input.sourceType === 'workday_handover_review') return input.current ? {active:true,label:'Нужна проверка',tone:'attention'} : {active:false,label:input.businessStatus==='acknowledged'?'Проверено':'Больше не требует проверки',tone:'resolved'};
   if (input.sourceType === 'workday_control_issue') {
     const active = input.businessStatus === 'open' && (input.employeeActionRequired === true || input.adminVerificationRequired === true);
     return active
@@ -234,7 +236,7 @@ export function adminInboxActionLabel(input: {
   sourceState: AdminInboxSourceState;
 }) {
   if (input.sourceType === 'workday_close_exception' && !input.sourceState.active) return 'Открыть решение';
-  if ((input.sourceType === 'workday_control_issue' || input.sourceType === 'terminal_fiscal_review') && !input.sourceState.active) return 'Открыть историю';
+  if ((['workday_handover_review','workday_control_issue','terminal_fiscal_review'].includes(input.sourceType)) && !input.sourceState.active) return 'Открыть историю';
   return input.defaultLabel;
 }
 
