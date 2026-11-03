@@ -28,6 +28,7 @@ import {
 } from '@/lib/terminal-fiscal-reason-view';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { deviationReasonLabel } from '@/lib/workday-deviation';
+import { WorkdayStartComment } from './WorkdayStartComment';
 import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '@/lib/workday-close-view';
 
 type ShiftTask = {
@@ -1426,6 +1427,10 @@ export function AdminShiftControlDetails({
                 </div>
               </div>
               {cardView === 'day' && <>
+                {workDay?.deviations.filter(deviation => deviation.kind === 'late_arrival').map(deviation => {
+                  const text = deviation.comment.trim() || (deviation.reasonCode !== 'other' ? deviationReasonLabel('late_arrival', deviation.reasonCode) : '');
+                  return text ? <WorkdayStartComment key={deviation.reportedAt} text={text} /> : null;
+                })}
                 {attendanceNote && <p className='team-card-note'>{attendanceNote}</p>}
                 {!workDay&&!run&&!cashOperations.length&&!requiredIssues.length&&!closeRequests.length&&<p className='team-card-note'>Действий в приложении за этот день нет.</p>}
                 {(summary.total > 0 || cashOperations.length > 0 || closeRequests.length > 0) && <><section className={`team-review-total ${keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length === 0 ? 'is-verified' : ''}`}><b>{keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length > 0 ? 'Есть неподтверждённые пункты' : autoChecks.some(check=>check.historicalCashUnverified&&!manualReviewResolves(check)) ? 'Есть сохранённые пересчёты без сверки 1С' : 'Неподтверждённых результатов не выявлено'}</b><span>Проверки: {summary.completed} из {summary.total - (adminHandoverClosed && handoverTask?.status !== 'done' ? 1 : 0)} выполнено{adminHandoverClosed?' · день завершён по разрешению':''} · инкассации: {cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из {cashOperations.length} проведено{closeRequests.some(request => request.status === 'pending') ? ' · требуется ваше решение' : ''}</span></section></>}
