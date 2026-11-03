@@ -53,3 +53,26 @@ test('reconciled issuances enter the selected month once and leave other months 
     assert.equal(paymentCardSummary({...evidence,periodKey:'2026-10'},r.employee,[r.employee])?.periodPaid,0);
   }
 });
+
+const novemberSecondOctoberPayments = [
+  { employee: 'Ахобекова Залина', key: '93599b3e-d69f-11f1-95c1-002590803daf:1',
+    employeeRef: '55161477-dada-11ea-971d-0025901e48ee', documentNumber: '00OF-002016',
+    documentDate: '2026-11-02', amount: 7500 },
+  { employee: 'Чеченова Милана', key: 'b5df83c8-d694-11f1-95c1-002590803daf:1',
+    employeeRef: '420e990c-201d-11ef-ac00-002590803daf', documentNumber: '00OF-002013',
+    documentDate: '2026-11-02', amount: 2500 },
+];
+test('owner-confirmed November 2 payments belong to October without becoming new advances', () => {
+  for (const row of novemberSecondOctoberPayments) {
+    const document = { ...payment, ...row, employeeName: row.employee };
+    const before = JSON.stringify(document);
+    assert.deepEqual(payrollPaymentMonth(row.employee, document), { period:'2026-10', advance:0, days:0, basis:'reconciled' });
+    assert.equal(JSON.stringify(document), before);
+    assert.equal(payrollPaymentMonth(row.employee, { ...document, advancePeriod:'2026-11' })?.period, '2026-11');
+    for (const patch of [{ key:row.key+'x' }, { employeeRef:'other' }, { documentNumber:'other' },
+      { documentDate:'2026-11-03' }, { amount:row.amount+1 }, { comment:'другой месяц' }, { identityConfirmed:false }]) {
+      assert.equal(payrollPaymentMonth(row.employee, { ...document, ...patch }), null);
+    }
+    assert.equal(payrollPaymentMonth('Другой сотрудник', document), null);
+  }
+});

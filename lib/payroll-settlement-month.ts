@@ -8,10 +8,17 @@ export function payrollPaymentDateColumn(period: string, issuedOn: string): 'fir
   return issuedOn === `${next}-01` ? 'first' : issuedOn === `${next}-16` ? 'second' : 'other';
 }
 export type PaymentMonth = { period: string; advance: number; days: number; basis: 'document' | 'owner' | 'schedule' | 'reconciled' };
-// Historical reconciliation of the complete July–October 2026 ledger, reviewed
-// with the owner on Oct 18. These are bounded allocations, not a date heuristic.
+// Owner-reviewed document allocations. Exact source facts identify each
+// issuance; other blank comments never inherit a month from these cases.
 // Bela's Sep 2 issuance deliberately remains unallocated across older debt.
 const reconciledPayments = [
+  // Bela confirmed both November 2 issuances as October salary on 2026-11-03.
+  { employee: 'Ахобекова Залина', key: '93599b3e-d69f-11f1-95c1-002590803daf:1',
+    employeeRef: '55161477-dada-11ea-971d-0025901e48ee', documentNumber: '00OF-002016',
+    documentDate: '2026-11-02', amount: 7500, period: '2026-10' },
+  { employee: 'Чеченова Милана', key: 'b5df83c8-d694-11f1-95c1-002590803daf:1',
+    employeeRef: '420e990c-201d-11ef-ac00-002590803daf', documentNumber: '00OF-002013',
+    documentDate: '2026-11-02', amount: 2500, period: '2026-10' },
   // Owner-confirmed October salary settlement; keep strict document/recipient facts.
   { employee: MUHAMED_PAYROLL_NAME, key: '1a0d2b56-d604-11f1-95c1-002590803daf:2',
     employeeRef: MUHAMED_ONE_C_REF, documentNumber: '00OF-002011',
