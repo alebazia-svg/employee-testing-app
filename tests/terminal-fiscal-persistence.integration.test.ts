@@ -362,6 +362,31 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   assert.equal(review.status,'open');assert.equal(review.employeeId,users[0].id);assert.equal(review.assignmentScope,'workstation_shift');
   assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),1);
   assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:review.id}}),0);
+  // Existing ADMIN-only 25,500 acquiring case is addressed in the SAME review.
+  const acquiring:any={sourceRef:marker+'-acquiring87',documentNumber:'00OF-000087',sourceType:'acquiring_operation',operationType:'sale',dateTime:at,cashRegisterRef:'',kktRegistrationNumber:'',totalKopecks:2550000,electronicKopecks:2550000,cashier:{ref:'',name:''},cardPayments:[],items:[],fiscalState:'unconfirmed',fiscalStateMeaning:'data_state_only'};
+  const acquiringRecord={...record,matchingKey:marker+'-acquiring-case',status:'needs_review',reasonCode:'OFD_RECEIPT_NOT_FOUND',candidateCount:1,oneCCheckKey:acquiring.sourceRef,amountKopecks:2550000,evidence:{bankTransactionDate:at,terminalReceiptNumber:'000507',bankOperationRawType:'TERM_CARD'}};
+  const syncAcquiring=(r:any,receipts:any[]|undefined=[])=>syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[r],evaluatedAt:r.evaluatedAt}as any,mapping,oneCChecks:[],fiscalEvidenceChecks:[acquiring],ofdReceipts:receipts});
+  await stageFiscalAdminReview(prisma,acquiringRecord,mapping);
+  const acqReview=await prisma.terminalFiscalEmployeeReview.findFirstOrThrow({where:{reviewKey:'terminal-fiscal-review:'+createHash('sha256').update(acquiringRecord.matchingKey).digest('hex')}}as any);
+  assert.equal(acqReview.status,'admin_review');
+  const oldAcqNotice=await prisma.workdayNotification.create({data:{userId:users[0].id,reviewId:acqReview.id,kind:'terminal_fiscal_review',fingerprint:acqReview.reviewKey+':created:'+users[0].id,title:'В 1С не найден чек продажи',body:'Предыдущая проверка до появления эквайринга',scheduledAt:new Date(at)}});
+  await syncAcquiring(acquiringRecord);await syncAcquiring(acquiringRecord);
+  const addressed=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}});
+  assert.equal(addressed.status,'open');assert.equal(addressed.employeeId,users[0].id);assert.equal(addressed.reasonCode,'ACQUIRING_RECEIPT_NOT_FOUND');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id}}),2);
+  const oldReadback=await prisma.workdayNotification.findUniqueOrThrow({where:{id:oldAcqNotice.id}});assert.equal(oldReadback.status,'cancelled');assert.equal(oldReadback.title,'В 1С не найден чек продажи');
+  const notice=await prisma.workdayNotification.findFirstOrThrow({where:{reviewId:acqReview.id,fingerprint:{contains:':acquiring-receipt-created:'}}});
+  assert.equal(notice.kind,'terminal_fiscal_review');assert.equal(notice.title,'Нет чека по эквайрингу');assert.match(notice.body,/Чек терминала № 000507/);assert.match(notice.body,/^Пробейте чек с эквайринга № 00OF-000087\./);assert.doesNotMatch(notice.body,/Проверьте/);
+  assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:acqReview.id}}),1);
+  await syncAcquiring({...acquiringRecord,reasonCode:'SOURCE_OFD_INCOMPLETE',sourceCompleteness:{...record.sourceCompleteness,ofd:false}});
+  // Incomplete peer evidence preserves this addressed task and its pending notice.
+  await syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[acquiringRecord],evaluatedAt:evaluated}as any,mapping,oneCChecks:[],fiscalEvidenceChecks:[acquiring]});
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}})).status,'open');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id,status:'pending'}}),1);
+  // Only a later confirmed fiscal chain resolves it and cancels delivery.
+  await syncAcquiring({...acquiringRecord,status:'confirmed',reasonCode:'MATCH_CONFIRMED'});
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:acqReview.id}})).status,'resolved');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id,status:'pending'}}),0);
   // Real DB regression: the colleague has left, the home terminal still routes
   // once; another terminal stays with ADMIN until a dated assignment exists.
   await prisma.workDayEntry.update({where:{id:entries[1].id},data:{status:'completed',endedAt:new Date(at)}});

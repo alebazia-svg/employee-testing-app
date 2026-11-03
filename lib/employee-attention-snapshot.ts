@@ -1,3 +1,4 @@
+import { ACQUIRING_RECEIPT_NOT_FOUND, acquiringReceiptCopy, acquiringReceiptMetadata } from './terminal-acquiring-receipt-review';
 import {extraReceiptCopy,type ExtraReceiptCase} from './terminal-extra-receipts';
 import {terminalPaymentCopy,terminalPaymentMetadata} from './terminal-payment-copy';
 import { loadEmployeeScheduleAttention } from './employee-schedule-attention';
@@ -14,7 +15,7 @@ export async function loadEmployeeAttention(user: { id: number }) {
   const now = new Date();
   const [issues, reviews, cash, requests, expenses, expenseRouting] = await Promise.all([
     prisma.workdayControlIssue.findMany({ where: { userId: user.id, status: 'open', employeeActionRequired: true }, include: { messages: { orderBy: { createdAt: 'desc' }, include: { author: { select: { role: true, name: true, payrollName: true } } } } } }),
-    prisma.terminalFiscalEmployeeReview.findMany({ where: { status: 'open', OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }] }, include: { notifications:{where:{kind:'terminal_fiscal_review'},select:{body:true},orderBy:{scheduledAt:'desc'},take:1}, participants: { include: { user: { select: { name: true } } } }, messages: { orderBy: { createdAt: 'desc' }, include: { author: { select: { role: true, name: true, payrollName: true } } } } } }),
+    prisma.terminalFiscalEmployeeReview.findMany({ where: { status: 'open', OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }] }, include: { notifications:{where:{kind:'terminal_fiscal_review'},select:{body:true,title:true},orderBy:{scheduledAt:'desc'},take:1}, participants: { include: { user: { select: { name: true } } } }, messages: { orderBy: { createdAt: 'desc' }, include: { author: { select: { role: true, name: true, payrollName: true } } } } } }),
     prisma.cashOperation.findMany({ where: { userId: user.id, status: { notIn: ['posted_1c_pair', 'resolved_manual'] } }, orderBy: { createdAt: 'asc' } }),
     prisma.workdayCloseExceptionRequest.findMany({ where: { employeeId: user.id, consumedAt: null, workDayEntry: { endedAt: null, status: { in: ['active', 'missing_checkout'] } } }, include: { workDayEntry: { select: { date: true } } }, orderBy: { requestedAt: 'desc' } }),
     loadEmployeeExpenses(user.id).catch(() => ({ state: 'unavailable' as const, checkedAt: null, payable: [], pending: [] })),
@@ -45,9 +46,10 @@ export async function loadEmployeeAttention(user: { id: number }) {
     const handler = review.participants.find(p => p.userId !== user.id && p.response === 'pending' && p.handlingUntil && p.handlingUntil > now);
     const state = employeeReviewState({ response: own?.response, handler: handler?.user.name, adminRepliedAfterResponse: Boolean(reply && (!own?.respondedAt || reply.createdAt > own.respondedAt)) });
     const shared = ['retail_shift', 'retail_day'].includes(review.assignmentScope);
-    const copy=terminalPaymentCopy({operationAt:review.bankOperationAt,amountKopecks:review.amountKopecks,...terminalPaymentMetadata(review.notifications),now,shared});
-    items.push({ id: `review:${review.id}`, kind: 'receipt', title: copy.title, listTitle: `${(review.amountKopecks/100).toLocaleString('ru-RU')} ₽ · ${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'}).format(review.bankOperationAt)}`, listSubtitle: `${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(review.bankOperationAt)} · ${state.state === 'action' && state.status === 'Нужно проверить' ? 'Не найден чек в 1С' : state.status}`, date: review.bankOperationAt.toISOString(), priority: 1, ...state, shared, reply: reply?.body, ...(reply ? { replyAuthor: portalMessageAuthor(reply) } : {}),
-      detail: copy.payment, facts: [],
+    const acquiring = review.reasonCode === ACQUIRING_RECEIPT_NOT_FOUND;
+    const copy=(acquiring?acquiringReceiptCopy:terminalPaymentCopy)({documentNumber:acquiringReceiptMetadata(review.notifications),operationAt:review.bankOperationAt,amountKopecks:review.amountKopecks,...terminalPaymentMetadata(review.notifications),now,shared});
+    items.push({ id: `review:${review.id}`, kind: 'receipt', ...(acquiring ? {receiptProblem:'acquiring' as const}:{}), title: copy.title, listTitle: `${(review.amountKopecks/100).toLocaleString('ru-RU')} ₽ · ${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'}).format(review.bankOperationAt)}`, listSubtitle: `${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(review.bankOperationAt)} · ${state.state === 'action' && state.status === 'Нужно проверить' ? acquiring ? 'Нет кассового чека по эквайрингу' : 'Не найден чек в 1С' : state.status}`, date: review.bankOperationAt.toISOString(), priority: 1, ...state, shared, reply: reply?.body, ...(reply ? { replyAuthor: portalMessageAuthor(reply) } : {}),
+      detail: acquiring ? copy.body : copy.payment, facts: [],
       endpoint: `/api/employee/payment-checks/${review.id}/actions`, actions: state.state === 'action' ? [{ label: 'Нужна помощь', action: 'help' }, { label: 'Продажа не моя', action: 'not_mine' }] : own?.response === 'not_mine' ? [{ label: 'Это моя оплата', action: 'undo_not_mine' }] : [],
     });
   }

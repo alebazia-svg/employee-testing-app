@@ -67,6 +67,8 @@ async function main() {
           output: context.output,
           mapping: context.mapping,
           oneCChecks: context.oneCChecks,
+          fiscalEvidenceChecks: reviewContexts.flatMap(item => item.fiscalEvidenceChecks),
+          ofdReceipts: reviewContexts.every(item => item.ofdReceipts !== undefined) ? reviewContexts.flatMap(item => item.ofdReceipts ?? []) : undefined,
           mode: context.mode,
           globalCoverage,
         });

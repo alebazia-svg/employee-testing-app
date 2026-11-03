@@ -24,4 +24,6 @@ const fullMatch=(reasonCode='ONE_C_CANDIDATE_NOT_FOUND')=>({status:'needs_review
  await t.test('split sale cannot be forwarded as a missing receipt',async()=>{match=fullMatch('ONE_C_POSSIBLE_SPLIT_SALE');const d=await load();assert.equal(d.canApprove,false);});
  await t.test('OFD candidate prevents forwarding even when stored review still says missing',async()=>{current=review();match=fullMatch('OFD_CANDIDATE_REQUIRES_LINK');const d=await load();assert.equal(d.canApprove,false);assert.equal(d.resolved,false);assert.match(d.message,/Повторно пробивать чек пока не требуется/);});
  await t.test('missing review returns null',async()=>{current=null;assert.equal(await load(),null);});
+ await t.test('acquiring-specific employee review retains the payment document and its distinct fiscal problem',async()=>{current={...review(),reasonCode:'ACQUIRING_RECEIPT_NOT_FOUND',status:'open',assignmentScope:'workstation_shift'};match={...fullMatch('OFD_RECEIPT_NOT_FOUND'),oneCSourceRef:'acquiring-operation'};const d=await load();assert.equal(d.reasonCode,'ACQUIRING_RECEIPT_NOT_FOUND');assert.equal(d.hasOneCCheck,true);assert.equal(d.pendingAdmin,false);assert.equal(d.resolved,false);});
+
 });
