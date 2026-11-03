@@ -1,5 +1,19 @@
 # Employee payroll: production release 1.13.1, 2026-10-22
 
+## Owner update 2026-11-03 — current-month automation, local candidate
+
+Bela explicitly requested automatic November preliminary payroll in the employee
+app, preserving October's rounding, formulas and UI. This supersedes the monthly
+first-draft ADMIN-confirmation prerequisite below for the **current** month only.
+Use existing saved corrections when present; otherwise calculate with transient
+blank inputs from verified source snapshots, without creating a draft revision
+or FINAL. Include the current open month in the existing hourly source refresh
+without requiring a saved draft or manually created payroll period. Keep
+FINAL/CLOSED and historical-month protection, private identity checks, source
+completeness, schedule access conditions and employee rounding unchanged.
+Implemented and locally checked; not yet deployed. Production remains 1.21.12.
+See `payroll-automatic-month-candidate-20261103.md` for scope and validation.
+
 ## Status and authority
 
 Released 1.13.1 after the owner's explicit approval of commit, deployment,
