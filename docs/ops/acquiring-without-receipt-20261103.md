@@ -129,3 +129,12 @@ instruction or explanation. Acquiring metadata reads the title plus body and
 retains compatibility with both older body labels. Owner inbox remains descriptive;
 its body retains the acquiring number. Focused policy/copy31, PostgreSQL lifecycle1
 and TypeScript pass. Still local-only, not installed or sent in production.
+
+
+Owner requested preview of a unified hierarchy: problem in the heading, action
+below, then payment facts. Current local acquiring preview therefore uses
+«Нет чека по эквайрингу» / «Пробейте чек с эквайринга №00OF-000087.» / compact
+amount, method, Moscow date/time and printed terminal number. This supersedes the
+action-only title above for this preview. Other receipt categories are unchanged;
+no blanket rollout of new copy and no production release is implied by «Покажи».
+31 focused tests pass. Local screenshot: .wip/acquiring25500-unified-preview.png.
