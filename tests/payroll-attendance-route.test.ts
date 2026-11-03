@@ -18,10 +18,10 @@ const savedPayload = snapshots.createPayrollAttendanceSnapshotPayload({
   period: { monthIndex: 9, year: 2026, periodKey: '2026-10' }, attendanceMode: 'google-sheets', attendanceMessage: '', scheduleMode: 'google-sheets', scheduleMessage: '',
   formSummaries: [{ employee, formRows: 1, uniqueFormDates: 1, workedDays: 1, lateCount: 0 }], scheduleSummaries: [{ employee, scheduleDays: 1 }],
 });
-async function run(options: { denied?: boolean; inactiveDiana?: boolean; muhamedError?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
+async function run(options: { sourceSnapshot?: snapshots.PayrollAttendanceSnapshotPayload; denied?: boolean; inactiveDiana?: boolean; muhamedError?: boolean; dianaError?: boolean; appError?: boolean; googleError?: boolean; emptyGoogle?: boolean; noSaved?: boolean; get?: boolean; month?: number } = {}) {
   const calls: string[] = [];
   const month = options.month === 10 ? '11' : '10';
-  const effectiveSaved = month === '11' ? {...savedPayload, period:{monthIndex:10,year:2026,periodKey:'2026-11'}} : savedPayload;
+  const effectiveSaved = options.sourceSnapshot ?? (month === '11' ? {...savedPayload, period:{monthIndex:10,year:2026,periodKey:'2026-11'}} : savedPayload);
   const saved = options.noSaved ? null : { payload: effectiveSaved, sourceCheckedAt: new Date('2026-10-18T06:00:00Z'), updatedAt: new Date('2026-10-18T06:00:00Z') };
   const dependencies = {
     withPayrollSourceLock: async (task: () => Promise<Response>) => task(),
@@ -111,3 +111,11 @@ test('pre-cutover refresh never reads PWA', async () => {
   assert.ok(!result.body.scheduleSummaries.some((r:{employee:string})=>r.employee==='Кумахова Диана'));
   assert.ok(result.calls.includes('save-source-snapshot'));
  });
+
+test('repeated app-only month refreshes without Google form marks and retains source outage protection',async()=>{
+ const options={month:10,emptyGoogle:true,inactiveDiana:true};
+ const first=await run({...options,noSaved:true});assert.equal(first.response.status,200);
+ const sourceSnapshot={version:snapshots.PAYROLL_ATTENDANCE_SNAPSHOT_VERSION,...first.body};
+ for(let i=0;i<2;i++){const next=await run({...options,sourceSnapshot});assert.equal(next.response.status,200);assert.equal(next.body.snapshot.servedFrom,'refreshed');assert.ok(!next.body.snapshot.refreshError);assert.deepEqual(next.body.formSummaries,first.body.formSummaries);assert.ok(next.calls.includes('save-source-snapshot'));}
+ const failed=await run({...options,sourceSnapshot,googleError:true});assert.equal(failed.body.snapshot.servedFrom,'stored');assert.ok(failed.body.snapshot.refreshError);assert.deepEqual(failed.body.formSummaries,first.body.formSummaries);assert.ok(!failed.calls.includes('save-source-snapshot'));
+});
