@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { MatchingAuditRecord, OneCCheck, OfdReceipt } from './terminal-fiscal-matching';
 
 /** Employee routing only: retain the acquiring document in the financial audit. */
@@ -9,7 +10,7 @@ export function missingReceiptReviewRecord(
     || record.ofdReceiptKey || !Object.values(record.sourceCompleteness).every(Boolean)
     || !receipts) return record;
   const linked = checks.filter(check => check.sourceRef === record.oneCCheckKey);
-  if (linked.length !== 1 || linked[0].sourceType !== 'acquiring_operation'
+  if (linked.length === 0 || linked.some(check => !isDeepStrictEqual(check, linked[0])) || linked[0].sourceType !== 'acquiring_operation'
     || linked[0].operationType !== 'sale' || linked[0].fiscalState !== 'unconfirmed'
     || linked[0].fiscalDriveNumber || linked[0].fiscalDocumentNumber || linked[0].fiscalSign
     || linked[0].electronicKopecks !== record.amountKopecks) return record;

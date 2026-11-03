@@ -6,6 +6,7 @@ export type CreditControlStatus = 'confirmed' | 'pending' | 'mismatch' | 'needs_
 export type CreditControlReasonCode =
   | 'CONFIRMED_NO_INITIAL_PAYMENT'
   | 'CONFIRMED_WITH_INITIAL_PAYMENT'
+  | 'CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT'
   | 'SOURCE_INCOMPLETE'
   | 'REALIZATION_NOT_POSTED'
   | 'REALIZATION_DELETED'
@@ -271,6 +272,16 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     return finish('needs_review', ['DIRECT_RETURN_OR_CORRECTION']);
   }
   if ((input.fiscalConflictCount ?? 0) > 0) return finish('needs_review', ['FISCAL_EVIDENCE_CONFLICT']);
+  // An unposted payment draft is not evidence of received money. Ignore it
+  // only when the existing realization receipt independently proves the FULL
+  // credit sale in both 1C and OFD. Any real payment/fiscal conflict still wins.
+  if (payments.length > 0 && payments.every(document => document.posted === false
+    && !input.fiscalDocuments.some(fiscal => fiscal.documentRef === document.ref && fiscal.operations.length > 0))) {
+    const withoutDrafts = evaluateCreditRealization({ ...input, directPayments: [] });
+    if (withoutDrafts.status === 'confirmed') return {
+      ...withoutDrafts, reasonCodes: ['CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT'],
+    };
+  }
   if (payments.length > 1) return finish('needs_review', ['MULTIPLE_DIRECT_PAYMENT_DOCUMENTS']);
   if (payment && (payment.amount === null || !Number.isFinite(payment.amount) || payment.amount < 0 || payment.amount > realizationAmount)) {
     return finish('unavailable', ['INVALID_DOCUMENT_AMOUNT']);

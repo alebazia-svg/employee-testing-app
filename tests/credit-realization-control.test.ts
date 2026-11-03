@@ -270,3 +270,22 @@ test('replays anonymized production regressions from 2025 and 08-18 August 2026'
     fiscalDocuments: [],
   })).reasonCodes, ['DIRECT_RETURN_OR_CORRECTION']);
 });
+
+
+test('full confirmed credit receipt overrides an unposted payment draft, preserving real payment and fiscal safeguards',()=>{
+ const draft={kind:'cash_receipt' as const,ref:'draft-pko',number:'P-err',date:'18.08.2026 12:03:00',posted:false,amount:100000,counterpartyRef:'customer-1'};
+ const source=input({directPayments:[draft]});
+ const confirmed=evaluateCreditRealization(source);
+ assert.equal(confirmed.status,'confirmed');assert.equal(confirmed.employeeActionEligible,false);
+ assert.deepEqual(confirmed.reasonCodes,['CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT']);
+ assert.equal(confirmed.expectedCurrentPayment,0);assert.equal(confirmed.expectedCreditRemainder,100000);assert.equal(confirmed.paymentDocumentRef,null);
+ for(const value of [
+  {...source,ofd:{...source.ofd,complete:false}},
+  {...source,ofd:{...source.ofd,confirmedFiscalKeys:[]}},
+  {...source,fiscalDocuments:[]},
+  {...source,directPayments:[{...draft,posted:null}]},
+  {...source,directPayments:[{...draft,posted:true}]},
+  {...source,fiscalDocuments:[...source.fiscalDocuments,{sourceType:'cash_receipt',documentRef:draft.ref,operations:[operation()]}]},
+  {...source,fiscalDocuments:[{...source.fiscalDocuments[0],operations:[operation({cashPayment:100000,postpayment:0})]}]},
+ ]) assert.notEqual(evaluateCreditRealization(value).status,'confirmed');
+});

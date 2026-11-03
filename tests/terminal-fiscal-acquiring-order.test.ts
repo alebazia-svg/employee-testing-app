@@ -145,3 +145,40 @@ test('same-amount native fiscal proof takes precedence over an order without reu
 test('an orderless document never acquires the wider item-based matching window',()=>{
  const f=case72900();f.check.acquiringOrderState='unlinked';assert.notEqual(reconcileLater(f,[f.check]).records[0].status,'confirmed');
 });
+
+function realizationFiscalFixture() {
+ const f=fixture();
+ f.event.direct_links=[{relation:'payment_basis',target_type:'Реализация товаров и услуг',match_type:'direct',evidence:'explicit_1c_reference',target_ref:'realization'}];
+ f.event.settlement_evidence.payment_details=[{amount:92500,payment_basis:{ref:'realization'}}];
+ f.receipt.receiptAt='2026-10-27T16:55:00Z';
+ Object.assign(f.receipt,{fiscalDriveNumber:'7385440900057712',fiscalDocumentNumber:'3336',fiscalSign:'1907052946'});
+ const operation:any={datetime:'27.10.2026 19:55:00',document_type:'Кассовый чек',calculation_type:'Приход денежных средств',amount:92500,cash_payment:0,electronic_payment:92500,prepayment:0,postpayment:0,counter_provision:0,kkt_registration_number:'kkt',fiscal_drive_number:'7385440900057712',fiscal_document_number:'3\u00a0336',fiscal_sign:'1907052946',full_fiscal_key:true};
+ const links:any={ok:true,realization:{ref:'realization'},links:{acquiring:{direct:[{ref:'doc',posted:true,amount:92500}]}},completeness:{complete:true,links_complete:true,fiscal_operations_complete:true},fiscal_control:{complete:true,conflict_count:0,documents:[{source_type:'acquiring',document_ref:'doc',data_state:'confirmed',operations:[operation]}]}};
+ const read=async(path:string)=>path.startsWith('/sale-settlement-links?')?f.settlement:links;
+ return {...f,operation,links,read};
+}
+test('late receipt from the exact acquiring document closes the case by fiscal identity',async()=>{
+ const f=realizationFiscalFixture(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ assert.equal(e.complete,true);assert.equal(e.data[0].fiscalState,'confirmed');assert.equal(e.data[0].fiscalDocumentNumber,'3336');
+ const r=reconcileTerminalFiscalMvp({now:'2026-10-27T18:00:00Z',sources,mappings:[f.mapping],bankOperations:[f.bank],oneCChecks:e.data,ofdReceipts:[f.receipt]});
+ assert.equal(r.records[0].status,'confirmed');assert.equal(r.records[0].ofdReceiptKey,canonicalKey(f.receipt));
+});
+function canonicalKey(r:OfdReceipt){return [r.fiscalDriveNumber,r.fiscalDocumentNumber,r.fiscalSign].map(x=>`${x.length}:${x}`).join('|');}
+for(const [name,change] of Object.entries({
+ 'another acquiring document':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.links.links.acquiring.direct[0].ref='other';},
+ 'incomplete fiscal source':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.links.fiscal_control.complete=false;},
+ 'conflicting fiscal records':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.links.fiscal_control.conflict_count=1;},
+ 'wrong payment amount':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.operation.electronic_payment--;},
+ 'missing fiscal sign':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.operation.fiscal_sign='';},
+ 'return instead of sale':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.operation.calculation_type='Возврат денежных средств';},
+ 'duplicate receipt':(f:ReturnType<typeof realizationFiscalFixture>)=>{f.links.fiscal_control.documents[0].operations.push({...f.operation});},
+}))test(`exact acquiring fiscal proof fails closed: ${name}`,async()=>{
+ const f=realizationFiscalFixture();change(f);const e=await enrichAcquiringOrders([f.check],period,f.read);
+ assert.ok(!e.complete||e.data[0].fiscalConflict);
+ assert.notEqual(reconcileTerminalFiscalMvp({now:'2026-10-27T18:00:00Z',sources:{...sources,oneC:{...sources.oneC,complete:e.complete}},mappings:[f.mapping],bankOperations:[f.bank],oneCChecks:e.data,ofdReceipts:[f.receipt]}).records[0].status,'confirmed');
+});
+test('same amount and time cannot replace the linked acquiring fiscal identity',async()=>{
+ const f=realizationFiscalFixture(),e=await enrichAcquiringOrders([f.check],period,f.read);
+ f.receipt.fiscalSign='another';f.receipt.receiptAt=f.bank.transactionDate;
+ assert.notEqual(reconcileTerminalFiscalMvp({now:'2026-10-27T18:00:00Z',sources,mappings:[f.mapping],bankOperations:[f.bank],oneCChecks:e.data,ofdReceipts:[f.receipt]}).records[0].status,'confirmed');
+});

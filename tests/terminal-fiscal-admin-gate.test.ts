@@ -21,7 +21,7 @@ function fixture() {
     },
     adminInboxEvent: { upsert: upsert(events, 'eventKey'), findUnique: async ({ where }: any) => events.find((r) => r.eventKey === where.eventKey) ?? null },
     adminInboxReceipt: { createMany: async () => ({ count: 1 }) },
-    workdayNotification: { upsert: upsert(notifications, 'fingerprint'), updateMany: async ({ where, data }: any) => { notifications.filter((r) => r.reviewId === where.reviewId && r.status === where.status).forEach((r) => Object.assign(r, data)); return { count: 0 }; } },
+    workdayNotification: { upsert: upsert(notifications, 'fingerprint'), updateMany: async ({ where, data }: any) => { notifications.filter((r) => r.reviewId === where.reviewId && (typeof where.status==='string'?r.status===where.status:where.status.in.includes(r.status))).forEach((r) => Object.assign(r, data)); return { count: 0 }; } },
     terminalFiscalReviewParticipant: { deleteMany: async () => { participants.length = 0; }, createMany: async ({ data }: any) => participants.push(...data) },
     terminalFiscalMatch: { findUnique: async () => null },
     workDayEntry: { findMany: async () => [4,5].map((userId) => ({ userId, startedAt: new Date('2026-09-02T14:00Z'), endedAt: null, user: { name: `Сотрудник ${userId}` } })) },
@@ -381,3 +381,10 @@ test('an ambiguous prior three-person shift cannot establish Magomed seating',as
  f.db.workDayEntry.findMany=async()=>workers.map(u=>({userId:u.id,user:{name:u.name},startedAt:new Date(+f.at-3600000),endedAt:u.id===5?null:new Date(+f.at-1000)}));
  assert.equal((await fiscalProposedRecipients(f.db,f.at,'map')).primary,null);
 });
+
+ test('an older incomplete finding cannot reopen a newer confirmed receipt',async()=>{
+ const f=fixture();await stageFiscalAdminReview(f.db,f.record);
+ await stageFiscalAdminReview(f.db,{...f.record,status:'confirmed',reasonCode:'MATCH_CONFIRMED',evaluatedAt:'2026-09-03T19:00:00Z'});
+ const before=structuredClone(f.reviews[0]);await stageFiscalAdminReview(f.db,f.record);
+ assert.deepEqual(f.reviews[0],before);
+ });

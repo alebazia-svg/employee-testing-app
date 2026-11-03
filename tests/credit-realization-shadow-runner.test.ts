@@ -73,3 +73,16 @@ test('the same minute window is idempotent', async () => {
   assert.equal(prisma.runs.length, 1);
   assert.equal(prisma.transactions, 1);
 });
+
+test('a delayed older poll cannot overwrite a newer confirmed case',async()=>{
+ const db=fakePrisma();let writes=0;
+ const original=db.$transaction;
+ db.$transaction=async(fn:any)=>original(async(tx:any)=>{
+  tx.creditRealizationControlCase.findUnique=async()=>({id:'newer',status:'confirmed',lastCheckedAt:new Date('2026-08-18T10:19:00Z')});
+  tx.creditRealizationControlCase.upsert=async()=>{writes++;throw Error('OLDER_CASE_WRITTEN');};
+  return fn(tx);
+ });
+ const row:any={document:{ref:'realization',date:'18.08.2026 10:00:00'},result:{status:'mismatch',reasonCodes:['PAYMENT_DOCUMENT_NOT_POSTED']}};
+ await persistCreditRealizationShadowSnapshot(db as never,snapshot({rows:[row]}));
+ assert.equal(writes,0);
+});

@@ -87,6 +87,9 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T09:16:00Z')), { reminded: 1, opened: 0, resolved: 0, unassigned: 0 });
   assert.equal(notifications.length, 2);
 
+  issues[0].sourceData={...issues[0].sourceData,paymentKind:'cash_receipt',paymentDocumentNumber:'PKO-draft',paymentAmountKopecks:100_000_00};
+  notifications[0].status='sent';notifications[0].pushStatus='retry_pending';
+  cases[0].reasonCode='CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT';
   cases[0].status = 'confirmed';
   cases[0].employeeActionCandidate = false;
   cases[0].receiptDelayMinutes = 18;
@@ -97,10 +100,13 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.equal(issues[0].employeeActionRequired, false);
   assert.deepEqual(issues[0].sourceData, {
     documentNumber: 'R-1', realizationAt: '2026-08-18T08:00:00.000Z', amountKopecks: 100_000_00,
-    reasonCode: 'REQUIRED_FISCAL_RECEIPT_MISSING', receiptDelayMinutes: 18, receiptCashierRef: 'cashier-1', receiptCashierName: 'Кассир',
+    reasonCode: 'CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT', receiptDelayMinutes: 18, receiptCashierRef: 'cashier-1', receiptCashierName: 'Кассир',
     paymentKind: null, paymentDocumentNumber: null, paymentAmountKopecks: null, expectedCreditKopecks: null,
+    ignoredPaymentDraft:{kind:'cash_receipt',number:'PKO-draft',amountKopecks:100_000_00},
   });
-  assert.equal(notifications.every((notification) => notification.status === 'cancelled'), true);
+  assert.equal(notifications.every((notification) => notification.status === 'cancelled' && notification.pushStatus==='cancelled' && notification.nextPushAttemptAt===null), true);
+  await syncCreditRealizationWorkdayControl(db as PrismaClient,new Date('2026-08-18T10:20:00Z'));
+  assert.equal(issues[0].status,'resolved');assert.equal(notifications.length,2);
 });
 
 test('a correct next-day receipt closes employee action but remains auditable', async () => {

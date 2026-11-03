@@ -1,4 +1,5 @@
 import type { OneCCheck, MatchingItem } from './terminal-fiscal-matching';
+import { normalizeSalesRealizationLinksPayload } from './one-c';
 import { normalizeOneCDateTime } from './terminal-fiscal-one-c-adapter';
 
 type Json = Record<string, unknown>;
@@ -54,6 +55,53 @@ export async function enrichAcquiringOrders(
         if (evidence.complete !== true || evidence.payment_details_complete !== true || evidence.root_fields_complete !== true
           || array(evidence.errors).length) throw new Error('INCOMPLETE_PAYMENT_BASIS');
         check.acquiringOrderState = 'unlinked';
+        // The general KKM export excludes receipts made from acquiring documents.
+        // Follow an explicit realization basis to that exact document's fiscal register.
+        const realizationBases = array(event.direct_links).map(object).filter(link =>
+          link.relation === 'payment_basis' && link.target_type === 'Реализация товаров и услуг'
+          && link.match_type === 'direct' && link.evidence === 'explicit_1c_reference');
+        if (realizationBases.length) {
+          const details = array(evidence.payment_details).map(object);
+          if (realizationBases.length !== 1 || details.length !== 1
+            || money(details[0].amount) !== check.electronicKopecks
+            || object(details[0].payment_basis).ref !== realizationBases[0].target_ref) {
+            check.acquiringOrderState = 'ambiguous'; continue;
+          }
+          const ref = text(realizationBases[0].target_ref);
+          if (!ref) throw new Error('MISSING_REALIZATION_SCOPE');
+          const key = `realization:${ref}`;
+          if (!orderCache.has(key)) orderCache.set(key, read(`/sales-realization-links?${new URLSearchParams({realization_ref:ref})}`));
+          const raw = object(await orderCache.get(key));
+          const {links} = normalizeSalesRealizationLinksPayload(raw);
+          if (raw.ok !== true || !links || links.realization?.ref !== ref
+            || !links.completeness.complete || !links.fiscalControl.complete) throw new Error('INCOMPLETE_ACQUIRING_FISCAL_SOURCE');
+          const direct = links.acquiring.direct.filter(document => document.ref === event.document_ref);
+          if (direct.length !== 1 || direct[0].posted !== true || money(direct[0].amount) !== check.electronicKopecks)
+            throw new Error('ACQUIRING_REFERENCE_MISMATCH');
+          const fiscalDocuments = links.fiscalControl.documents.filter(document =>
+            document.sourceType === 'acquiring' && document.documentRef === event.document_ref);
+          const operations = fiscalDocuments.flatMap(document => document.operations);
+          if (links.fiscalControl.conflictCount || links.returns.direct.length || links.corrections.direct.length || operations.length > 1
+            || operations.length > 0 && (fiscalDocuments.length !== 1 || fiscalDocuments[0].dataState !== 'confirmed')) {
+            check.fiscalConflict = true; check.fiscalState = 'incomplete'; continue;
+          }
+          const operation = operations[0];
+          if (operation) {
+            const number = (value: string) => value.normalize('NFKC').replace(/\s/g,'');
+            if (!/^\d+$/.test(number(operation.fiscalDriveNumber))
+              || !/^\d+$/.test(number(operation.fiscalDocumentNumber)) || !/^\d+$/.test(number(operation.fiscalSign))
+              || !operation.kktRegistrationNumber || operation.documentType !== 'Кассовый чек'
+              || operation.calculationType !== 'Приход денежных средств'
+              || money(operation.amount) !== check.totalKopecks || money(operation.electronicPayment) !== check.electronicKopecks
+              || operation.cashPayment !== 0 || operation.prepayment !== 0 || operation.postpayment !== 0 || operation.counterProvision !== 0) {
+              check.fiscalConflict = true; check.fiscalState = 'incomplete'; continue;
+            }
+            Object.assign(check,{fiscalState:'confirmed',fiscalDriveNumber:number(operation.fiscalDriveNumber),
+              fiscalDocumentNumber:number(operation.fiscalDocumentNumber),fiscalSign:number(operation.fiscalSign),
+              kktRegistrationNumber:operation.kktRegistrationNumber,fiscalDateTime:normalizeOneCDateTime(operation.datetime)});
+          }
+          continue;
+        }
         const links = array(event.direct_links).map(object).filter(l => l.relation === 'payment_basis'
           && l.target_type === 'Заказ клиента' && l.match_type === 'direct' && l.evidence === 'explicit_1c_reference');
         if (!links.length) continue;

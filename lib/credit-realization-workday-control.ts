@@ -114,6 +114,12 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     }
     if (action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {
+        const prior = controlCase.reasonCode === 'CONFIRMED_CREDIT_WITH_UNPOSTED_PAYMENT_DRAFT'
+          ? await tx.workdayControlIssue.findUnique({where:{fingerprint}}) : null;
+        const priorSource = prior?.sourceData && typeof prior.sourceData === 'object' && !Array.isArray(prior.sourceData) ? prior.sourceData : {};
+        const ignoredDraft = typeof priorSource.paymentDocumentNumber === 'string' ? {
+          kind:priorSource.paymentKind??null,number:priorSource.paymentDocumentNumber,amountKopecks:priorSource.paymentAmountKopecks??null,
+        } : null;
         const result = await tx.workdayControlIssue.updateMany({
           where: { fingerprint, status: 'open' },
           data: {
@@ -121,18 +127,18 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
             employeeActionRequired: false,
             resolvedAt: now,
             nextReminderAt: null,
-            sourceData: issueSourceData(controlCase),
+            sourceData: {...issueSourceData(controlCase),...(ignoredDraft?{ignoredPaymentDraft:ignoredDraft}:{})},
           },
         });
         if (result.count > 0) {
           await tx.workdayNotification.updateMany({
-            where: { issue: { fingerprint }, status: 'pending' },
-            data: { status: 'cancelled' },
+            where: { issue: { fingerprint }, status: {in:['pending','sent']} },
+            data: { status: 'cancelled', pushStatus:'cancelled', nextPushAttemptAt:null },
           });
         }
         await tx.workdayNotification.updateMany({
           where: { fingerprint: reminderFingerprint, status: { in: ['pending', 'sent'] } },
-          data: { status: 'cancelled' },
+          data: { status: 'cancelled', pushStatus:'cancelled', nextPushAttemptAt:null },
         });
         return result.count;
       });
