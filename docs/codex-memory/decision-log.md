@@ -1529,3 +1529,15 @@ those documents to October, rewrite FINALs or treat day-only posted accrual as
 full monthly salary. Working evidence/query: `.wip/payroll-display-audit-20261103.ts`
 and `.wip/payroll-display-audit-20261103/`. No new source-authority policy was
 approved merely by the owner's question about already paid amounts.
+
+## 2026-11-03 — Agreed employee salary rounding restored, 1.21.10
+
+Bela reminded that changing the employee total's source must not drop the
+previously agreed nearest-100 display precision. Restoration was tested and
+released separately after the shift repair, preserving FINAL raw amounts,
+formulas and UI. Server `e2e91a2`, version1.21.10, built17:38:03MSK; public,
+server, authenticated UI and all five private monthly outputs verified, plus
+unchanged saved-finance/configuration hashes and successful image registration.
+No new month allocations, 1C-total authority policy or production salary/shift
+mutation was included. Exact files/checks/evidence:
+`../ops/payroll-rounded-final-release-20261103.md`.
