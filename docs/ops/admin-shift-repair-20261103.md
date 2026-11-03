@@ -59,3 +59,46 @@ from payroll release 1.21.7. No production shift was changed during this work.
   the complete save sequence repeated successfully without manual reload.
 - Narrow screen tested in the real app. Physical-phone interaction and
   production mutation are not tested. Release/version approval remains separate.
+
+## Released separately as 1.21.9 — 2026-11-03
+
+Bela explicitly asked to verify preservation of already configured behavior and
+release this correction while the salary display audit continued.
+Merged the latest deployment branch through `80cae05` / production 1.21.8,
+preserving the independently approved visible arrival-comment release. Runtime
+diff against that baseline is only the three workday files above plus package
+version 1.21.9. Salary rounding work is not included.
+
+Repeated 271 workday regressions, two focused checks, two isolated transaction
+checks, TypeScript, production build and five version tests passed. The
+integration audit lookup was narrowed to its own shift-change ID, and cleanup
+to its own fixture IDs, so the retained demo data does not affect assertions.
+
+- Exact server commit: `8383db6ba67be9bf73b3830503d12066ecdd8721`.
+- Version: 1.21.9; builtAt `2026-11-03T13:22:32.434Z` = 16:22:32 MSK.
+- Image: `sha256:caccd558a6b4f0d614cc0eb44e9b90c62068ae454279e3fd353d44c2d9233008`.
+- Native Terminal launch completed; owner sudo remained in Terminal. Root job
+  finished `RELEASE_EXIT=0`, healthy. Independently checked source commit,
+  public metadata/health and authenticated visible version, then registered the
+  current image plus verified 1.21.8 and 1.21.7 rollback images.
+- All saved-payroll/configuration hashes match before/after. Environment and
+  every mount field match. Existing current-day records retained: four workday
+  entries, three checklist runs, nine task rows; zero cash-operation and review
+  rows in that current-day snapshot. Current-day rows added during ordinary use
+  would be allowed; pre-existing IDs must all survive.
+- No schema delta/migration or production shift/payroll mutation performed.
+- Initial free space was 14.68 GiB. Existing owner-approved storage maintenance
+  ran before acquiring the build lock: retained current + two verified rollback
+  images and all containers/volumes/uploads; removed eligible older unused
+  portal rollback images/cache. Build gate passed at 21.45 GiB; final free was
+  approximately 20 GiB.
+- Actual production Zukhra correction dialog verified: 11:00–20:00 selectable,
+  correction button enabled, updated fact-preservation help present. Closed
+  without saving; her actual 09:00–20:00 / 116-minute record was not changed.
+  Screenshot: `/tmp/admin-shift-repair-production-1219.png`.
+- Production POST correction and physical phones were not exercised. Their
+  behavior is covered by the isolated transaction/UI checks above.
+
+Server evidence: `/home/bela/payroll-release-1219.log`, payroll paired
+`payroll-release-1219-before/after.json`, current-day paired
+`workday-release-1219-before/after.json`.

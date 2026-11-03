@@ -1509,3 +1509,23 @@ preview shows FINAL 98,961.79 RUB; 1C paid is 99,000 RUB. Their 38.21 RUB
 mismatch retains the existing unknown paid/remaining guard, disclosed to Bela;
 no rounding/formula adjustment or production payroll write was performed.
 Exact files/evidence: `../ops/payroll-monthly-accrual-release-20261103.md`.
+
+## 2026-11-03 — Active-shift ADMIN repair released separately, 1.21.9
+
+Bela explicitly approved verifying preservation and releasing the shift repair
+while the salary audit continued. Deployed `8383db6` / 1.21.9, built 16:22:32
+MSK; source/public/authenticated UI, data preservation and verified-image
+registration succeeded. Existing 1.21.8 arrival-comment UI retained. No actual
+production shift was corrected during QA. Details:
+`../ops/admin-shift-repair-20261103.md`.
+
+Separately, Bela reminded that employee salary display must retain nearest-100
+rounding. Restoring that agreed precision is prepared as `cc2074a` on
+`codex/payroll-rounded-final-20261103`; it is not included in 1.21.9. Read-only
+October audit found additional 1C/FINAL differences (Liana 114,000 posted/paid
+versus FINAL 113,874.78; Marianna 50,000 posted/paid versus FINAL 30,000) and
+unassigned November 2 cash (Zalina 7,500; Milana 2,500). Do not silently assign
+those documents to October, rewrite FINALs or treat day-only posted accrual as
+full monthly salary. Working evidence/query: `.wip/payroll-display-audit-20261103.ts`
+and `.wip/payroll-display-audit-20261103/`. No new source-authority policy was
+approved merely by the owner's question about already paid amounts.
