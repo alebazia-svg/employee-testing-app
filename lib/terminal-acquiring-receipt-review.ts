@@ -25,6 +25,7 @@ export function acquiringReceiptCopy(input: Parameters<typeof terminalPaymentCop
   const date=input.relative!==false&&day(at)===day(now)?'сегодня':at.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'});
   const method=input.method==='TERM_CARD'?'картой':input.method==='TERM_SBP'?'СБП':null;
   const number=terminalReceiptNumber(input.receiptNumber);
-  const body=[`${payment.amount} · ${[method,`${date}, ${payment.time}`].filter(Boolean).join(' · ')}`,number?`Чек терминала № ${number}.`:null].filter(Boolean).join('\n');
-  return {...payment,title:`Пробейте чек с эквайринга${input.documentNumber?` № ${input.documentNumber}`:''}`,problem,body};
+  const action=`Пробейте чек с эквайринга${input.documentNumber?` № ${input.documentNumber}`:''}.`;
+  const body=[action,`${payment.amount} · ${[method,`${date}, ${payment.time}`].filter(Boolean).join(' · ')}`,number?`Чек терминала № ${number}.`:null].filter(Boolean).join('\n');
+  return {...payment,title:'Нет чека по эквайрингу',problem,body};
 }

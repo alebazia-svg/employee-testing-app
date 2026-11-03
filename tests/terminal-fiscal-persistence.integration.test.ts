@@ -376,7 +376,7 @@ test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking hand
   assert.equal(await prisma.workdayNotification.count({where:{reviewId:acqReview.id}}),2);
   const oldReadback=await prisma.workdayNotification.findUniqueOrThrow({where:{id:oldAcqNotice.id}});assert.equal(oldReadback.status,'cancelled');assert.equal(oldReadback.title,'В 1С не найден чек продажи');
   const notice=await prisma.workdayNotification.findFirstOrThrow({where:{reviewId:acqReview.id,fingerprint:{contains:':acquiring-receipt-created:'}}});
-  assert.equal(notice.kind,'terminal_fiscal_review');assert.equal(notice.title,'Пробейте чек с эквайринга № 00OF-000087');assert.match(notice.body,/Чек терминала № 000507/);assert.match(notice.title,/эквайринга № 00OF-000087/);assert.doesNotMatch(notice.body,/Проверьте/);
+  assert.equal(notice.kind,'terminal_fiscal_review');assert.equal(notice.title,'Нет чека по эквайрингу');assert.match(notice.body,/Чек терминала № 000507/);assert.match(notice.body,/^Пробейте чек с эквайринга № 00OF-000087\./);assert.doesNotMatch(notice.body,/Проверьте/);
   assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:acqReview.id}}),1);
   await syncAcquiring({...acquiringRecord,reasonCode:'SOURCE_OFD_INCOMPLETE',sourceCompleteness:{...record.sourceCompleteness,ofd:false}});
   // Incomplete peer evidence preserves this addressed task and its pending notice.
