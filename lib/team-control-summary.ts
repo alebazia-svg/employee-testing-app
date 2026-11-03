@@ -76,3 +76,14 @@ export function controlCompositionLabel(breakdown:{decision:number;check:number;
  const plural=(count:number,forms:string[])=>{const mod=count%100,last=count%10;return forms[mod>=11&&mod<=14?2:last===1?0:last>=2&&last<=4?1:2]};
  return `${breakdown.decision} ${plural(breakdown.decision,['разрешение','разрешения','разрешений'])} · ${breakdown.check} ${plural(breakdown.check,['проверка','проверки','проверок'])}`;
 }
+
+/** Overview opens the relevant employee card; the queue is a separate explicit tab. */
+export function teamControlHref(row: Pick<ControlSummaryRow,'id'|'detailAvailable'>, date: string, summary: ReturnType<typeof teamControlSummary>) {
+ const detail=(focus?:string)=>`/admin/workday?date=${date}&control=all&employee=${row.id}${focus?`&focus=${focus}`:''}#employees-control`;
+ const primaryItems=summary.items.filter(item=>item.kind===summary.kind);
+ // Preserve decision priority, but prefer today's check over an inherited check.
+ const primary=primaryItems.find(item=>(item.originDate??date)===date)??primaryItems[0]??summary.items[0];
+ if(summary.kind==='check'&&primary?.key.startsWith('issue-')&&row.detailAvailable)return detail('shift-owner-issues');
+ if(summary.kind==='employee')return detail('shift-issues');
+ return primary?.href??summary.timing[0]?.href??`/admin/attendance?date=${date}`;
+}

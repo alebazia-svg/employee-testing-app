@@ -164,3 +164,37 @@ test('planning gaps stay out of operational questions, while real shift issues r
 
 import { workdayCardTarget } from '../lib/workday-card-navigation';
 test('same-day employee links activate an existing card; other days and issue routes retain navigation',()=>{assert.deepEqual(workdayCardTarget('/admin/workday?date=2026-10-19&employee=8&focus=shift-issues','2026-10-19'),{employeeId:8,focus:'shift-issues'});assert.equal(workdayCardTarget('/admin/attendance?date=2026-10-19','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-18&employee=8','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-19&issue=1','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-19&employee=0','2026-10-19'),null)});
+
+
+import { teamControlHref, type OwnerQueueAction } from '../lib/team-control-summary';
+const pastHandover:OwnerQueueAction={key:'past-handover-580',kind:'check',name:'Залина',employeeId:summaryRow.id,department:'wholesale',originDate:'2026-11-02',label:'Не сдана смена',context:'',href:`/admin/workday?date=2026-11-02&control=all&employee=${summaryRow.id}&focus=shift-handover-review#employees-control`};
+test('overview cash check opens today’s modal even when a past handover is pending',()=>{
+ const row={...summaryRow,alerts:['Расхождение по кассе'],alertTargets:{'Расхождение по кассе':'shift-task-587'}};
+ const summary=teamControlSummary(row,'2026-11-03',[pastHandover]);
+ const href=teamControlHref(row,'2026-11-03',summary);
+ assert.deepEqual(workdayCardTarget(href,'2026-11-03'),{employeeId:row.id,focus:'shift-task-587'});
+ assert.equal(new URL(href,'http://local').searchParams.has('view'),false);
+ assert.equal(summary.totalCount,2,'past case remains visible and counted');
+ assert.equal(summary.items.find(item=>item.key==='past-handover-580')?.href,pastHandover.href);
+});
+test('one or several past checks open a dated card directly, never the queue',()=>{
+ for(const actions of [[pastHandover],[pastHandover,{...pastHandover,key:'past-handover-older',originDate:'2026-11-01',href:`/admin/workday?date=2026-11-01&employee=${summaryRow.id}`}]] ){
+  const href=teamControlHref(summaryRow,'2026-11-03',teamControlSummary(summaryRow,'2026-11-03',actions));
+  assert.equal(href,pastHandover.href);assert.equal(new URL(href,'http://local').searchParams.get('employee'),String(summaryRow.id));
+ }
+});
+test('a pending owner decision retains priority and also opens its card directly',()=>{
+ const decision={...pastHandover,key:'past-request-1',kind:'decision' as const,href:`/admin/workday?date=2026-11-02&employee=${summaryRow.id}&focus=shift-request-1`};
+ const row={...summaryRow,alerts:['Расхождение по кассе']};
+ assert.equal(teamControlHref(row,'2026-11-03',teamControlSummary(row,'2026-11-03',[decision])),decision.href);
+ const today={...row,alerts:['Завершить рабочий день без инкассации'],alertTargets:{'Завершить рабочий день без инкассации':'shift-request-today'}};
+ assert.deepEqual(workdayCardTarget(teamControlHref(today,'2026-11-03',teamControlSummary(today,'2026-11-03',[decision])),'2026-11-03'),{employeeId:today.id,focus:'shift-request-today'});
+});
+test('employee, help and timing links retain their existing card sections',()=>{
+ const employee={...summaryRow,detailAvailable:true,issues:[{id:12,title:'Чек',meta:'',href:'/issue/12'}]};
+ assert.equal(workdayCardTarget(teamControlHref(employee,'2026-11-03',teamControlSummary(employee,'2026-11-03')),'2026-11-03')?.focus,'shift-issues');
+ const help={...employee,issues:[{...employee.issues[0],state:'Нужна помощь'}]};
+ assert.equal(workdayCardTarget(teamControlHref(help,'2026-11-03',teamControlSummary(help,'2026-11-03',[pastHandover])),'2026-11-03')?.focus,'shift-owner-issues');
+ const timing={...summaryRow,timing:['Опоздание'],alertTargets:{'Опоздание':'shift-start'}};
+ assert.equal(workdayCardTarget(teamControlHref(timing,'2026-11-03',teamControlSummary(timing,'2026-11-03')),'2026-11-03')?.focus,'shift-start');
+});
