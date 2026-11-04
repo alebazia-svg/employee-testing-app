@@ -30,7 +30,7 @@ test('small-remainder completion shows the actual payment and discrepancy in bot
   for(const options of [{compactBuyer:true},{showManager:true,splitView:true}]){
     const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,...options}));
     assert.match(html,/Завершена без доплаты/);assert.match(html,/Недоплата: 25/);assert.match(html,/30 000/);
-    assert.match(html,/не больше 500 ₽ и 1%/);assert.match(html,/Долг в 1С не изменён/);
+    assert.match(html,/не больше 500 ₽ и 2%/);assert.match(html,/Долг в 1С не изменён/);
     assert.doesNotMatch(html,/Оплачено полностью|Заявка оплачена полностью/);
   }
 });
