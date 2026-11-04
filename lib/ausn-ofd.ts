@@ -156,12 +156,11 @@ async function getJson(url: string) {
   }
 }
 
-async function getCompletePlatformaPage(url: string, splitOnTimeout = false) {
+async function getCompletePlatformaPage(url: string) {
   let last = await getJson(url);
   for (let attempt = 1; attempt < 3; attempt += 1) {
     const meta = record(last.body?.meta);
     if (last.response.ok && meta?.complete === true) return last;
-    if (splitOnTimeout && last.response.status === 504 && record(last.body?.error)?.code === 'OFD_PROVIDER_TIMEOUT') return last;
     await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
     last = await getJson(url);
   }
@@ -174,14 +173,14 @@ function nextDay(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
-// Keep each proxy call within one provider window. The proxy's own month loop
-// can exceed the HTTP timeout before returning even a complete result.
+// Read one Moscow calendar day per request. Multi-day provider queries can
+// time out even when each constituent day is available and complete.
 export function platformaExportWindows(dateFrom: string, dateTo: string) {
   const end = nextDay(dateTo);
   const windows: { from: string; toExclusive: string }[] = [];
   for (let from = dateFrom; from < end;) {
     const next = new Date(`${from}T00:00:00.000Z`);
-    next.setUTCDate(next.getUTCDate() + 7);
+    next.setUTCDate(next.getUTCDate() + 1);
     const toExclusive = next.toISOString().slice(0, 10) < end ? next.toISOString().slice(0, 10) : end;
     windows.push({ from, toExclusive });
     from = toExclusive;
@@ -209,30 +208,16 @@ export async function loadPlatforma(dateFrom: string, dateTo: string) {
   if (!windows.length) errors.push('Platforma OFD period is empty');
   const results: { receipts: AusnOfdReceipt[]; error?: string }[] = new Array(jobs.length);
   let cursor = 0;
-  async function readWindow(job: typeof jobs[number]): Promise<{ receipts: AusnOfdReceipt[]; error?: string }> {
-    const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from: `${job.from}T00:00:00+03:00`, to: `${job.toExclusive}T00:00:00+03:00` });
-    const days = Math.round((Date.parse(job.toExclusive) - Date.parse(job.from)) / 86_400_000);
-    const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, days > 1);
-    const sourceRows = rows(record(result.body?.data)?.receipts);
-    const receipts = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
-    const complete = result.response.ok && record(result.body?.meta)?.complete === true && receipts.length === sourceRows.length;
-    const timedOut = result.response.status === 504 && record(result.body?.error)?.code === 'OFD_PROVIDER_TIMEOUT';
-    // Split a timed-out interval immediately instead of spending the report deadline
-    // retrying the same slow query. Never accept partial parent rows.
-    // Retry a timed-out interval as smaller disjoint intervals, never accept a
-    // partial response. Read children sequentially to preserve the two-call cap.
-    if (!complete && timedOut && days > 1) {
-      const middle = new Date(Date.parse(`${job.from}T00:00:00Z`) + Math.floor(days / 2) * 86_400_000).toISOString().slice(0, 10);
-      const left = await readWindow({ ...job, toExclusive: middle });
-      const right = await readWindow({ ...job, from: middle });
-      return { receipts: [...left.receipts, ...right.receipts], ...((left.error || right.error) ? { error: [left.error, right.error].filter(Boolean).join('; ') } : {}) };
-    }
-    return { receipts, ...(!complete ? { error: `Platforma OFD receipt export incomplete for KKT …${job.registrationNumber.slice(-4)} (${job.from}–${job.toExclusive})` } : {}) };
-  }
   async function worker() {
     while (cursor < jobs.length) {
       const index = cursor++;
-      results[index] = await readWindow(jobs[index]);
+      const job = jobs[index];
+      const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from: `${job.from}T00:00:00+03:00`, to: `${job.toExclusive}T00:00:00+03:00` });
+      const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
+      const sourceRows = rows(record(result.body?.data)?.receipts);
+      const receipts = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
+      const complete = result.response.ok && record(result.body?.meta)?.complete === true && receipts.length === sourceRows.length;
+      results[index] = { receipts, ...(!complete ? { error: `Platforma OFD receipt export incomplete for KKT …${job.registrationNumber.slice(-4)} (${job.from}–${job.toExclusive})` } : {}) };
     }
   }
   // Two requests bound upstream load; output order remains KKT/window order.

@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 export const processableTypes = new Set(['AUSN_INCOME', 'ENS_OPERATIONS', 'AUSN_CALCULATION']);
 const bridgeRetryDelayMs = 2_000;
-const bridgeResultDeadlineMs = 17 * 60_000;
+const bridgeResultDeadlineMs = 26 * 60_000;
 
 type ProcessingInput = { documentType: string; periodKey: string; extension: string; bytes: Uint8Array; sha256: string };
 export type AusnProcessingResult = { status: 'not_required' | 'completed' | 'failed'; message: string; requestId?: string };
@@ -100,7 +100,7 @@ async function runBridge(requestId: string, resultPath: string, kind: 'document'
     const result = await waitForAusnProcessingResult({
       resultPath,
       invokeBridge: async () => {
-        const response = await execFileAsync('ssh', args, { timeout: 520_000, maxBuffer: 1024 * 1024 });
+        const response = await execFileAsync('ssh', args, { timeout: 1_500_000, maxBuffer: 1024 * 1024 });
         return { stdout: response.stdout };
       },
     });
