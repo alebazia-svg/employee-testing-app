@@ -4,13 +4,14 @@ import { activeScheduleNotices, scheduleNoticeKinds, scheduleQuestionIsActive } 
 import { getMoscowDateKey } from './workday';
 import { scheduleCoverage, schedulePersonName } from './work-schedule-coverage';
 import type { EmployeeAttentionItem } from './employee-attention';
-import { scheduleNearDates, scheduleNearReminder, SCHEDULE_NEAR_KIND } from './schedule-near-reminder';
+import { scheduleNearDates, scheduleNearReminder, SCHEDULE_NEAR_KIND, supportsScheduleNearReminders } from './schedule-near-reminder';
 
 /** Reading a notice does not answer the request. Recheck the current plan. */
 export async function loadEmployeeScheduleAttention(userId: number): Promise<EmployeeAttentionItem[]> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { department: true, role: true, isActive: true } });
-  if (!user || user.role !== 'EMPLOYEE' || !user.isActive || !['retail','wholesale'].includes(user.department)) return [];
-  const notices = await prisma.workdayNotification.findMany({ where: { userId, kind: { in: scheduleNoticeKinds }, status: { in: ['pending', 'sent'] } }, orderBy: { scheduledAt: 'desc' } });
+  if (!user || user.role !== 'EMPLOYEE' || !user.isActive || !supportsScheduleNearReminders(user.department)) return [];
+  const kinds = user.department === 'procurement' ? [SCHEDULE_NEAR_KIND] : scheduleNoticeKinds;
+  const notices = await prisma.workdayNotification.findMany({ where: { userId, kind: { in: kinds }, status: { in: ['pending', 'sent'] } }, orderBy: { scheduledAt: 'desc' } });
   const today = getMoscowDateKey();
   const dated = [...(await activeScheduleNotices(prisma, notices, today)).values()].flat();
   const dates = [...new Set([...dated.map(row => row.date), ...scheduleNearDates(today)])];
@@ -29,7 +30,7 @@ export function scheduleAttentionItems({ userId, department, today, dated, entri
 }): EmployeeAttentionItem[] {
   const result = new Map<string, EmployeeAttentionItem>();
   const near = scheduleNearReminder({today,entries:entries.filter(e=>e.userId===userId),vacations:vacations.filter(v=>v.userId===userId)});
-  if (['retail','wholesale'].includes(department) && near.active) {
+  if (supportsScheduleNearReminders(department) && near.active) {
     result.set(`schedule-plan:${today}`, {
       id:`schedule-plan:${today}`,kind:'schedule',title:near.title,state:'action',status:near.qualifier,
       // Older clients open the ordinary month when this calendar intent has no weekStart.
@@ -38,6 +39,8 @@ export function scheduleAttentionItems({ userId, department, today, dated, entri
       notificationIds:dated.filter(d=>d.notice.kind===SCHEDULE_NEAR_KIND&&!d.notice.readAt).map(d=>d.notice.id),
     });
   }
+  // Procurement joins personal plan completion, not seller replacement requests.
+  if (department !== 'retail' && department !== 'wholesale') return [...result.values()];
   for (const { notice, date } of dated) {
     if (date < today) continue;
     if (!['schedule_replacement_request','schedule_replacement_digest'].includes(notice.kind)) continue;

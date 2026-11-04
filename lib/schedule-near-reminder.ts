@@ -2,10 +2,14 @@ import { buildDateRange } from './workday';
 import { isValidScheduleDateKey } from './workday-schedule';
 
 export const SCHEDULE_NEAR_KIND = 'schedule_near_fill_request';
+export const SCHEDULE_NEAR_DEPARTMENTS = ['retail', 'wholesale', 'procurement'] as const;
+export function supportsScheduleNearReminders(department: string) {
+  return (SCHEDULE_NEAR_DEPARTMENTS as readonly string[]).includes(department);
+}
 export function scheduleNearDates(today: string) { return buildDateRange(today, 2); }
 export function scheduleNearNoticeRef(fingerprint: string) {
-  const match = /^schedule-near:(retail|wholesale):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(fingerprint);
-  if (!match || !isValidScheduleDateKey(match[2]) || !Number.isSafeInteger(Number(match[3])) || Number(match[3]) <= 0) return null;
+  const match = /^schedule-near:([^:]+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(fingerprint);
+  if (!match || !supportsScheduleNearReminders(match[1]) || !isValidScheduleDateKey(match[2]) || !Number.isSafeInteger(Number(match[3])) || Number(match[3]) <= 0) return null;
   return { department: match[1], date: match[2], userId: Number(match[3]) };
 }
 export function scheduleCalendarHref(date: string, editSingleDay = false) {

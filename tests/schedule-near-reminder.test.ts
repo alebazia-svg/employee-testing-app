@@ -59,6 +59,25 @@ test('daily delivery identity is distinct from a colleague replacement, malforme
   assert.ok(!workdayNotificationHref(row).includes('week='));
   assert.notEqual(notificationTargetKey(row),notificationTargetKey({...row,kind:'schedule_replacement_request',fingerprint:`schedule-coverage:retail:${today}:2`}));
 });
+test('Procurement uses the same personal day reminder and direct editor links',()=>{
+  const fingerprint=`schedule-near:procurement:${today}:2`;
+  assert.deepEqual(scheduleNearNoticeRef(fingerprint),{department:'procurement',date:today,userId:2});
+  const row={id:1,taskId:null,issueId:null,reviewId:null,kind:SCHEDULE_NEAR_KIND,fingerprint};
+  assert.equal(notificationTargetKey(row),`schedule-near:procurement:${today}`);
+  const base={userId:2,department:'procurement',today,dated:[],entries:[] as Array<{date:string;userId:number;status:string;user:{name:string}}>,vacations:[]};
+  assert.equal(scheduleAttentionItems(base)[0].status,'Сегодня и завтра не заполнены');
+  for(const entry of saved){
+    const item=scheduleAttentionItems({...base,entries:[{...entry,userId:2,user:{name:'Учебный закупщик'}}]})[0];
+    const missing=entry.date===today?'2026-10-27':today;
+    assert.equal(item.scheduleOpenEditor,true);
+    assert.equal(employeeActionReminder(null,[item])?.href,scheduleCalendarHref(missing,true));
+  }
+  assert.deepEqual(scheduleAttentionItems({...base,entries:saved.map(e=>({...e,userId:2,user:{name:'Учебный закупщик'}}))}),[]);
+  assert.deepEqual(scheduleAttentionItems({...base,department:'operations'}),[]);
+  const oldReplacement={date:'2026-11-05',notice:{id:99,kind:'schedule_replacement_request',title:'',readAt:null}};
+  const withOldQuestion=scheduleAttentionItems({...base,dated:[oldReplacement],entries:[{date:'2026-11-05',userId:2,status:'off',user:{name:'Учебный закупщик'}}]});
+  assert.deepEqual(withOldQuestion.map(item=>item.id),[`schedule-plan:${today}`],'enabling personal reminders must not expose seller replacement questions');
+});
 test('near planning remains visible without a sent notice, but never overrides urgent tasks or receipt issues',()=>{
   const items=scheduleAttentionItems({userId:2,department:'retail',today,dated:[],entries:[],vacations:[]});
   assert.equal(items.length,1);
