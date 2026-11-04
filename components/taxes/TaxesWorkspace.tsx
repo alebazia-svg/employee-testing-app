@@ -88,7 +88,8 @@ export function groupMissing(plan: TaxPeriodPlan[]): MissingType[] {
 export function TaxesWorkspace(props: TaxesWorkspaceProps) {
   const { tab, base, issues, plan, health } = props;
   const missingTypes = groupMissing(plan);
-  const highIssues = issues.filter((issue) => issue.severity === 'high').length;
+  const archivedHighIssues = issues.filter((issue) => issue.severity === 'high').length;
+  const highIssues = props.managementReview ? props.managementReview.findings.filter(f => f.status !== 'verified').length : archivedHighIssues;
   const errors = health.filter((item) => item.level === 'error').length;
   const tabHref = (key: TaxTab) => key === 'overview' ? base : `${withTab(base)}${key}`;
   return <div className='tax-ws'>
@@ -101,19 +102,29 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
     {props.managementReview && tab === 'income' && <TaxManagementIncome review={props.managementReview} />}
     {props.managementReview && tab === 'reconciliation' && <TaxManagementReconciliation review={props.managementReview} />}
     {props.managementReview && tab === 'documents' && <TaxManagementDocuments review={props.managementReview} preview={base.startsWith('/taxes-development-preview')} />}
-    {health.length > 0 && (tab === 'overview' || tab === 'documents') && <HealthPanel health={health} refresh={props.refresh} />}
-    {tab === 'overview' && <Overview {...props} missingTypes={missingTypes} />}
-    {tab === 'income' && <Income {...props} />}
-    {tab === 'reconciliation' && <Reconciliation {...props} />}
-    {tab === 'documents' && <Documents {...props} missingTypes={missingTypes} />}
-    <Footer {...props} />
+    {health.length > 0 && (tab === 'overview' || tab === 'documents') && <HealthPanel health={health} refresh={props.refresh} archivedReport={Boolean(props.managementReview)} />}
+    {props.managementReview && tab !== 'documents' ? <details className='tax-panel tax-details tax-manager-legacy'>
+      <summary className='tax-panel-head'><div><h2>Прежние расчёты — для сравнения</h2><p>Без ПСН. Сохранены все значения, прогнозы и исходные подробности; не использовать как текущий запас.{tab === 'reconciliation' && archivedHighIssues > 0 && <> Замечаний прежней сверки: {archivedHighIssues}.</>}</p></div><AdminDisclosureAction /></summary>
+      <div className='tax-manager-legacy-content'>
+        {tab === 'overview' && <Overview {...props} missingTypes={missingTypes} />}
+        {tab === 'income' && <Income {...props} />}
+        {tab === 'reconciliation' && <Reconciliation {...props} />}
+        <Footer {...props} />
+      </div>
+    </details> : <>
+      {tab === 'overview' && <Overview {...props} missingTypes={missingTypes} />}
+      {tab === 'income' && <Income {...props} />}
+      {tab === 'reconciliation' && <Reconciliation {...props} />}
+      {tab === 'documents' && <Documents {...props} missingTypes={missingTypes} />}
+      <Footer {...props} />
+    </>}
   </div>;
 }
 
-function HealthPanel({ health, refresh }: { health: HealthIssue[]; refresh?: React.ReactNode }) {
+function HealthPanel({ health, refresh, archivedReport }: { health: HealthIssue[]; refresh?: React.ReactNode; archivedReport?: boolean }) {
   const tone = health.some((item) => item.level === 'error') ? 'error' : 'warn';
   return <section className='tax-panel tax-queue' data-tone={tone} aria-label='Что не работает'>
-    <header><AlertTriangle className={`h-4 w-4 ${tone === 'error' ? 'text-[#b63636]' : 'text-[#a8771c]'}`} /><h2>Что не работает</h2><span>{health.length}</span></header>
+    <header><AlertTriangle className={`h-4 w-4 ${tone === 'error' ? 'text-[#b63636]' : 'text-[#a8771c]'}`} /><h2>{archivedReport ? 'Обновление исходного отчёта' : 'Что не работает'}</h2><span>{health.length}</span></header>
     {health.map((item) => <div key={item.id} className='tax-item'><b className='inline-flex items-center gap-1.5'>{item.title}<More><p>{item.text}</p>{item.action && <p className='mt-1.5'>{item.action}</p>}</More></b>{item.id === 'stale' && refresh}</div>)}
   </section>;
 }

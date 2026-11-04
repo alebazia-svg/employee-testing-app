@@ -69,7 +69,10 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   const latestDuePeriod = data.plan.at(-1)?.periodKey || '2026-09';
   const demoUpload = (documentType: string, periodKey: string, fixed = true) => <fieldset disabled><TaxDocumentUpload fixedType={fixed ? documentType as never : undefined} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} /><p className='mt-2 text-xs font-semibold text-[#866014]'>В демонстрации загрузка выключена.</p></fieldset>;
   const scenarios: Array<[string, string]> = [['fresh', 'свежие данные'], ['today', 'как сейчас'], ['broken', 'поломка']];
-  const notice = <div className='tax-callout' data-tone='warn'>
+  const notice = managementReview ? <div className='tax-callout' data-tone='warn'>
+    <strong>Предпросмотр — без записи.</strong> Загрузка и ссылки на файлы выключены; документы показаны выборочно.
+    <details className='tax-details mt-1'><summary className='tax-link'>Другие состояния предпросмотра</summary><span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link'>{label}</a>)}</span></details>
+  </div> : <div className='tax-callout' data-tone='warn'>
     <strong>Просмотр, ничего не записывается.</strong> {scenario === 'audit' ? 'Сохранённый расчёт и дополнительная проверка исходной выгрузки. Это не новый расчёт налога.' : 'Часть цифр — пример.'} <span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link' style={scenario === key ? { textDecoration: 'underline' } : undefined}>{label}</a>)}</span>
   </div>;
   return <AdminIdentityProvider name='Кештова Бэла'><AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>
