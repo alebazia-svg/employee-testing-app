@@ -41,7 +41,7 @@ export async function retryCashOperationInOneC(
     return { ok: false as const, reason: 'manual_control' as const, operation };
   }
 
-  const staleRetry = operation.status === retryingStatus && operation.updatedAt.getTime() <= now.getTime() - retryLeaseMs;
+  const staleRetry = (operation.status === retryingStatus || operation.status === 'pending_1c' && Boolean(operation.photoExpectedSha256 && operation.oneCProcessingStartedAt)) && (operation.oneCProcessingStartedAt ?? operation.updatedAt).getTime() <= now.getTime() - retryLeaseMs;
   if (operation.status !== retryableStatus && !staleRetry) {
     return { ok: false as const, reason: 'not_retryable' as const, operation };
   }
@@ -50,19 +50,20 @@ export async function retryCashOperationInOneC(
     where: {
       id: operation.id,
       ...(staleRetry
-        ? { status: retryingStatus, updatedAt: { lte: new Date(now.getTime() - retryLeaseMs) } }
+        ? { status: operation.status, ...(operation.oneCProcessingStartedAt ? { oneCProcessingStartedAt: operation.oneCProcessingStartedAt } : { updatedAt: { lte: new Date(now.getTime() - retryLeaseMs) } }) }
         : { status: retryableStatus }),
     },
-    data: { status: retryingStatus },
+    data: { status: retryingStatus, oneCProcessingStartedAt: now },
   });
   if (claimed.count !== 1) return { ok: false as const, reason: 'not_claimed' as const, operation };
 
   const fail = async (message: string) => {
-    const failed = await db.cashOperation.update({
-      where: { id: operation.id },
+    await db.cashOperation.updateMany({
+      where: { id: operation.id, status: retryingStatus, oneCProcessingStartedAt: now },
       data: { status: retryableStatus, oneCError: message },
     });
-    return { ok: false as const, reason: 'one_c_error' as const, operation: failed };
+    const failed = await db.cashOperation.findUnique({ where: { id: operation.id } });
+    return { ok: false as const, reason: 'one_c_error' as const, operation: failed! };
   };
 
   try {
@@ -93,8 +94,8 @@ export async function retryCashOperationInOneC(
       return fail(result.error || '1С не создала и не провела связанную пару РКО и ПКО.');
     }
 
-    const saved = await db.cashOperation.update({
-      where: { id: operation.id },
+    const finalized = await db.cashOperation.updateMany({
+      where: { id: operation.id, status: retryingStatus, oneCProcessingStartedAt: now },
       data: {
         status: 'posted_1c_pair',
         oneCDocumentRef: result.document.ref,
@@ -106,6 +107,8 @@ export async function retryCashOperationInOneC(
         oneCPostedAt: now,
       },
     });
+    const saved = (await db.cashOperation.findUnique({ where: { id: operation.id } }))!;
+    if (finalized.count !== 1) return { ok: false as const, reason: 'manual_control' as const, operation: saved };
     await (dependencies.resolveCarried ?? resolveCarriedCashEncashmentExceptions)(db, {
       employeeId: operation.userId,
       operationId: saved.id,

@@ -559,6 +559,8 @@ function buildEmployeeAutoChecks({
     direction: string;
     amount: number;
     photoPath: string;
+    photoExpectedSha256: string | null;
+    oneCProcessingStartedAt: Date | null;
     status: string;
     oneCError: string;
     oneCDocumentRef: string | null;
@@ -965,12 +967,12 @@ function buildEmployeeAutoChecks({
       `h${task.id}`,
       `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`,
     ]);
-    for (const operation of cashOperations.filter((item) => ['one_c_error', 'manual_in_progress', 'retrying_1c'].includes(item.status) && !handoverOperationKeys.has(item.idempotencyKey))) {
+    for (const operation of cashOperations.filter((item) => (['one_c_error', 'manual_in_progress', 'retrying_1c'].includes(item.status) || item.status === 'pending_1c' && Boolean(item.photoExpectedSha256 && item.oneCProcessingStartedAt && Date.now() - item.oneCProcessingStartedAt.getTime() >= 600_000)) && !handoverOperationKeys.has(item.idempotencyKey))) {
       const operationTarget = operation.direction === 'deposit_safe' ? 'депозитный сейф' : 'резерв';
       const operationState = operation.status === 'manual_in_progress'
         ? 'Операцию взял в ручную администратор.'
         : operation.status === 'retrying_1c'
-          ? 'Портал повторно проводит документы в 1С.'
+          ? 'Портал оформляет документы в 1С.'
           : 'Можно повторить автоматически или взять проведение в ручную.';
       checks.push({
         id: `cash-operation-${operation.id}-${task.id}`,
@@ -979,7 +981,7 @@ function buildEmployeeAutoChecks({
         status: 'unavailable',
         summary: `${formatMoney(operation.amount)}. Инкассация зафиксирована, но документы 1С не проведены. ${operationState}`,
         evidence: operation.oneCError || '1С не вернула подтверждение проведения связанной пары документов.',
-        cashOperation: { id: operation.id, status: operation.status, photoPath: operation.photoPath, amount: operation.amount },
+        cashOperation: { id: operation.id, status: operation.status, photoPath: operation.photoPath, amount: operation.amount, recoverable: Boolean(operation.oneCProcessingStartedAt && Date.now() - operation.oneCProcessingStartedAt.getTime() >= 600_000) },
       });
     }
     if (completedWithoutEncashment(task)) {
@@ -1248,6 +1250,8 @@ export default async function AdminWorkdayPage(
         direction: true,
         amount: true,
         photoPath: true,
+        photoExpectedSha256: true,
+        oneCProcessingStartedAt: true,
         status: true,
         oneCError: true,
         oneCDocumentRef: true,

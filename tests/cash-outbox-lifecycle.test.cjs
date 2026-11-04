@@ -25,15 +25,17 @@ const actualFunctions = compile([
   section('  const flushCashOutbox = useCallback(', '  useEffect(() => {\n    const updateConnection'),
 ].join('\n'));
 
-function setup({ storageFails = false, removalFails = false, refreshFails = false, holdResponse = false } = {}) {
+function setup({ storageFails = false, removalFails = false, refreshFails = false, holdResponse = false, metadataFirst = true, newProtocol = false, failMetadataUpdate = false } = {}) {
   const photo = new File(['photo-bytes'], 'cash.jpg', {type: 'image/jpeg'});
   const item = {id:'12345678-1234-4234-9234-123456789abc',userId:7,
     workDayEntryId:19,workDayDate:'2026-09-04',
     createdAt:'2026-09-04T10:00:00Z', url:'/api/employee/cash-operations',
     amount:'125000,50', direction:'deposit_safe', comment:'test', photo, lastError:''};
+  if (newProtocol) Object.assign(item,{protocol:2,metadataFirst,photoSha256:'a'.repeat(64)});
   const row = {id:11, idempotencyKey:item.id,userId:item.userId,amount:125000.5,
     direction:item.direction,status:'pending_1c',workDayEntryId:item.workDayEntryId,date:item.workDayDate};
-  const stored = new Map();
+  if (newProtocol) Object.assign(row,{photoExpectedSha256:item.photoSha256,photoExpectedBytes:photo.size,photoPath:'uploads/original.jpg',photoReceivedAt:new Date().toISOString()});
+  const stored = new Map(); let saves=0;
   const requests = [];
   const messages = [];
   const auditStages = [];
@@ -66,17 +68,22 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
     watchEmployeeCashPersistence:(_, callback)=>{persistedCallback=callback;return()=>{persistedCallback=null;};},
     setCashDuplicateItem:x=>{context.cashDuplicateItem=typeof x==='function'?x(context.cashDuplicateItem):x;},
     cashDuplicateItem:null, setCashPhotoUploaded:()=>{},
+    prepareEmployeeCashPhoto:async()=>newProtocol?{protocol:2,photoSha256:item.photoSha256,baselineId:null}:{},
+    transferEmployeeCash:async(_item,callbacks)=>{await callbacks.onMetadata(row);return {operation:row};},
+    mergeCashOperation:(current,incoming)=>[incoming], CashTransferError:class extends Error{},
+    setCashPhotoOutboxCount:()=>{},
     resetCashOperationDraft:()=>{context.cashOperationDraft={direction:null,amount:'',comment:'',idempotencyKey:''};},
     cashTransferInFlightRef:{current:false},cashRetryAfterRef:{current:0},cashRetryDelayRef:{current:0},document:{visibilityState:'visible'},
     sendEmployeeActivity:()=>{},createIdempotencyKey:()=> 'audit-key-12345',
     beginEmployeeOperation:()=>stage=>auditStages.push(stage), // Collector is covered separately; never changes the cash workflow.
+    cashMetadataFirstEnabled: metadataFirst,
     preview: null, // Real employee mode; the current component also supports read-only ADMIN preview.
     isRecord:x=>x!==null && typeof x==='object',useCallback:fn=>fn,
     cashOperationDraft:{...item,idempotencyKey:item.id},user:{id:7},activeWorkDay:{id:19,date:'2026-09-04'},
     parseMoneyInput:x=>Number(x.replace(',','.')),
     cashOutboxResponseAcknowledges:outboxContext.exports.cashOutboxResponseAcknowledges,
     cashOutboxFormData:outboxContext.exports.cashOutboxFormData,
-    saveEmployeeCashOutboxItem:async x=>{if(storageFails)throw Error('storage unavailable');stored.set(x.id,x);},
+    saveEmployeeCashOutboxItem:async x=>{if(storageFails || failMetadataUpdate && ++saves===2)throw Error('storage unavailable');stored.set(x.id,x);},
     removeEmployeeCashOutboxItem:async id=>{if(removalFails)throw Error('delete failed');stored.delete(id);},
     listEmployeeCashOutboxItems:async()=>[...stored.values()],
     setCashOutboxCount:()=>{},syncCurrentWorkdayState:async()=>{if(refreshFails)throw Error('refresh failed');},
@@ -236,4 +243,18 @@ test('late completion of a confirmed second transfer leaves a newly opened draft
  s.complete();await pending;
  assert.equal(s.context.cashOperationDraft,nextDraft,'late response must not reset another form');
  assert.equal(s.context.saving,true);assert.equal(s.requests.length,1);
+});
+
+test('recovery switch uses full photo-first v2 transport and retains exact financial identity',async()=>{
+ const s=setup({newProtocol:true,metadataFirst:false});await s.submit();
+ assert.equal(s.requests.length,1);assert.equal(s.requests[0].get('protocol'),'2');
+ assert.equal(s.requests[0].get('idempotencyKey'),s.item.id);
+ assert.equal(s.requests[0].get('photoSha256'),s.item.photoSha256);
+ assert.equal(await s.requests[0].get('photo').text(),'photo-bytes');
+ assert.equal(s.stored.size,0);
+});
+test('an IndexedDB metadata-flag failure does not block already-retained photo upload after server receipt',async()=>{
+ const s=setup({newProtocol:true,failMetadataUpdate:true});await s.submit();
+ assert.equal(s.stored.size,0);assert.equal(s.context.cashOperationDraft.direction,null);
+ assert.equal(s.context.saving,false);assert.equal(s.auditStages.at(-1),'completed');
 });

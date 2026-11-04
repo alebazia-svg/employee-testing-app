@@ -868,6 +868,10 @@ model CashOperation {
   direction                 String
   amount                    Float
   photoPath                 String
+  photoExpectedSha256       String?
+  photoExpectedBytes        Int?
+  photoReceivedAt           DateTime?
+  oneCProcessingStartedAt   DateTime?
   comment                   String       @default("")
   status                    String       @default("pending_1c")
   idempotencyKey            String       @unique

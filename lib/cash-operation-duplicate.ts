@@ -8,7 +8,7 @@ export type CashDuplicateSummary = {
  * alone. The server rejection must identify this request and its owner/shift.
  */
 export function cashDuplicateResult(value: unknown, item: {
-  id: string; userId: number; workDayEntryId: number; direction: string; amount: string;
+  id: string; userId: number; workDayEntryId: number; direction: string; amount: string; protocol?: 2;
 }): CashDuplicateSummary | null {
   if (!value || typeof value !== 'object') return null;
   const result = value as Record<string, unknown>;
@@ -17,7 +17,8 @@ export function cashDuplicateResult(value: unknown, item: {
   const row = result.operation as Record<string, unknown>;
   if (!Number.isSafeInteger(row.id) || Number(row.id) <= 0 || row.userId !== item.userId
     || row.workDayEntryId !== item.workDayEntryId || row.direction !== item.direction
-    || row.amount !== Number(item.amount.replace(',', '.'))
+    || typeof row.amount !== 'number' || !Number.isFinite(row.amount) || row.amount <= 0
+    || item.protocol !== 2 && row.amount !== Number(item.amount.replace(',', '.'))
     || typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt))
     || typeof row.date !== 'string' || typeof row.status !== 'string') return null;
   return row as CashDuplicateSummary;

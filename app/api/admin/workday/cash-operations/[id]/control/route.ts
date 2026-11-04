@@ -25,13 +25,14 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   if (comment.length > maxCommentLength) return Response.json({ error: 'Комментарий слишком длинный.' }, { status: 400 });
 
   if (action === 'take_manual') {
-    const current = await prisma.cashOperation.findUnique({ where: { id }, select: { status: true, oneCError: true } });
-    if (current?.status !== 'one_c_error') {
+    const current = await prisma.cashOperation.findUnique({ where: { id }, select: { status: true, oneCError: true, oneCProcessingStartedAt: true, photoExpectedSha256: true } });
+    const staleInitial = current?.status === 'pending_1c' && Boolean(current.photoExpectedSha256 && current.oneCProcessingStartedAt && Date.now() - current.oneCProcessingStartedAt.getTime() >= 600_000);
+    if (current?.status !== 'one_c_error' && !staleInitial) {
       return Response.json({ error: current?.status === 'retrying_1c' ? 'Операция сейчас повторно проводится автоматически.' : 'Операция уже изменила состояние.' }, { status: 409 });
     }
     const note = `Операцию взял в ручную администратор ${admin.name} (${new Date().toISOString()}). ${comment}`;
     const updated = await prisma.cashOperation.updateMany({
-      where: { id, status: 'one_c_error' },
+      where: { id, status: current!.status, ...(staleInitial ? { oneCProcessingStartedAt: current!.oneCProcessingStartedAt } : {}) },
       data: {
         status: 'manual_in_progress',
         oneCError: appendControlNote(current.oneCError, note),
