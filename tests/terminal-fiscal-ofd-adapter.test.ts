@@ -51,3 +51,9 @@ test('rejects an incomplete Z report instead of confirming closure', () => {
     openedAt: '2026-08-25T05:30:00.000Z',
   }), null);
 });
+
+test('retains the optional OFD receipt shift number without changing legacy receipts',()=>{
+ const fixture=JSON.parse(fs.readFileSync(path.join(process.cwd(),'tests/fixtures/platforma-ofd-confirmed.normalized.json'),'utf8'));
+ for(const value of [352,'352'])assert.equal(normalizePlatformaOfdReceipt({...fixture,shiftNumber:value})?.fiscalShiftNumber,'352');
+ for(const value of [undefined,null,0,-1,1.5,'352x'])assert.equal(normalizePlatformaOfdReceipt({...fixture,shiftNumber:value})?.fiscalShiftNumber,undefined);
+});
