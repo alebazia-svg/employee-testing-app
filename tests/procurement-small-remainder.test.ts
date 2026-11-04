@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { smallRubleRemainder, SMALL_REMAINDER_COMPLETED as CLOSED, isFinishedPaymentState } from '../lib/procurement-small-remainder';
+import { smallRubleRemainder, rublePaymentFitsRemaining, SMALL_REMAINDER_COMPLETED as CLOSED, isFinishedPaymentState } from '../lib/procurement-small-remainder';
 import { matchProcurementPaymentEvidence, type EvidencePlan } from '../lib/procurement-currency-payment-evidence';
 import type { SupplierCurrencyPaymentRow } from '../lib/procurement-currency-payment-source';
 import { planningRequestOverlap } from '../lib/procurement-planning-overlap';
@@ -13,10 +13,10 @@ const payment: SupplierCurrencyPaymentRow = {ref:'rko',number:'TEST',date:'03.10
   documentCurrency:'РУБ',documentAmount:30000,baseDocumentRef:'order',supplier:'Supplier'};
 const match=(plans=[plan],payments=[payment],allowSmallRemainder=true)=>matchProcurementPaymentEvidence(plans,[],payments,[],{allowSmallRemainder});
 
-test('500 rubles AND one percent are inclusive, without rounding the percentage',()=>{
+test('500 rubles AND two percent are inclusive, without rounding the percentage',()=>{
   for(const [target,paid,expected] of [[30025,30000,25],[30200,30000,200],[50000,49500,500],
-    [49999,49499,null],[100000,99499.99,null],[1000,990,10],[1000,989.99,null],
-    [1,.99,.01],[.99,.98,null],[30025,0,null],[30025,30025,null],[30025,30100,null]] as const){
+    [24999,24499,null],[100000,99499.99,null],[1000,980,20],[1000,979.99,null],
+    [1,.99,.01],[.49,.48,null],[30025,0,null],[30025,30025,null],[30025,30100,null]] as const){
     assert.equal(smallRubleRemainder({...plan,plannedAmount:target},paid),expected,`${target}/${paid}`);
   }
 });
@@ -90,4 +90,35 @@ test('small closed order request releases a new supplier-debt request without cl
   assert.equal(result.get(plan.id)!.state,CLOSED);
   assert.equal(result.get(next.id)!.issuedAmount,10000);
   assert.deepEqual(result.get(next.id)!.cashOrders.map(p=>p.ref),['new-debt-rko']);
+});
+
+
+test('Murtaza QR request closes with 300 RUB remainder and preserves actual paid amount', () => {
+  const p={...plan,plannedAmount:22800,paymentMethod:'ACCOUNTABLE_QR'};
+  const row=match([p],[{...payment,documentAmount:22500}]).get(p.id)!;
+  assert.equal(row.state,CLOSED);
+  assert.equal(row.issuedAmount,22500);
+  assert.equal(row.remainingAmount,300);
+});
+
+test('different cashboxes sum once; unposted, missing and duplicate RKOs cannot invent coverage', () => {
+  const p={...plan,plannedAmount:28500,paymentMethod:'ACCOUNTABLE_QR'};
+  const a={...payment,ref:'cash-a',documentAmount:20000,cashbox:'First cashbox'};
+  const b={...payment,ref:'cash-b',documentAmount:8200,cashbox:'Second cashbox'};
+  const row=match([p],[a,b,a]).get(p.id)!;
+  assert.equal(row.state,CLOSED);
+  assert.equal(row.issuedAmount,28200);
+  assert.equal(row.cashOrders.length,2);
+  for(const rows of [[a],[a,{...b,posted:false}],[a,{...b,deleted:true}]]) {
+    assert.notEqual(match([p],rows).get(p.id)!.state,CLOSED);
+  }
+});
+
+test('both bounds are enforced at one kopeck precision; overpayment matching stays at one percent', () => {
+  for(const [target,paid,expected] of [[22800,22344,456],[22800,22343.99,null],
+    [28500,28000,500],[28500,27999.99,null],[25000,24500,500]] as const) {
+    assert.equal(smallRubleRemainder({...plan,plannedAmount:target},paid),expected);
+  }
+  assert.equal(rublePaymentFitsRemaining(10000,10100,true),true);
+  assert.equal(rublePaymentFitsRemaining(10000,10100.01,true),false);
 });

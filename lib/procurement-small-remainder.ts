@@ -1,7 +1,7 @@
 /** Operational completion of a request, never a write-off of supplier debt. */
 export const SMALL_REMAINDER_COMPLETED = 'SMALL_REMAINDER_COMPLETED';
 export const SMALL_REMAINDER_MAX_RUB = 500;
-export const SMALL_REMAINDER_MAX_PERCENT = 1;
+export const SMALL_REMAINDER_MAX_PERCENT = 2;
 
 export function isFinishedPaymentState(state?: string) {
   return state === 'ISSUED_BY_ONE_C' || state === 'PAID_BY_ONE_C' || state === SMALL_REMAINDER_COMPLETED;
@@ -20,8 +20,10 @@ export function rublePaymentFitsRemaining(remaining: number, amount: number, all
   const target = cents(remaining), paid = cents(amount);
   if (!(target > 0 && paid > 0)) return false;
   const excess = paid - target;
+  // Overpayment matching keeps its existing 1% bound; only unpaid remainder
+  // completion was expanded by the owner on 2026-11-04.
   return excess <= 0 || (allowSmallExcess && excess <= SMALL_REMAINDER_MAX_RUB * 100 &&
-    excess * 100 <= target * SMALL_REMAINDER_MAX_PERCENT);
+    excess * 100 <= target);
 }
 
 /** Both inclusive bounds must hold; use integer kopecks, not a rounded percent. */
