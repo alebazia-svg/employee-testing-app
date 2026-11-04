@@ -42,10 +42,11 @@ project from scratch.
   before1C catches up. Photo/not-printed fallback remains. Preserve the separate
   collector unit and existing notification dispatcher; app-only deployment is
   insufficient. See the candidate note for architecture/tests/rollback boundaries.
-  Follow-up22:00 audit found an unresolved equal-minute case: OFD receipt shift
-  number is discarded by the portal adapter. Retain/use exact shift identity in
-  a separately approved correction; see the release note. Current active KKM
-  requests/owner alerts were zero. Do not rewrite historical handovers.
+  Follow-up equal-minute gap resolved in1.21.25 /19bb846: see
+  `../ops/kkm-shift-number-release-20261104.md`. Retained OFD receipt shift identity
+  confirms Zukhra's352 closing even at the receipt's minute; different/missing
+  identity keeps fallback. All7 employees/39 handovers audited; no false active
+  photo requests/KKM alerts. Original historical handovers remain unchanged.
 
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;

@@ -75,7 +75,7 @@ Rollback image IDs: `sha256:29f92435db1574c30fd5571e508d64acb4dd8a8637a98d597430
 and `sha256:e689310bc1aa31ffc537c9120720999ad2efe99a3ef42fea41575fffd75efb74`.
 Final release and postcheck workflows both exited0; health remained `ok:true`.
 
-## Follow-up all-employee audit, 22:00 MSK — unresolved same-minute source gap
+## Follow-up all-employee audit, 22:00 MSK — gap resolved in1.21.25
 
 Read-only audit of all7 active employees,39 handovers from October24–November4
 (including22 retail handovers), all stored KKM issues and related notification
@@ -98,3 +98,8 @@ shift identity must retain fallback. Preserve existing historical task/confirmat
 records; do not rewrite Zukhra's saved earlier closing based on later KKT events.
 Evidence: local `output/all-kkm-audit-20261104/production-audit.json` and
 `zuhra-ofd-order.json`. No product/runtime or manual DB changes in this audit.
+
+Resolution: owner approved correction and deployment; verified1.21.25 /19bb846
+now retains OFD receipt shift identity. Fresh production verification confirms
+Zukhra's352 closing and all three latest retail shifts. See
+`kkm-shift-number-release-20261104.md` for tests, all-employee audit and limits.

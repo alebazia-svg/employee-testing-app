@@ -35,7 +35,7 @@ export type KkmShiftCloseEvidence = {
   lastFiscalCheck?: { sourceRef: string; sourceType: string; fiscalDocumentNumber: string; fiscalDateTime: string; documentDateTime: string };
   sourceError: string;
   workplaceBasis?: string;
-  ofdReceiptRead?: {checkedAt:string;complete:boolean;newerReceipts:number;lastReceiptAt?:string;fiscalDriveNumber?:string;fiscalDocumentNumber?:string};
+  ofdReceiptRead?: {checkedAt:string;complete:boolean;newerReceipts:number;lastReceiptAt?:string;fiscalDriveNumber?:string;fiscalDocumentNumber?:string;fiscalShiftNumber?:string};
   ofdRead?: { storedEvidence?: boolean; liveReadComplete?: boolean; requestedAt: string; receivedAt: string; providerFetchedAt?: string; durationMs: number; complete: boolean; fromCache: boolean; shiftNumbers: string[]; errorCode?: string };
   simulated?: boolean;
 };
@@ -158,9 +158,16 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
       ||!r.fiscalDocumentNumber||!r.fiscalSign||!Number.isFinite(Date.parse(r.receiptAt)));
     Object.assign(common,{ofdReceiptRead:{checkedAt:receipts.checkedAt,complete:receipts.complete,newerReceipts:receipts.data.length}});
     if(!receipts.complete||invalid)return {...common,status:'unavailable',sourceError:'Не удалось проверить новые чеки ОФД. Подтвердите закрытие чеком; автоматическая сверка продолжится.'};
-    latestOfdReceipt=[...receipts.data].sort((a,b)=>Date.parse(a.receiptAt)-Date.parse(b.receiptAt)).at(-1);
-    if(latestOfdReceipt)Object.assign(common,{ofdReceiptRead:{checkedAt:receipts.checkedAt,complete:true,newerReceipts:receipts.data.length,lastReceiptAt:latestOfdReceipt.receiptAt,fiscalDriveNumber:latestOfdReceipt.fiscalDriveNumber,fiscalDocumentNumber:latestOfdReceipt.fiscalDocumentNumber}});
-    if(latestOfdReceipt&&receipts.data.some(r=>r.receiptAt===latestOfdReceipt!.receiptAt&&r.fiscalDriveNumber!==latestOfdReceipt!.fiscalDriveNumber))
+    latestOfdReceipt=[...receipts.data].sort((a,b)=>{
+      const time=Date.parse(a.receiptAt)-Date.parse(b.receiptAt);if(time)return time;
+      if(a.fiscalDriveNumber===b.fiscalDriveNumber&&/^\d+$/.test(a.fiscalDocumentNumber)&&/^\d+$/.test(b.fiscalDocumentNumber))
+        return BigInt(a.fiscalDocumentNumber)<BigInt(b.fiscalDocumentNumber)?-1:BigInt(a.fiscalDocumentNumber)>BigInt(b.fiscalDocumentNumber)?1:0;
+      return 0;
+    }).at(-1);
+    if(latestOfdReceipt)Object.assign(common,{ofdReceiptRead:{checkedAt:receipts.checkedAt,complete:true,newerReceipts:receipts.data.length,lastReceiptAt:latestOfdReceipt.receiptAt,fiscalDriveNumber:latestOfdReceipt.fiscalDriveNumber,fiscalDocumentNumber:latestOfdReceipt.fiscalDocumentNumber,...(latestOfdReceipt.fiscalShiftNumber?{fiscalShiftNumber:latestOfdReceipt.fiscalShiftNumber}:{})}});
+    if(latestOfdReceipt&&receipts.data.some(r=>r.receiptAt===latestOfdReceipt!.receiptAt&&(r.fiscalDriveNumber!==latestOfdReceipt!.fiscalDriveNumber
+      ||receipts.data.filter(x=>x.receiptAt===r.receiptAt).length>1&&!/^\d+$/.test(r.fiscalDocumentNumber)
+      ||r.fiscalDocumentNumber===latestOfdReceipt!.fiscalDocumentNumber&&(r.fiscalSign!==latestOfdReceipt!.fiscalSign||r.fiscalShiftNumber!==latestOfdReceipt!.fiscalShiftNumber))))
       return {...common,status:'unavailable',sourceError:'Последний чек ОФД неоднозначен. Автоматическая сверка продолжится.'};
   }
   if (!latestOfdReceipt && !lastCheck && !checks.data.some(c=>c.kktRegistrationNumber===kktRegistrationNumber)) {
@@ -199,11 +206,13 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
     && (!fiscalDriveNumber || item.fiscalDriveNumber === fiscalDriveNumber)
     && Date.parse(item.closedAt) >= Date.parse(period.from)
     && Date.parse(item.closedAt) < Date.parse(period.to);
-  const coveringReports = ofd.data.filter(item => validReport(item) && Date.parse(item.openedAt) <= latestKktCheckAt);
+  const receiptShift=ofdIsLatest?latestOfdReceipt?.fiscalShiftNumber:undefined;
+  const matchesReceiptShift=(item:PlatformaOfdZReport)=>!receiptShift||item.shiftNumber===receiptShift;
+  const coveringReports = ofd.data.filter(item => validReport(item) && matchesReceiptShift(item) && Date.parse(item.openedAt) <= latestKktCheckAt);
   if (fiscalIdentity && coveringReports.length > 1) return { ...common, status: 'unavailable', sourceError: 'ОФД вернул неоднозначное подтверждение смены. Сверка повторится автоматически.' };
   const exactReports = ofd.data.filter(item => Boolean(shift?.fiscalShiftNumber)
     && item.shiftNumber === shift?.fiscalShiftNumber && validReport(item)
-    && (Date.parse(item.openedAt) <= latestKktCheckAt
+    && (matchesReceiptShift(item) && Date.parse(item.openedAt) <= latestKktCheckAt
       // Reopening and closing an empty shift is also legitimate. Its exact 1C
       // fiscal number and the preceding OFD closure establish the sequence.
       || fiscalIdentity && coveringReports.some(prior => prior.shiftNumber !== item.shiftNumber
@@ -222,7 +231,8 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   // The fiscal date is the KKT clock, unlike the later 1C document timestamp.
   if(report&&shift?.fiscalShiftNumber&&shift.fiscalShiftNumber!==report.shiftNumber
     &&Date.parse(shift.fiscalShiftDate)>Date.parse(report.closedAt))report=null;
-  if(report&&ofdIsLatest&&latestOfdReceipt?.receiptAt===report.closedAt)return {...common,status:'unavailable',sourceError:'Время нового чека и закрытия ОФД совпало. Однозначное подтверждение пока не получено.'};
+  const exactEmptyReopening=Boolean(report&&receiptShift&&shift?.fiscalShiftNumber===report.shiftNumber&&coveringReports.some(prior=>prior.shiftNumber!==report!.shiftNumber&&Date.parse(prior.closedAt)<=Date.parse(report!.openedAt)));
+  if(report&&ofdIsLatest&&latestOfdReceipt?.receiptAt===report.closedAt&&(!receiptShift||!matchesReceiptShift(report)&&!exactEmptyReopening))return {...common,status:'unavailable',sourceError:'Время нового чека и закрытия ОФД совпало. Однозначное подтверждение пока не получено.'};
   if(!report&&cached)return refreshCached();
   if (!report && !oneCClosed) return { ...common, status: 'unavailable', sourceError: 'Закрытие ОФД пока не подтверждено. Открытый или запаздывающий документ 1С не доказывает, что касса не закрыта. Портал повторит проверку автоматически.' };
   if (!report) return { ...common, status: 'ofd_missing', sourceError: '1С закрыла смену, но Z‑отчёт этой ККТ не найден в OFD.' };
