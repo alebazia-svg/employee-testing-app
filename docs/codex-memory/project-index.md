@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Procurement personal schedule reminders: `procurement-schedule-reminders-20261104.md`
+  — owner-approved local candidate. Same today/tomorrow completion, one daily
+  cycle and native day editor for both Procurement cabinets; no staffing,
+  shift-selection or salary changes. Not released.
+
 - ADMIN team calendar: `../ops/team-calendar-release-20261103.md` — released/verified
   1.21.20 / c93687b. Includes active Procurement employees. A genuinely empty
   selected day displays `Нет записи`; saved app/Google plans, unavailable sources,
