@@ -1,4 +1,5 @@
 'use client';
+import { transferEmployeeCash, prepareEmployeeCashPhoto, CashTransferError } from '@/lib/employee-cash-transfer';
 import { readEmployeeCashReceipt, watchEmployeeCashPersistence } from '@/lib/employee-cash-receipt';
 import { cashDuplicateResult } from '@/lib/cash-operation-duplicate';
 import { needsWorkdayEndReminder, toMoscowDateTimeInput, validateReportedWorkdayEnd } from '@/lib/workday-end-policy';
@@ -362,10 +363,19 @@ type CashOperation = {
   direction: 'phone_reserve' | 'deposit_safe';
   amount: number;
   photoPath: string;
+  photoExpectedSha256?: string | null;
+  photoReceivedAt?: string | Date | null;
+  updatedAt?: string | Date;
   comment: string;
   status: string;
   createdAt: string | Date;
 };
+
+function mergeCashOperation(current: CashOperation[], incoming: CashOperation) {
+  const existing = current.find(row => row.id === incoming.id);
+  if (existing?.updatedAt && incoming.updatedAt && new Date(existing.updatedAt).getTime() > new Date(incoming.updatedAt).getTime()) return current;
+  return [incoming, ...current.filter(row => row.id !== incoming.id)];
+}
 
 type RequiredWorkdayIssue = {
   id: number;
@@ -399,6 +409,7 @@ type WorkdayCloseException = {
 };
 
 type Props = {
+  cashMetadataFirstEnabled?: boolean;
   payrollEnabled?: boolean;
   user: UserSummary;
   today: string;
@@ -484,6 +495,7 @@ type HandoverDraft = {
   comment: string;
 };
 type CashOperationDraft = {
+  baselineId?: number | null;
   direction: CashOperation['direction'] | null;
   amount: string;
   comment: string;
@@ -1244,6 +1256,7 @@ function ColleagueGroup({
 }
 
 export function EmployeeTodayClient({
+  cashMetadataFirstEnabled = true,
   payrollEnabled = false,
   user,
   today: initialToday,
@@ -1434,6 +1447,7 @@ export function EmployeeTodayClient({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [cashOutboxCount, setCashOutboxCount] = useState(0);
+  const [cashPhotoOutboxCount, setCashPhotoOutboxCount] = useState(0);
   const [cashDuplicateItem, setCashDuplicateItem] = useState<EmployeeCashOutboxItem | null>(null);
   const [cashPhotoUploaded, setCashPhotoUploaded] = useState(false);
   const cashTransferInFlightRef = useRef(false);
@@ -1715,6 +1729,7 @@ export function EmployeeTodayClient({
       const items = await listEmployeeCashOutboxItems();
       const ownItems = items.filter((item) => item.userId === user.id);
       setCashOutboxCount(ownItems.length);
+      setCashPhotoOutboxCount(ownItems.filter(item => item.protocol === 2 && item.metadataSaved).length);
       // If IndexedDB refused the photo, retain the open review in memory.
       // resolveCashDuplicate clears it explicitly after the employee's choice.
       setCashDuplicateItem(current => ownItems.find(item => item.duplicateOf) ?? current);
@@ -1736,6 +1751,26 @@ export function EmployeeTodayClient({
       });
     };
     try {
+      if (item.protocol === 2 && item.metadataFirst !== false && retained) {
+        const result = await transferEmployeeCash<CashOperation>(item, {
+          onMetadata: async operation => {
+            try { await saveEmployeeCashOutboxItem({ ...item, metadataSaved: true }); }
+            catch { /* The original committed outbox file remains; do not stop its upload after a metadata receipt. */ }
+            setCashOperationsState(current => mergeCashOperation(current, operation));
+            await refreshCashOutboxCount();
+            onPersisted?.(operation);
+          },
+          onOperation: operation => setCashOperationsState(current => mergeCashOperation(current, operation)),
+          onPhotoProgress: onProgress,
+        });
+        if (!cashOutboxResponseAcknowledges(result, item)) throw new Error('Фото пока не подтверждено порталом.');
+        onUploaded?.();
+        finishAudit('completed');
+        cashRetryAfterRef.current = 0;
+        cashRetryDelayRef.current = 0;
+        setCashOperationsState(current => mergeCashOperation(current, result.operation));
+        return result;
+      }
       const receipt = checkReceipt ? await readEmployeeCashReceipt<CashOperation>(item) : null;
       const result: { operation: CashOperation; message?: string } = receipt ?? await uploadFormData<{ operation: CashOperation; message?: string }>(item.url, 'POST', cashOutboxFormData(item), 'Не удалось отправить инкассацию', onProgress, uploaded);
       if (!cashOutboxResponseAcknowledges(result, item)) throw new Error('Портал не подтвердил сохранение операции.');
@@ -1748,7 +1783,7 @@ export function EmployeeTodayClient({
       // A lost final response cannot revoke an already verified portal receipt.
       if (durableReceipt) { finishAudit('completed'); return durableReceipt; }
       finishAudit(retained ? 'queued' : 'failed', navigator.onLine ? 'request' : 'network');
-      const duplicate = reason instanceof EmployeeApiError ? cashDuplicateResult(reason.payload, item) : null;
+      const duplicate = reason instanceof EmployeeApiError || reason instanceof CashTransferError ? cashDuplicateResult(reason.payload, item) : null;
       if (duplicate) {
         const blocked = { ...item, duplicateOf: duplicate };
         setCashDuplicateItem(blocked);
@@ -1758,7 +1793,7 @@ export function EmployeeTodayClient({
       cashRetryAfterRef.current = Date.now() + cashRetryDelayRef.current;
       throw reason;
     } finally { stopPersistenceWatch(); }
-  }, []);
+  }, [refreshCashOutboxCount]);
 
   const flushCashOutbox = useCallback(async (force = false) => {
     if (preview) return;
@@ -2882,7 +2917,7 @@ export function EmployeeTodayClient({
   async function openCashOperation(direction: CashOperation['direction']) {
     if (cashTransferInFlightRef.current) { setMessage('Инкассация отправляется. Не вводите её повторно.'); return; }
     try {
-      const pending = (await listEmployeeCashOutboxItems()).find(item => item.userId === user.id);
+      const pending = (await listEmployeeCashOutboxItems()).find(item => item.userId === user.id && !item.metadataSaved);
       if (pending) {
         if (pending.duplicateOf) {
           setCashDuplicateItem(pending);
@@ -2894,7 +2929,7 @@ export function EmployeeTodayClient({
     cashFormHiddenAtRef.current = null;
     cashPhotoPickerActiveRef.current = false;
     setCashFormFocused(false);
-    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createIdempotencyKey() });
+    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createIdempotencyKey(), baselineId: cashOperationsState.filter(row => row.workDayEntryId === activeWorkDay?.id && row.direction === direction && row.status !== 'cancelled').reduce<number | null>((latest, row) => Math.max(latest ?? 0, row.id), null) });
     setError('');
     setMessage('');
   }
@@ -2934,7 +2969,12 @@ export function EmployeeTodayClient({
       return;
     }
 
+    let photoIntent: Awaited<ReturnType<typeof prepareEmployeeCashPhoto>>;
+    try { photoIntent = await prepareEmployeeCashPhoto(file, cashOperationDraft.baselineId ?? null); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось прочитать фото'); return; }
     const outboxItem: EmployeeCashOutboxItem = {
+      ...photoIntent,
+      metadataFirst: cashMetadataFirstEnabled,
       id: cashOperationDraft.idempotencyKey,
       userId: user.id,
       workDayEntryId: activeWorkDay.id,
@@ -2962,7 +3002,8 @@ export function EmployeeTodayClient({
       setUploadProgress(null);
       setIsSaving(false);
       setMessage('Инкассация сохранена.');
-      void removeEmployeeCashOutboxItem(outboxItem.id).then(refreshCashOutboxCount).catch(() => {});
+      // Metadata acknowledgement does not acknowledge the independent photo.
+      if (outboxItem.protocol !== 2) void removeEmployeeCashOutboxItem(outboxItem.id).then(refreshCashOutboxCount).catch(() => {});
     };
     try {
       try {
@@ -2972,7 +3013,9 @@ export function EmployeeTodayClient({
       } catch {
         savedLocally = false;
       }
-      const result = await uploadCashItem(outboxItem, progress => { if (!formReleased) setUploadProgress(progress); }, () => setCashPhotoUploaded(true), false, savedLocally, releaseSavedForm);
+      // If durable browser storage failed, preserve the existing photo-first path.
+      const sendingItem = outboxItem;
+      const result = await uploadCashItem(sendingItem, progress => { if (!formReleased) setUploadProgress(progress); }, () => setCashPhotoUploaded(true), false, savedLocally, releaseSavedForm);
       if (savedLocally) {
         await removeEmployeeCashOutboxItem(outboxItem.id);
         savedLocally = false;
@@ -2982,8 +3025,8 @@ export function EmployeeTodayClient({
       void syncCurrentWorkdayState(true).catch(() => {});
       if (!formReleased) setMessage(result.message ?? `Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
-      if (formReleased) { void syncCurrentWorkdayState(true).catch(() => {}); return; }
-      if (reason instanceof EmployeeApiError && cashDuplicateResult(reason.payload, outboxItem)) {
+      if (formReleased) { await refreshCashOutboxCount(); setCashOutboxError('Сумма сохранена. Фото догрузится при восстановлении связи.'); void syncCurrentWorkdayState(true).catch(() => {}); return; }
+      if ((reason instanceof EmployeeApiError || reason instanceof CashTransferError) && cashDuplicateResult(reason.payload, outboxItem)) {
         setError('');
         await refreshCashOutboxCount();
         return;
@@ -3017,7 +3060,7 @@ export function EmployeeTodayClient({
       setUploadProgress(null);
       setIsSaving(false);
       setMessage('Инкассация сохранена.');
-      void removeEmployeeCashOutboxItem(item.id).then(refreshCashOutboxCount).catch(() => {});
+      if (item.protocol !== 2) void removeEmployeeCashOutboxItem(item.id).then(refreshCashOutboxCount).catch(() => {});
     };
     try {
       if (!sameTransfer) {
@@ -4623,13 +4666,19 @@ export function EmployeeTodayClient({
             <span className='pwa-dock-action'>{showCloseResolution ? 'Продолжить' : 'К чек-листу'} <ChevronRight className='h-4 w-4' aria-hidden='true' /></span>
           </button>}
           {!isOnline || cashOutboxCount > 0 || cashDuplicateItem ? (
-            <div role='status' className={`pwa-connection-status mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
+            isOnline && !cashDuplicateItem && cashOutboxCount > 0 && cashPhotoOutboxCount === cashOutboxCount ? (
+              <div role='status' className='pwa-connection-status mb-4 flex items-center gap-3 rounded-2xl px-4 py-3 employee-material-info-card'>
+                <Camera className='h-5 w-5 shrink-0 text-amber-700' aria-hidden='true' />
+                <div className='min-w-0 flex-1'><p className='text-sm font-extrabold'>{cashOutboxError ? 'Фото не отправлено' : 'Фото загружается'}{cashOutboxCount > 1 ? ` · ${cashOutboxCount}` : ''}</p><p className='mt-0.5 text-xs font-semibold opacity-80'>Сумма сохранена</p></div>
+                <button type='button' className='employee-material-secondary-action flex h-11 w-11 shrink-0 items-center justify-center' aria-label='Повторить загрузку фото' disabled={cashOutboxSyncing} onClick={() => void flushCashOutbox(true)}><RefreshCw className={cn('h-4 w-4', cashOutboxSyncing && 'animate-spin')} aria-hidden='true' /></button>
+              </div>
+            ) : <div role='status' className={`pwa-connection-status mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
               <div className='flex flex-wrap items-start gap-3'>
                 <span className={`employee-material-status-dot mt-1 ${isOnline ? 'employee-material-status-dot-slate' : 'employee-material-status-dot-amber'}`} />
                 <div className='min-w-0 flex-1'>
-                  <p className='text-sm font-extrabold'>{isOnline ? (cashDuplicateItem ? 'Проверьте инкассацию' : cashOutboxSyncing ? 'Отправляем инкассацию' : cashOutboxError ? 'Не удалось отправить инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет связи с порталом'}</p>
+                  <p className='text-sm font-extrabold'>{isOnline ? (cashDuplicateItem ? 'Проверьте инкассацию' : cashPhotoOutboxCount === cashOutboxCount && cashOutboxCount > 0 ? 'Фото инкассации загружается' : cashOutboxSyncing ? 'Отправляем инкассацию' : cashOutboxError ? 'Не удалось отправить инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет связи с порталом'}</p>
                   <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
-                    {cashDuplicateItem ? 'Такая сумма уже сохранена. Уточните: это повтор или новая передача денег.' : isOnline
+                    {cashDuplicateItem ? 'Другая инкассация уже сохранена. Уточните: это повтор или новая передача денег.' : cashPhotoOutboxCount === cashOutboxCount && cashOutboxCount > 0 ? 'Сумма уже сохранена. Можно продолжать работу.' : isOnline
                       ? cashOutboxSyncing
                         ? 'Сумма и фотография отправляются в портал.'
                         : cashOutboxError
@@ -5261,11 +5310,12 @@ export function EmployeeTodayClient({
                     >
                       {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
                       {cashDuplicateItem?.duplicateOf ? <div className='grid gap-3'>
-                        <p className='text-sm font-bold text-slate-900'>Такая инкассация уже есть</p>
+                        <p className='text-sm font-bold text-slate-900'>{cashDuplicateItem.duplicateOf.amount === parseMoneyInput(cashDuplicateItem.amount) ? 'Такая инкассация уже есть' : 'Есть другая инкассация'}</p>
                         <div className='rounded-xl bg-slate-50 px-3 py-3'>
                           <b>{formatCashOperationAmount(cashDuplicateItem.duplicateOf.amount)}</b>
                           <p className='mt-1 text-xs text-slate-600'>{cashOperationDirectionLabel(cashDuplicateItem.duplicateOf.direction as CashOperation['direction'])} · {formatTime(cashDuplicateItem.duplicateOf.createdAt)}</p>
                         </div>
+                        {cashDuplicateItem.duplicateOf.amount !== parseMoneyInput(cashDuplicateItem.amount) && <p className='text-sm font-bold text-slate-900'>Вы отправляете {formatCashOperationAmount(Number(cashDuplicateItem.amount.replace(',', '.')))}</p>}
                         <p className='text-sm text-slate-600'>Это та же передача денег или вы передали ещё одну сумму?</p>
                         <Button type='button' disabled={isSaving} onClick={() => void resolveCashDuplicate(true)}>Это та же инкассация</Button>
                         <Button type='button' disabled={isSaving} className='employee-material-secondary-action' onClick={() => void resolveCashDuplicate(false)}>{isSaving ? cashPhotoUploaded ? 'Проводим инкассацию…' : photoSavingLabel(uploadProgress) : 'Деньги переданы ещё раз'}</Button>
@@ -5329,7 +5379,7 @@ export function EmployeeTodayClient({
                             <p className='text-xs font-extrabold text-slate-900'>
                               {formatCashOperationAmount(operation.amount)} {cashOperationDirectionLabel(operation.direction)}
                             </p>
-                            <p className='mt-0.5 text-xs font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
+                            <p className='mt-0.5 text-xs font-bold text-slate-400'>{formatTime(operation.createdAt)}{operation.photoExpectedSha256 && !operation.photoPath ? ' · Фото ожидает отправки' : ''}</p>
                           </div>
                           <Badge
                             className={cn(
@@ -5345,7 +5395,7 @@ export function EmployeeTodayClient({
                                 ? 'Подтверждено'
                               : operation.status === 'one_c_error'
                                 ? 'Передано на проверку'
-                                : operation.status === 'pending_1c' ? 'Оформляется в 1С' : 'Обрабатывается'}
+                                : operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'Оформляется в 1С' : 'Обрабатывается'}
                           </Badge>
                         </div>
                       ))}

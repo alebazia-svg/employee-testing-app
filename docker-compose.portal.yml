@@ -44,6 +44,9 @@ services:
       # Diagnostic only: never used for authentication or device ownership.
       PORTAL_ACCESS_TRUST_REAL_IP: "1"
       PORT: "3000"
+      # Recovery switch affects new submissions only. Existing v2 photo queues
+      # and attachment APIs remain supported; never roll them back to v1.
+      CASH_OPERATION_METADATA_FIRST_ENABLED: ${CASH_OPERATION_METADATA_FIRST_ENABLED:-1}
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
       # Owner-approved extra-receipt checks. Deployment initially masks delivery
       # until already corrected fiscal chains have been independently verified.

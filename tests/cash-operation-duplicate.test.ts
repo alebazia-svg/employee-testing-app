@@ -26,3 +26,12 @@ test('the second-transfer confirmation is carried with the original durable requ
   assert.ok(form.get('photo') instanceof File);
   assert.equal(cashOutboxFormData(item).get('distinctFromOperationId'), null);
 });
+
+test('a v2 stale baseline can review a different previous amount without acknowledging it', () => {
+  const changed = { ...reply, operation: { ...previous, amount: 20000 } };
+  assert.deepEqual(cashDuplicateResult(changed, { ...item, protocol: 2 }), changed.operation);
+  assert.equal(cashOutboxResponseAcknowledges(changed, { ...item, protocol: 2 }), false);
+  for (const patch of [{ userId: 9 }, { workDayEntryId: 999 }, { direction: 'phone_reserve' }]) {
+    assert.equal(cashDuplicateResult({ ...changed, operation: { ...changed.operation, ...patch } }, { ...item, protocol: 2 }), null);
+  }
+});

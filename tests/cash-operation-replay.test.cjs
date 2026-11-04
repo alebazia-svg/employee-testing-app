@@ -22,6 +22,7 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
   } }, cashOperation: {
     findFirst:async()=>null, findUnique: async () => missing ? null : row, findUniqueOrThrow: async () => row,
     update: async ({data}) => (row = {...row, ...data}),
+    updateMany: async ({data}) => { row={...row,...data}; return {count:1}; },
     create: async ({data}) => {
       assert.equal(missing, true, 'a replay must never create another record');
       return (row = {...row, ...data});
@@ -29,6 +30,8 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
   }, userOneCCashboxMapping: {findUnique: async () => ({isActive: true,oneCCashboxRef:'source'})} };
   prisma.$transaction = async fn => fn(prisma);
   const mocks = {
+    '@/lib/cash-operation-photo': {},
+    '@/lib/cash-photo-protocol': {},
     '@/lib/cash-operation-duplicate': { CASH_DUPLICATE_CODE:'CASH_OPERATION_DUPLICATE' },
     '@/lib/cash-operation-submission': { claimCashOperationSubmission: async(db,input,savePhoto)=>({kind:'created',operation:await db.cashOperation.create({data:{...input,photoPath:await savePhoto()}})}) },
     '@/lib/auth': {getCurrentUser: async () => ({ id:7, department:'retail', name:'QA' })},

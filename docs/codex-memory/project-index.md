@@ -29,6 +29,12 @@ project from scratch.
 
 ## Read First By Task
 
+- Independent cash intent / resumable original photo: `cash-intent-photo-candidate-20261104.md`
+  — released/verified1.21.24 / f0f63e5. Same-amount transfers, request identity,
+  independent original-photo receipt and explicit ADMIN recovery; financial
+  auto-retry stays disabled. Owner-approved additive migration preserved old rows.
+  Keep v2-compatible recovery/API; see ../ops/cash-photo-release-20261104.md.
+
 - Durable OFD closure proof: `../ops/kkm-durable-close-release-20261104.md` —
   released/verified1.21.23 / c42dd3e. Dedicated minute collector is installed,
   enabled and verified running on schedule; exact KKT/FN/shift observations
@@ -36,6 +42,11 @@ project from scratch.
   before1C catches up. Photo/not-printed fallback remains. Preserve the separate
   collector unit and existing notification dispatcher; app-only deployment is
   insufficient. See the candidate note for architecture/tests/rollback boundaries.
+  Follow-up equal-minute gap resolved in1.21.25 /19bb846: see
+  `../ops/kkm-shift-number-release-20261104.md`. Retained OFD receipt shift identity
+  confirms Zukhra's352 closing even at the receipt's minute; different/missing
+  identity keeps fallback. All7 employees/39 handovers audited; no false active
+  photo requests/KKM alerts. Original historical handovers remain unchanged.
 
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;

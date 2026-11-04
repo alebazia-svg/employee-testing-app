@@ -63,6 +63,7 @@ export async function loadEmployeeHome(user: { id: number; name: string; departm
   ]);
 
   return {
+    cashMetadataFirstEnabled: process.env.CASH_OPERATION_METADATA_FIRST_ENABLED !== '0',
     payrollEnabled: user.department !== 'procurement' && payrollFeatureState().employeeEnabled,
     user: { id: user.id, name: user.name, department: user.department, qrScanMode: user.qrScanMode, portalArea: user.portalArea },
     today: today,

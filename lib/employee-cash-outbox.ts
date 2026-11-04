@@ -17,6 +17,11 @@ export type EmployeeCashOutboxItem = {
   lastError: string;
   duplicateOf?: CashDuplicateSummary;
   distinctFromOperationId?: number;
+  protocol?: 2;
+  metadataFirst?: boolean;
+  baselineId?: number | null;
+  photoSha256?: string;
+  metadataSaved?: boolean;
 };
 
 const databaseName = 'offonika-workday-safety';
@@ -73,7 +78,7 @@ export function listEmployeeCashOutboxItems() {
   return runRequest<EmployeeCashOutboxItem[]>('readonly', (store) => store.getAll());
 }
 
-export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
+export function cashMetadataAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
   if (!result || typeof result !== 'object' || !('operation' in result)) return false;
   const operation = result.operation;
   if (!operation || typeof operation !== 'object') return false;
@@ -86,8 +91,16 @@ export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCa
     && row.userId === item.userId
     && row.direction === item.direction
     && row.amount === Number(item.amount.replace(',', '.'))
+    && (item.protocol !== 2 || row.photoExpectedSha256 === item.photoSha256 && row.photoExpectedBytes === item.photo.size)
     && (!Number.isSafeInteger(item.workDayEntryId) || row.workDayEntryId === item.workDayEntryId)
     && (!/^\d{4}-\d{2}-\d{2}$/.test(item.workDayDate) || row.date === item.workDayDate);
+}
+
+export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
+  if (!cashMetadataAcknowledges(result, item)) return false;
+  if (item.protocol !== 2) return true;
+  const row = (result as { operation: Record<string, unknown> }).operation;
+  return typeof row.photoPath === 'string' && row.photoPath.length > 0 && Boolean(row.photoReceivedAt);
 }
 
 export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
@@ -100,6 +113,12 @@ export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
   const photoName = item.photoName || `cash-operation-${item.id}.jpg`;
   const photo = new File([item.photo], photoName, { type: photoType, lastModified: Date.now() });
   const formData = new FormData();
+  if (item.protocol === 2) {
+    formData.append('protocol', '2');
+    formData.append('baselineId', item.baselineId === null || item.baselineId === undefined ? '' : String(item.baselineId));
+    formData.append('photoSha256', item.photoSha256 || '');
+    formData.append('photoBytes', String(item.photo.size));
+  }
   formData.append('direction', item.direction);
   formData.append('amount', item.amount);
   formData.append('comment', item.comment);
