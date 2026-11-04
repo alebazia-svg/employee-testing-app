@@ -41,6 +41,10 @@ project from scratch.
   before1C catches up. Photo/not-printed fallback remains. Preserve the separate
   collector unit and existing notification dispatcher; app-only deployment is
   insufficient. See the candidate note for architecture/tests/rollback boundaries.
+  Follow-up22:00 audit found an unresolved equal-minute case: OFD receipt shift
+  number is discarded by the portal adapter. Retain/use exact shift identity in
+  a separately approved correction; see the release note. Current active KKM
+  requests/owner alerts were zero. Do not rewrite historical handovers.
 
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
