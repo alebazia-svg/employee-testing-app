@@ -45,10 +45,17 @@ export async function recordPortalAccess(input: { userId: number; token: string 
   const interaction = input.push?.interactionAt;
   const sampledAt = input.push?.device?.collectedAt;
   const deviceCheckedAt = sampledAt ? Date.parse(sampledAt) <= now.getTime() + 5000 ? new Date(Math.min(Date.parse(sampledAt), now.getTime())) : null : now;
+  const priorDevice = parseDeviceObservation(existing?.deviceObservation);
+  const priorSample = priorDevice?.collectedAt ? Date.parse(priorDevice.collectedAt) : NaN;
+  const sameDevice = !input.browserInstanceId || input.browserInstanceId === existing?.observedBrowserId;
+  // Other open tabs may still send the old format or an older cached sample.
+  // Keep known provenance/sample time, while still recording contact/push/context.
+  const keepDevice = sameDevice && priorDevice?.fieldSources && Number.isFinite(priorSample) && priorSample <= now.getTime() + 5000
+    && input.push?.device && (!input.push.device.fieldSources || sampledAt && Date.parse(sampledAt) <= priorSample);
   const evidence = {
     ...(input.browserInstanceId ? { observedBrowserId: input.browserInstanceId } : {}),
     ...(origin ? { observedOrigin: origin } : {}),
-    ...(input.push?.device || !existing?.deviceObservation || input.browserInstanceId && input.browserInstanceId !== existing.observedBrowserId
+    ...(!keepDevice && (input.push?.device || !existing?.deviceObservation || input.browserInstanceId && input.browserInstanceId !== existing.observedBrowserId)
       ? { deviceObservation: input.push?.device ?? deviceObservationFromUa(input.userAgent), deviceCheckedAt } : {}),
     ...(interaction && interaction <= now.getTime() + 5000 && interaction >= now.getTime() - 120000 && (!existing?.lastInteractionAt || interaction > existing.lastInteractionAt.getTime())
       ? { lastInteractionAt: new Date(Math.min(interaction, now.getTime())) } : {}),

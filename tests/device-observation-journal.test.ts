@@ -18,12 +18,16 @@ test('cached device evidence keeps its sample time across heartbeats; old client
   assert.equal(writes[0].deviceCheckedAt.toISOString(), sampled);
   existing = { ...writes[0], userId: 9, pushCheckedAt: now };
   await journal.recordPortalAccess({ ...input, now: new Date(+now + 61000), push: { permission: 'unknown', device } });
-  assert.equal(writes[1].deviceCheckedAt.toISOString(), sampled);
+  assert.equal(writes[1].deviceCheckedAt, undefined, 'identical cached sample must not rewrite collection time');
   assert.equal(writes[1].lastSeenAt.toISOString(), '2026-11-04T12:01:01.000Z');
   await journal.recordPortalAccess({ ...input, now: new Date(+now + 122000), push: { permission: 'unknown', device: { ...device, collectedAt: '2027-01-01T00:00:00.000Z' } } });
   assert.equal(writes[2].deviceCheckedAt, null, 'future sample must not claim a fresh check');
   await journal.recordPortalAccess({ ...input, now: new Date(+now + 183000), push: { permission: 'unknown', device: { source: 'user-agent', platform: 'iOS / iPadOS' } } });
-  assert.equal(+writes[3].deviceCheckedAt, +now + 183000);
+  assert.equal(writes[3].deviceObservation, undefined, 'an old open tab must not erase newer provenance');
+  assert.equal(writes[3].deviceCheckedAt, undefined);
+  existing = { ...existing, deviceObservation: { source: 'user-agent', platform: 'iOS / iPadOS' } };
+  await journal.recordPortalAccess({ ...input, now: new Date(+now + 244000), push: { permission: 'unknown', device: { source: 'user-agent', platform: 'iOS / iPadOS' } } });
+  assert.equal(+writes[4].deviceCheckedAt, +now + 244000);
 });
 
 const demoUrl = 'postgresql://postgres:access-demo-local-only@127.0.0.1:55504/access_demo';
