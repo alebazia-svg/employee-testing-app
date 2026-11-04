@@ -1,6 +1,8 @@
 /** Original bytes are transferred once per acknowledged chunk; never recompress evidence. */
 export const CASH_PHOTO_CHUNK_BYTES = 512 * 1024;
-export const CASH_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
+// Cash evidence uses small resumable requests; ordinary full-resolution phone
+// captures must not inherit the 8 MiB limit of unrelated checklist attachments.
+export const CASH_PHOTO_MAX_BYTES = 64 * 1024 * 1024;
 
 export function validCashPhotoIdentity(hash: unknown, size: unknown): hash is string {
   return typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash)

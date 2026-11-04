@@ -6,11 +6,15 @@ const formats = [
   { mime: 'image/webp', extension: 'webp', matches: (b: Uint8Array) => String.fromCharCode(...b.slice(0, 4)) === 'RIFF' && String.fromCharCode(...b.slice(8, 12)) === 'WEBP' },
 ] as const;
 
+export function employeeImageFormat(header: Uint8Array) {
+  return formats.find(item => item.matches(header));
+}
+
 export async function validateEmployeeImage(file: File) {
   if (file.size <= 0) throw new Error('Добавьте фото');
   if (file.size > MAX_EMPLOYEE_IMAGE_BYTES) throw new Error('Фото слишком большое. Максимальный размер — 8 МБ.');
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-  const format = formats.find((item) => item.matches(header));
+  const format = employeeImageFormat(header);
   if (!format || file.type !== format.mime) throw new Error('Поддерживаются только настоящие JPG, PNG или WebP изображения.');
   return format;
 }

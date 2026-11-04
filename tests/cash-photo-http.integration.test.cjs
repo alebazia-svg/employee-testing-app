@@ -31,19 +31,19 @@ const secondPayload=await (results[0].status===200?results[0]:results[1]).json()
 const key=secondPayload.operation.idempotencyKey;const replay2=await post(key===second.idempotencyKey?second:third);assert.equal(replay2.status,200);assert.equal((await replay2.json()).operation.id,secondPayload.operation.id);checks++;
 // Old multipart clients still save their original image and complete a pair.
 const form=new FormData();form.set('idempotencyKey',randomUUID());form.set('amount','12345');form.set('direction','deposit_safe');form.set('photo',new File([photo],'original.jpg',{type:'image/jpeg'}));const legacy=await fetch(origin+'/api/employee/cash-operations',{method:'POST',headers:{Cookie:user.cookie},body:form});assert.equal(legacy.status,200);assert.ok((await legacy.json()).operation.photoPath);checks++;
-// Browser storage refusal falls back to the same v2 identity with a full photo.
+// Photo-first recovery compatibility also accepts an original above8MiB.
 const latest=await db.cashOperation.findFirst({where:{userId:user.id},orderBy:{id:'desc'}});
-const fallbackKey=randomUUID(),fallback=new FormData();
-for(const [key,value] of Object.entries({protocol:'2',idempotencyKey:fallbackKey,direction:'deposit_safe',amount:'40000',baselineId:String(latest.id),photoSha256:hash,photoBytes:String(photo.length),workDayEntryId:String(user.day.id),workDayDate:date}))fallback.set(key,value);
-fallback.set('photo',new File([photo],'original.jpg',{type:'image/jpeg'}));
+const fallbackKey=randomUUID(),fallback=new FormData(),largePhoto=Buffer.alloc(12*1024*1024+77,5);largePhoto.set([0xff,0xd8,0xff]);const largeHash=createHash('sha256').update(largePhoto).digest('hex');
+for(const [key,value] of Object.entries({protocol:'2',idempotencyKey:fallbackKey,direction:'deposit_safe',amount:'40000',baselineId:String(latest.id),photoSha256:largeHash,photoBytes:String(largePhoto.length),workDayEntryId:String(user.day.id),workDayDate:date}))fallback.set(key,value);
+fallback.set('photo',new File([largePhoto],'original.jpg',{type:'image/jpeg'}));
 const fallbackResponse=await fetch(origin+'/api/employee/cash-operations',{method:'POST',headers:{Cookie:user.cookie},body:fallback});
 assert.equal(fallbackResponse.status,200);const fallbackRow=(await fallbackResponse.json()).operation;
-assert.ok(fallbackRow.photoPath);assert.ok(fallbackRow.photoReceivedAt);assert.equal(fallbackRow.photoExpectedSha256,hash);checks++;
+assert.ok(fallbackRow.photoPath);assert.ok(fallbackRow.photoReceivedAt);assert.equal(fallbackRow.photoExpectedSha256,largeHash);assert.equal(fallbackRow.photoExpectedBytes,largePhoto.length);checks++;
 // Delayed metadata from a closed shift remains for ADMIN; no automatic 1C write.
 await db.workDayEntry.update({where:{id:user.day.id},data:{status:'completed',endedAt:new Date()}});
 const closed=make(fallbackRow.id),closedResponse=await post(closed);assert.equal(closedResponse.status,202);
 const closedPayload=await closedResponse.json();assert.equal(closedPayload.manualControl,true);assert.equal(closedPayload.operation.status,'one_c_error');checks++;
 assert.equal((await fetch(origin+'/api/employee/cash-operations?idempotencyKey='+first.idempotencyKey)).status,401);checks++;
-console.log(JSON.stringify({checks,metadataMs,sameAmountTransfers:2,legacyPhotoFirst:'passed',storageFailureFallback:'passed',closedShiftProtection:'passed',externalFinancialWrites:0}));
+console.log(JSON.stringify({checks,metadataMs,sameAmountTransfers:2,legacyPhotoFirst:'passed',storageFailureFallback:'passed',largePhotoFirstBytes:largePhoto.length,closedShiftProtection:'passed',externalFinancialWrites:0}));
 } finally {await db.user.deleteMany({where:{id:{in:ids}}});await db.$disconnect();await fetch('http://127.0.0.1:3221/demo-control',{method:'POST',body:JSON.stringify({delay:15000})});}
 });
