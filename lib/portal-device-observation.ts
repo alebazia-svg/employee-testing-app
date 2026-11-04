@@ -110,6 +110,17 @@ export function deviceSystemSummary(observation?: DeviceObservation | null) {
   return observation.platformVersion && deviceFieldSource(observation, 'platformVersion') === 'client-hints'
     ? reportedSystem(observation) : [observation.platform, observation.platformVersion ? 'версия не подтверждена' : null].filter(Boolean).join(' · ');
 }
+/** Keep reported versions useful in the list without implying independent verification. */
+export function deviceSystemListSummary(observation?: DeviceObservation | null) {
+  if (!observation?.platform) return null;
+  const system = reportedSystem(observation);
+  if (!observation.platformVersion) return system;
+  const source = deviceFieldSource(observation, 'platformVersion');
+  const label = source === 'client-hints' ? 'расширенные сведения браузера'
+    : source === 'user-agent' ? 'по описанию браузера'
+    : 'сохранённые данные браузера; источник не уточнён';
+  return `${system} · ${label}`;
+}
 export function deviceSystemExplanation(observation: DeviceObservation) {
   if (deviceFieldSource(observation, 'platformVersion') === 'client-hints' && observation.platformVersion) return 'Версия сообщена расширенным API браузера. Это не независимая проверка устройства.';
   if (/iOS|iPadOS/.test(observation.platform ?? '')) return 'Точная версия iOS / iPadOS не подтверждена. Safari может сообщать фиксированную версию 18.x даже на более новой системе. Исходное значение сохранено в технических сведениях.';

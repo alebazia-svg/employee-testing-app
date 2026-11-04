@@ -9,7 +9,7 @@ import { startVisibleSync } from '../lib/visible-sync';
 import { appUpdateStatus } from '../lib/portal-app-update-view';
 import type { AppRelease } from '../lib/employee-app-update';
 import { accessConnectionCode } from '../lib/portal-access-identity';
-import { deviceSystemSummary, deviceSystemExplanation, deviceSourceLabel, connectionMismatch } from '../lib/portal-device-observation';
+import { deviceSystemSummary, deviceSystemListSummary, deviceSystemExplanation, deviceSourceLabel, connectionMismatch } from '../lib/portal-device-observation';
 import type { AccessHistoryFilters } from '../lib/portal-access-search';
 
 function connectionAppStatus(row: AccessJournalRow, release: AppRelease | null | undefined, now: Date) {
@@ -283,7 +283,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
               const version = connectionAppStatus(row, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
-                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[deviceSystemSummary(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
+                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[deviceSystemListSummary(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
                 <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Последняя связь</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
                 <div className='access-push'><PushBadge row={row} now={now} />{!service && accessRecentPushFailure(row, now) ? <p className='access-send-warning'>Последняя отправка не подтверждена</p> : null}</div>
                 <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>
