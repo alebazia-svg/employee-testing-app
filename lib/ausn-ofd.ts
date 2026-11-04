@@ -226,6 +226,14 @@ export async function loadPlatforma(dateFrom: string, dateTo: string) {
   return { complete: errors.length === 0, receipts: results.flatMap(result => result.receipts), errors, kkts: kkts.length };
 }
 
+// Closed historical source: the saved 2026-10-31 Saby audit contains
+// no receipts/corrections in September–October; owner confirmed on 2026-11-04
+// that all new payments use Platforma. August remains included conservatively.
+export function sabyExportPeriod(dateFrom: string, dateTo: string) {
+  const lastHistoricalDay = '2026-08-31';
+  return dateFrom > lastHistoricalDay ? null : { dateFrom, dateTo: dateTo < lastHistoricalDay ? dateTo : lastHistoricalDay };
+}
+
 export async function exportUnifiedAusnOfdReceipts(options: {
   organizationInn: string;
   dateFrom: string;
@@ -233,8 +241,9 @@ export async function exportUnifiedAusnOfdReceipts(options: {
   queryLimit?: number;
   maxDocuments?: number;
 }) {
+  const sabyPeriod = sabyExportPeriod(options.dateFrom, options.dateTo);
   const [sabyResult, platformaResult] = await Promise.all([
-    exportSabyOfdReceipts(options),
+    sabyPeriod ? exportSabyOfdReceipts({ ...options, ...sabyPeriod }).catch(() => ({ ok: false, receipts: [], completeness: { complete: false }, errors: ['Saby OFD export did not complete'] })) : Promise.resolve({ ok: true, receipts: [], completeness: { complete: true }, errors: [] }),
     loadPlatforma(options.dateFrom, options.dateTo),
   ]);
   const sabyRows = rows(sabyResult.receipts);
@@ -253,7 +262,7 @@ export async function exportUnifiedAusnOfdReceipts(options: {
       duplicateDocuments: merged.duplicateCount,
       conflictingDocuments: merged.conflicts.length,
       sources: {
-        saby: { complete: sabyComplete, receipts: sabyReceipts.length },
+        saby: { complete: sabyComplete, receipts: sabyReceipts.length, required: Boolean(sabyPeriod), ...(sabyPeriod ? { period: sabyPeriod } : { scope: 'historical_only_through_2026-08-31' }) },
         platforma_ofd: { complete: platformaResult.complete, receipts: platformaResult.receipts.length, kkts: platformaResult.kkts },
       },
     },
