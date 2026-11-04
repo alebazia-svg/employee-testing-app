@@ -35,7 +35,7 @@ test('older paid USDT request does not block new RUB funding or lose its payment
 });
 
 test('RUB-funded foreign requests keep the agreed limits and pending revision guard',()=>{
-  for(const [total,paid,closed] of [[50000,49500,true],[49999,49499,false],[100000,99499.99,false],[1000,990,true],[1000,989,false]] as const){
+  for(const [total,paid,closed] of [[25000,24500,true],[24999,24499,false],[100000,99499.99,false],[1000,980,true],[1000,979.99,false]] as const){
     const result=match([{...plan,plannedAmount:total}],[{...rub,documentAmount:paid}]).get('new')!;
     assert.equal(result.state===SMALL_REMAINDER_COMPLETED,closed);
   }
