@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { transferEmployeeCash, prepareEmployeeCashPhoto } from '../lib/employee-cash-transfer';
+import { transferEmployeeCash, saveEmployeeCashIntent, prepareEmployeeCashPhoto } from '../lib/employee-cash-transfer';
 import { cashMetadataAcknowledges, cashOutboxResponseAcknowledges, type EmployeeCashOutboxItem } from '../lib/employee-cash-outbox';
 import { CASH_PHOTO_CHUNK_BYTES } from '../lib/cash-photo-protocol';
 
@@ -62,4 +62,17 @@ test('a mismatched original photo or a legacy metadata-only receipt cannot clear
   }
   assert.equal(cashOutboxResponseAcknowledges({ operation: { ...operation, photoPath: 'uploads/partial.jpg' } }, item), false);
   await assert.rejects(prepareEmployeeCashPhoto(new File(['not an image'], 'a.jpg', { type: 'image/jpeg' }), null));
+});
+
+
+test('the short money-intent path never uploads the photo or waits for attachment transport',async()=>{
+ const {item,operation}=await fixture();let posts=0,patches=0,metadata=0,exists=false;
+ const fetcher:typeof fetch=async(url,init)=>{
+  if(init?.method==='POST'){posts++;exists=true;const body=JSON.parse(String(init.body));assert.equal(body.idempotencyKey,item.id);assert.equal(body.photoSha256,item.photoSha256);assert.equal(body.photoBytes,item.photo.size);assert.ok(String(init.body).length<1500);return Response.json({operation},{status:202});}
+  if(init?.method==='PATCH'){patches++;throw Error('photo must have an independent lifecycle');}
+  return exists?Response.json({operation}):new Response(null,{status:404});
+ };
+ const result=await saveEmployeeCashIntent(item,{onMetadata:()=>{metadata++;}},fetcher);
+ assert.equal(posts,1);assert.equal(patches,0);assert.equal(metadata,1);
+ assert.equal(cashMetadataAcknowledges(result,item),true);assert.equal(cashOutboxResponseAcknowledges(result,item),false);
 });

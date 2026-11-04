@@ -11,7 +11,8 @@ import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { createOneCCashExpenseOrder, getCashStatementDimensions } from '@/lib/one-c';
-import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
+import { validateCashPhoto } from '@/lib/cash-photo-validation';
+import { CASH_PHOTO_MAX_BYTES } from '@/lib/cash-photo-protocol';
 
 function normalizeSearchText(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
@@ -62,7 +63,7 @@ function canUseDirection(user: { department: string; name?: string | null; login
 }
 
 async function savePhoto(file: File, workDayId: number, direction: string) {
-  const { extension } = await validateEmployeeImage(file);
+  const { extension } = await validateCashPhoto(file);
   const directory = path.join(process.cwd(), 'uploads', 'cash-operations', String(workDayId));
   await mkdir(directory, { recursive: true });
 
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
+  if (Number(req.headers.get('content-length')) > CASH_PHOTO_MAX_BYTES + 1024 * 1024) return Response.json({ error: 'Файл слишком большой для фото инкассации.' }, { status: 413 });
   const jsonProtocol = req.headers.get('content-type')?.includes('application/json');
   let intent: { baselineId: number | null; photoSha256: string; photoBytes: number } | undefined;
   let formData: FormData | null;
@@ -152,7 +153,7 @@ export async function POST(req: Request) {
     if (!validCashPhotoIdentity(hash, size) || baselineText && baselineId === null || !isPhoto(photo) || photo.size !== size) {
       return Response.json({ error: 'Не удалось подтвердить исходное фото.' }, { status: 400 });
     }
-    try { await validateEmployeeImage(photo); } catch { return Response.json({ error: 'Не удалось прочитать фото.' }, { status: 400 }); }
+    try { await validateCashPhoto(photo); } catch { return Response.json({ error: 'Не удалось прочитать фото.' }, { status: 400 }); }
     if (createHash('sha256').update(Buffer.from(await photo.arrayBuffer())).digest('hex') !== hash) return Response.json({ error: 'Фото изменилось при отправке.' }, { status: 400 });
     intent = { baselineId, photoSha256: hash, photoBytes: size };
   }

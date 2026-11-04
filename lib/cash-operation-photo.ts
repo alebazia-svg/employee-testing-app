@@ -1,10 +1,10 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
-import { mkdir, readFile, writeFile, rename, readdir, unlink, rmdir } from 'fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir, unlink, rmdir, open } from 'fs/promises';
 import path from 'path';
 import { cashPhotoChunkLength, CASH_PHOTO_CHUNK_BYTES } from './cash-photo-protocol';
-import { validateEmployeeImage } from './image-upload';
+import { cashPhotoFormat } from './cash-photo-validation';
 
 type PhotoOperation = { id: number; photoPath: string; photoExpectedBytes: number | null; photoExpectedSha256: string | null };
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -47,20 +47,32 @@ export async function attachCashPhotoChunk(db: PrismaClient, input: {
     const progress = await cashPhotoProgress(operation, root);
     const count = Math.ceil(operation.photoExpectedBytes / CASH_PHOTO_CHUNK_BYTES);
     if (progress.receivedChunks.length < count) return { operation, ...progress };
-    const parts = await Promise.all(Array.from({ length: count }, (_, i) => readFile(path.join(directory, `${i}.part`))));
-    const bytes = Buffer.concat(parts);
-    if (bytes.length !== operation.photoExpectedBytes || sha256(bytes) !== operation.photoExpectedSha256) {
+    // Assemble in bounded memory instead of retaining multiple copies of a
+    // full-resolution phone image inside the application process.
+    const staged = path.join(directory, 'complete');
+    const output = await open(staged, 'w');
+    const hash = createHash('sha256');
+    let totalBytes = 0;
+    let header = new Uint8Array();
+    try {
+      for (let index = 0; index < count; index++) {
+        const partBytes = await readFile(path.join(directory, `${index}.part`));
+        if (index === 0) header = new Uint8Array(partBytes.subarray(0, 16));
+        totalBytes += partBytes.length;
+        hash.update(partBytes);
+        await output.writeFile(partBytes);
+      }
+    } finally { await output.close(); }
+    if (totalBytes !== operation.photoExpectedBytes || hash.digest('hex') !== operation.photoExpectedSha256) {
       // Only this operation's temporary parts are removed. Original/local evidence remains.
-      await Promise.all(parts.map((_, i) => unlink(path.join(directory, `${i}.part`))));
+      await Promise.all(Array.from({ length: count }, (_, i) => unlink(path.join(directory, `${i}.part`))));
+      await unlink(staged).catch(() => {});
       throw new Error('Фото загрузилось с ошибкой. Оно сохранено на телефоне и будет отправлено ещё раз.');
     }
-    const mime = bytes[0] === 0xff ? 'image/jpeg' : bytes[0] === 0x89 ? 'image/png' : 'image/webp';
-    const format = await validateEmployeeImage(new File([bytes], 'cash-photo', { type: mime }));
+    const format = cashPhotoFormat(header, totalBytes);
     const targetDirectory = path.join(root, 'uploads', 'cash-operations', String(operation.workDayEntryId));
     await mkdir(targetDirectory, { recursive: true });
     const target = path.join(targetDirectory, `${operation.direction}-${operation.idempotencyKey}.${format.extension}`);
-    const staged = path.join(directory, 'complete');
-    await writeFile(staged, bytes);
     await rename(staged, target);
     const saved = await tx.cashOperation.update({ where: { id: operation.id }, data: {
       photoPath: path.relative(root, target).replace(/\\/g, '/'), photoReceivedAt: new Date(),
