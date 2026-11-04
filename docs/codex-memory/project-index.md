@@ -30,9 +30,10 @@ project from scratch.
 ## Read First By Task
 
 - Independent cash intent / resumable original photo: `cash-intent-photo-candidate-20261104.md`
-  — local candidate only. Same-amount transfers, request identity, independent photo
-  receipt and explicit ADMIN recovery; automatic financial retries stay disabled.
-  Additive migration and compatible rollback require a separate release gate.
+  — released/verified1.21.24 / f0f63e5. Same-amount transfers, request identity,
+  independent original-photo receipt and explicit ADMIN recovery; financial
+  auto-retry stays disabled. Owner-approved additive migration preserved old rows.
+  Keep v2-compatible recovery/API; see ../ops/cash-photo-release-20261104.md.
 
 - Durable OFD closure proof: `../ops/kkm-durable-close-release-20261104.md` —
   released/verified1.21.23 / c42dd3e. Dedicated minute collector is installed,
