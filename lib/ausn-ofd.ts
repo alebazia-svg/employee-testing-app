@@ -173,7 +173,22 @@ function nextDay(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
-async function loadPlatforma(dateFrom: string, dateTo: string) {
+// Read one Moscow calendar day per request. Multi-day provider queries can
+// time out even when each constituent day is available and complete.
+export function platformaExportWindows(dateFrom: string, dateTo: string) {
+  const end = nextDay(dateTo);
+  const windows: { from: string; toExclusive: string }[] = [];
+  for (let from = dateFrom; from < end;) {
+    const next = new Date(`${from}T00:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const toExclusive = next.toISOString().slice(0, 10) < end ? next.toISOString().slice(0, 10) : end;
+    windows.push({ from, toExclusive });
+    from = toExclusive;
+  }
+  return windows;
+}
+
+export async function loadPlatforma(dateFrom: string, dateTo: string) {
   const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
   if (!baseUrl) return { complete: false, receipts: [] as AusnOfdReceipt[], errors: ['Platforma OFD proxy is not configured'], kkts: 0 };
   const list = await getJson(`${baseUrl}/api/v1/ofd/platforma/kkts`);
@@ -182,28 +197,41 @@ async function loadPlatforma(dateFrom: string, dateTo: string) {
   if (!list.response.ok || !list.body || kkts.length === 0) {
     return { complete: false, receipts: [] as AusnOfdReceipt[], errors: ['Platforma OFD KKT list failed'], kkts: 0 };
   }
-  const output: AusnOfdReceipt[] = [];
   const errors: string[] = [];
+  const windows = platformaExportWindows(dateFrom, dateTo);
+  const jobs: { registrationNumber: string; from: string; toExclusive: string }[] = [];
   for (const rawKkt of kkts) {
-    const kkt = record(rawKkt);
-    const registrationNumber = text(kkt?.registrationNumber);
+    const registrationNumber = text(record(rawKkt)?.registrationNumber);
     if (!registrationNumber) { errors.push('Platforma OFD KKT has no registration number'); continue; }
-    const query = new URLSearchParams({
-      kktRegNumber: registrationNumber,
-      from: `${dateFrom}T00:00:00+03:00`,
-      to: `${nextDay(dateTo)}T00:00:00+03:00`,
-    });
-    const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
-    const data = record(result.body?.data);
-    const meta = record(result.body?.meta);
-    const sourceRows = rows(data?.receipts);
-    const normalized = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
-    if (!result.response.ok || meta?.complete !== true || normalized.length !== sourceRows.length) {
-      errors.push(`Platforma OFD receipt export incomplete for KKT …${registrationNumber.slice(-4)}`);
-    }
-    output.push(...normalized);
+    for (const window of windows) jobs.push({ registrationNumber, ...window });
   }
-  return { complete: errors.length === 0, receipts: output, errors, kkts: kkts.length };
+  if (!windows.length) errors.push('Platforma OFD period is empty');
+  const results: { receipts: AusnOfdReceipt[]; error?: string }[] = new Array(jobs.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < jobs.length) {
+      const index = cursor++;
+      const job = jobs[index];
+      const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from: `${job.from}T00:00:00+03:00`, to: `${job.toExclusive}T00:00:00+03:00` });
+      const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
+      const sourceRows = rows(record(result.body?.data)?.receipts);
+      const receipts = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
+      const complete = result.response.ok && record(result.body?.meta)?.complete === true && receipts.length === sourceRows.length;
+      results[index] = { receipts, ...(!complete ? { error: `Platforma OFD receipt export incomplete for KKT …${job.registrationNumber.slice(-4)} (${job.from}–${job.toExclusive})` } : {}) };
+    }
+  }
+  // Two requests bound upstream load; output order remains KKT/window order.
+  await Promise.all(Array.from({ length: Math.min(2, jobs.length) }, worker));
+  errors.push(...results.flatMap(result => result.error ? [result.error] : []));
+  return { complete: errors.length === 0, receipts: results.flatMap(result => result.receipts), errors, kkts: kkts.length };
+}
+
+// Closed historical source: the saved 2026-10-31 Saby audit contains
+// no receipts/corrections in September–October; owner confirmed on 2026-11-04
+// that all new payments use Platforma. August remains included conservatively.
+export function sabyExportPeriod(dateFrom: string, dateTo: string) {
+  const lastHistoricalDay = '2026-08-31';
+  return dateFrom > lastHistoricalDay ? null : { dateFrom, dateTo: dateTo < lastHistoricalDay ? dateTo : lastHistoricalDay };
 }
 
 export async function exportUnifiedAusnOfdReceipts(options: {
@@ -213,8 +241,9 @@ export async function exportUnifiedAusnOfdReceipts(options: {
   queryLimit?: number;
   maxDocuments?: number;
 }) {
+  const sabyPeriod = sabyExportPeriod(options.dateFrom, options.dateTo);
   const [sabyResult, platformaResult] = await Promise.all([
-    exportSabyOfdReceipts(options),
+    sabyPeriod ? exportSabyOfdReceipts({ ...options, ...sabyPeriod }).catch(() => ({ ok: false, receipts: [], completeness: { complete: false }, errors: ['Saby OFD export did not complete'] })) : Promise.resolve({ ok: true, receipts: [], completeness: { complete: true }, errors: [] }),
     loadPlatforma(options.dateFrom, options.dateTo),
   ]);
   const sabyRows = rows(sabyResult.receipts);
@@ -233,7 +262,7 @@ export async function exportUnifiedAusnOfdReceipts(options: {
       duplicateDocuments: merged.duplicateCount,
       conflictingDocuments: merged.conflicts.length,
       sources: {
-        saby: { complete: sabyComplete, receipts: sabyReceipts.length },
+        saby: { complete: sabyComplete, receipts: sabyReceipts.length, required: Boolean(sabyPeriod), ...(sabyPeriod ? { period: sabyPeriod } : { scope: 'historical_only_through_2026-08-31' }) },
         platforma_ofd: { complete: platformaResult.complete, receipts: platformaResult.receipts.length, kkts: platformaResult.kkts },
       },
     },

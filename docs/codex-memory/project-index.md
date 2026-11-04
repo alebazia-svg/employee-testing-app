@@ -287,12 +287,25 @@ project from scratch.
   Nullable label/IP migration applied; IP collection disabled. No real device
   owners guessed or automatically named. Prior 1.5.1 workday changes preserved.
 
+- Released first stage: `access-recent-connections-candidate-20261104.md`.
+  Seven-day contact window for current device cards; older connections remain in
+  history and return on new contact. Preserve names and employee summaries.
+  Clearer statuses and search by name/code/period; ADMIN action audit deferred.
+  Approved automatic diagnostics follow-up adds per-field provenance, bounded
+  retries and sample timestamps; reduced/legacy OS versions remain unconfirmed.
+  Real local screen reviewed; owner approved release of both stages. Released and
+  independently verified as 1.21.28 / 4c49fe8 on 5 November (Moscow).
+  See `../ops/access-devices-release-20261105.md` for production evidence.
+  Includes the separately owner-approved one-line future-date prefix correction
+  from Procurement. Names/mappings, mounts and existing host unit pairs preserved.
+
 - Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
-  Retain last visits without a time cutoff; separate explicit service connections.
+  Historical baseline retained last visits without a time cutoff; the explicitly
+  approved seven-day current-card policy above now supersedes that cutoff rule.
   Owner-browser cross-account classification and both additive migrations are
   deployed. Real ownership/service marks have not been assigned automatically.
 
-- Access screen: latest connections without a time cutoff, retained history, app/browser
+- Released access screen: seven-day current connections (released above), retained full history, app/browser
   context and latest push-provider outcome (not delivery/read/sound).
 - Reported app version and ADMIN safe-update requests extend the existing
   Workday updater; other pages never forcibly reload unfinished work.

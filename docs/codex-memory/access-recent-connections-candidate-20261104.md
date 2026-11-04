@@ -1,0 +1,162 @@
+# Recent connections — first stage and automatic diagnostics released
+
+Phase: launch hardening / pilot. Owner approved implementation on 4 November
+2026 and requested the real screen before release. After the real-screen review,
+the owner explicitly approved production release of both stages on 4 November.
+Original local base: origin/design-local-updates 4590581, package 1.21.23.
+Released 5 November (Moscow) as 1.21.28 / 4c49fe8 after explicit release approval.
+Production evidence: `../ops/access-devices-release-20261105.md`.
+
+## Decision and scope
+
+This explicitly revises the no-cutoff device-card decision of 18 October:
+current employee and service device cards show connections whose last contact
+is within seven rolling days, including the exact boundary. Older connections
+stay in the full history and reappear automatically after a new contact.
+An employee with only old connections retains a compact last-contact summary
+and a direct history link, preserving employee visibility. Expiry, logout,
+push subscriptions, names, classifications and records are not changed.
+
+Saved names, exact browser grouping and current-browser identification remain.
+Name labels are administrator assignments, not proof of a physical user's identity.
+Statuses distinguish last contact, authorization, stale data, notification state
+and available updates. No new online-status inference or forced update behavior.
+
+Search covers employee/login, device/browser, saved name and partial/full
+connection codes. History applies search before pagination and offers a period
+for last contact or authorization, with inclusive Moscow calendar dates and
+explicit invalid-period feedback. Existing history remains complete.
+
+ADMIN page/action audit is explicitly deferred. The initial list stage does not
+change collection; the separately approved collection follow-up is described below.
+No schema/migration or authentication policy changes. No production data, pushes
+or update commands.
+
+## Local verification and review
+
+Actual production-mode Next application on 127.0.0.1:3244 with an isolated
+PostgreSQL access_demo database on port 55504. Synthetic examples only; no
+production DB copied. Example names carry “пример” and the account shows
+“Локальный просмотр · демоданные”. Demo credentials/fixtures stay outside Git.
+
+Boundary/return/name preservation, compact dormant summary, service grouping,
+code/name search, statuses and history pagination/date behavior have automated
+coverage. Actual PostgreSQL integration checks search across more than one
+page, expired/inactive-account history and inclusive Moscow date boundaries.
+Existing authorization/classification/current-browser checks remain in scope.
+UI and server test groups require separate React conditions.
+
+Verification: TypeScript, production build and whitespace check passed.
+UI/helper group 33 passed; isolated PostgreSQL integration 1 passed; server
+policy/auth group 18 passed, 1 legacy PostgreSQL test skipped (its separate
+port-55451 fixture was not configured). No failures. Interactive actual-screen
+review confirmed old-code and saved-name history search, contact vs login
+periods, reversed-period error, reset, details/close and preserved service names.
+An isolated demo contact returned Diana's same connection to the current list;
+the fixture was then restored. Desktop 1366px and normal narrow 375px layout
+were inspected, with no horizontal overflow in the history form. Temporary
+viewport overrides were reset. No physical phone test performed.
+
+Owner approved the resulting local interface and production release on 4 November.
+Responsive browser checks do not verify physical iPhone/PWA delivery or reload.
+The main checkout's unrelated dirty files are untouched; work is isolated in
+the access-recent-connections managed worktree.
+
+## Approved automatic device evidence follow-up — 4 November
+
+Owner approved automatic maximum available useful device/browser diagnostics,
+fixes to misleading provenance and a real-screen review before release. Preserve
+assigned device names. No employee actions, new permission prompts, Shortcuts,
+MDM, fingerprinting, deployment or production data changes authorized.
+
+The existing bounded Client Hints collector is extended, not replaced. JSON now
+optionally carries per-field sources, collection outcome and sample timestamp.
+Partial hints never relabel fallback UA values as expanded evidence. Low-entropy
+platform remains usable when higher-entropy values fail. Different platforms
+cannot share a fallback OS version; expected browser brand wins over GREASE.
+
+Collector shares concurrent reads, retries partial/timeout/error results after
+one minute (at most three failed reads per mounted screen) and refreshes successful
+results after five minutes while visible reports continue. Unsupported browsers
+are not repeatedly queried. All calls retain the 700ms deadline. Server activity
+throttle and browser identity/naming/classification policies stay intact.
+Device sample time survives cached heartbeat retransmission; future sample times
+cannot claim a fresh check. Old clients without the new fields remain accepted.
+
+Main rows do not present UA OS versions or legacy mixed-source values as confirmed
+installed OS versions. Details distinguish browser version, OS report, per-field
+source and original values. Expanded values remain explicitly browser reports,
+not independently verified hardware/person identity. No guessing iPhone model or
+converting Safari version into iOS. Existing seven-day/history behavior retained.
+
+No schema migration. New JSON is additive for current server validation, but an
+old server parser will reject the additional keys from already-loaded new clients;
+a release/rollback plan must account for that client/server compatibility.
+
+Verification for this follow-up is recorded separately in the local review report.
+Physical phone/PWA validation remains outstanding; synthetic browser cases do not
+prove a particular employee's model or OS. Main checkout remains untouched.
+
+Follow-up verification: 41 UI/helper/collector checks and 27 server/auth/journal
+checks passed, including actual PostgreSQL provenance/sample-time persistence
+in the isolated port-55504 DB. Production build, TypeScript (run after build),
+and diff whitespace check passed. Real local browser automatically reported
+macOS 26.6.2, full Chrome version and ARM architecture; readback confirmed the
+new field sources and sample timestamp. Desktop and 375px narrow details were
+reviewed; iOS raw 18.7 is retained only in technical evidence, Safari version
+is separate, and assigned Mac Бэлы / Mac Аслана / Codex names remain unchanged.
+No physical iPhone/Android test, no release or production write.
+
+## Authorized release queue and final compatibility check
+
+Production release is approved for the first stage plus automatic diagnostics,
+with names preserved and ADMIN action audit excluded. The owner also directly
+approved coordinating messages to Procurement and AUSN chats. Separate explicit
+owner approval in Procurement adds only commit 1b9f0e0 (local cherry-pick 6a75897):
+omit the redundant “Предстоящие” prefix before future dates. Eight existing
+Procurement list tests pass; all other calendar behavior stays unchanged.
+
+After merging already-published upstream work, the local candidate is 1.21.28;
+this number is not reserved in origin. Recheck live metadata and origin before
+pushing. Runtime through 3901900 has a successful production build and TypeScript,
+41 UI/collector and 27 auth/server/journal checks, including isolated PostgreSQL.
+Old open tabs and older cached samples can no longer replace new-format device
+evidence or refresh its collection timestamp. Contact/push/context reporting
+continues; old-format-only sessions remain compatible.
+
+Procurement 1.21.26 is deployed and verified. AUSN 1.21.27 is deployed from
+c23a436, but its refresh/full-report verification hit HTTP500; current-image
+registration and safe restart handoff are still pending in that task. This task
+has not pushed its candidate or deployed. No production names or audit policy
+changed. Do not restart portal-app until the release queue is handed over and
+the verified-image preflight is satisfied. Regenerate any temporary deploy script
+with the final commit/version/baseline, rather than reusing stale /tmp scripts.
+
+
+## Production completion — 5 November 2026 (Moscow)
+
+Released 1.21.28 / 4c49fe8e3fcade136649067fe7cb076346061fcd, runtime includes
+3901900 compatibility fix. Build 2026-11-04T21:03:04.442Z (00:03 Moscow).
+Both public domains, server commit, healthy container and authenticated ADMIN
+interface verified. All seven browser-owner records have the same before/after
+count and SHA256, including names and mappings. No migrations applied.
+
+Current plus two verified reserves existed before build. Owner-approved existing
+retention ran because initial free space was below15GiB; final free space19GiB.
+The first post-deploy bytewise mount comparison stopped on Docker array ordering;
+follow-up compared every full mount object sorted by destination and confirmed
+identical content/permissions. No second build/restart was performed. Env and
+workday-notification/KKM unit pairs unchanged. Final registration succeeded with
+RELEASE_VERIFIED_AND_REGISTERED and FINISH_EXIT=0.
+
+Live verification: seven employees retained; Astemir current cards3→2, Milana3→1;
+Milana's two23October contacts retained and searchable by exact Moscow day;
+ce76a826 found in old history; Mac Бэлы / Mac Аслана / Codex visible unchanged.
+Current Edge automatically reports macOS26.6.2, full browser version and ARM with
+field sources/sample timestamp. Old Mac Аслана value27.0.1 remains in technical
+evidence; legacy source provenance is unconfirmed, not proof that the value is
+wrong. No physical iPhone/Android validation or administrative action audit.
+
+Procurement future-date headings11/12November confirmed without redundant prefix.
+AUSN new Saby correction was not included; its task received the queue after our
+verified image registration. Main checkout dirty files were left untouched.

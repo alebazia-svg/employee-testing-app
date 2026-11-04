@@ -12,9 +12,10 @@ import { accessCurrentConnections, accessLastPushForUser, accessOwnerView } from
 import { parseAppObservation, parseUpdateCommand } from '@/lib/portal-app-observation';
 import { serverAppRelease } from '@/lib/portal-app-update-server';
 import { parseDeviceObservation, connectionMismatch } from '@/lib/portal-device-observation';
+import { accessHistoryFilters, accessHistoryWhere } from '@/lib/portal-access-search';
 
 export const dynamic = 'force-dynamic';
-export default async function AccessPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; view?: string }> }) {
+export default async function AccessPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; view?: string; from?: string; to?: string; dateField?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.role !== 'ADMIN') redirect('/employee');
@@ -23,18 +24,18 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
   const query = (params.q ?? '').trim().slice(0, 100);
   const page = /^\d+$/.test(params.page ?? '') ? Math.min(200, Math.max(1, Number(params.page))) : 1;
   const history = params.view === 'history';
+  const historyFilters = accessHistoryFilters(params);
   const now = new Date();
   let rows: AccessJournalRow[] = [], unavailable = false, hasMore = false;
   try {
+    const matchingNames = history && query ? await prisma.portalAccessBrowserOwner.findMany({
+      where: { label: { contains: query, mode: 'insensitive' }, disabledAt: null, owner: { isActive: true, role: 'ADMIN' } },
+      select: { browserInstanceId: true },
+    }) : [];
     const records = await prisma.portalAccessSession.findMany({
       // Include old/expired visits: absence today must not hide an employee.
       // Consolidate before sending the main list to the client; history stays paginated.
-      where: history ? (query ? { OR: [
-        { user: { name: { contains: query, mode: 'insensitive' } } },
-        { user: { login: { contains: query, mode: 'insensitive' } } },
-        { device: { contains: query, mode: 'insensitive' } },
-        { browser: { contains: query, mode: 'insensitive' } },
-      ] } : {}) : { user: { isActive: true } },
+      where: history ? (historyFilters.error ? { id: { in: [] } } : accessHistoryWhere(query, matchingNames.map(r => r.browserInstanceId), historyFilters)) : { user: { isActive: true } },
       orderBy: history ? [{ firstSeenAt: 'desc' }, { id: 'desc' }] : [{ userId: 'asc' }, { firstSeenAt: 'asc' }, { id: 'asc' }],
       ...(history ? { skip: (page - 1) * 50, take: 51 } : {}),
       select: { id: true, userId: true, device: true, browser: true, browserInstanceId: true, observedBrowserId: true, identityBoundAt: true, observedOrigin: true, deviceObservation: true, deviceCheckedAt: true, lastInteractionAt: true, lastIp: true, ipCheckedAt: true, isService: true, serviceMarkedAt: true, displayMode: true, contextCheckedAt: true, appObservation: true, appCheckedAt: true, appUpdateCommand: true, firstSeenAt: true, loginAt: true, lastSeenAt: true, expiresAt: true, loggedOutAt: true, pushState: true, pushCheckedAt: true, pushSubscriptionId: true,
@@ -71,6 +72,6 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
   } catch { unavailable = true; }
   return <AdminShell pageTitle="Устройства и входы" pageDescription="Кто пользуется порталом и где подключены уведомления." headerWidthClass="max-w-6xl"><div className='mx-auto max-w-6xl mb-4 text-sm'><Link href='/admin/employees' className='text-slate-600 hover:underline'>← Сотрудники</Link></div>
 
-    <PortalAccessDevices rows={rows} query={query} history={history} service={params.view === 'service'} page={page} hasMore={hasMore} unavailable={unavailable} nowIso={now.toISOString()} currentRelease={serverAppRelease()} />
+    <PortalAccessDevices rows={rows} query={query} history={history} service={params.view === 'service'} page={page} hasMore={hasMore} unavailable={unavailable} nowIso={now.toISOString()} currentRelease={serverAppRelease()} historyFilters={historyFilters} />
   </AdminShell>;
 }
