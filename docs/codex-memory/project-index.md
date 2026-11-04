@@ -37,6 +37,34 @@ project from scratch.
   collector unit and existing notification dispatcher; app-only deployment is
   insufficient. See the candidate note for architecture/tests/rollback boundaries.
 
+- Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
+  — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
+  every normal department shift remains selectable. Combined with Procurement
+  personal reminders; financial matching and historical shifts preserved.
+
+- Procurement personal schedule reminders: `procurement-schedule-reminders-20261104.md`
+  — released/verified1.21.22 /5a7e8d3. Same today/tomorrow completion, one daily
+  cycle and native day editor for both Procurement cabinets; no staffing or
+  salary changes. In-app reminders confirmed for both; Astemir push accepted,
+  Muhamed device subscription not confirmed (see combined release evidence).
+
+- ADMIN team calendar: `../ops/team-calendar-release-20261103.md` — released/verified
+  1.21.20 / c93687b. Includes active Procurement employees. A genuinely empty
+  selected day displays `Нет записи`; saved app/Google plans, unavailable sources,
+  ambiguous Google evidence and the original pilot policy stay distinct.
+  This is calendar display only, without payroll or shift/reminder policy changes.
+
+- Direct Overview employee cards: `../ops/workday-direct-card-release-20261103.md`
+  — released/verified 1.21.18 / c4abeda. Current plus inherited questions no longer
+  redirect an Overview check to Need Action. Counts and past-question history stay.
+
+- Closed app workday without submitted handover: `handover-review-candidate-20261103.md`
+  — released/verified 1.21.14 (767c45b), supersedes the faulty archive backfill in
+  1.21.13. Explicit `Проверено` uses the existing
+  manual-review journal; removes only the corresponding reminder while preserving
+  missing handover, original closure and inbox history. Ignore pre-pilot runs before
+  2026-10-18 in active reminders; keep their history. No schema migration.
+
 - Google Form attendance dates: `../ops/google-attendance-date-release-20261102.md`
   — released/verified 1.21.6. Parse Russian day/month explicitly, never through
   native Date guessing. Invalid timestamps fail source refresh; persisted payroll
