@@ -1334,7 +1334,8 @@ export function EmployeeTodayClient({
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
   const [workdayStartIntentId, setWorkdayStartIntentId] = useState<string | null>(null);
   const [startShiftCodes, setStartShiftCodes] = useState<string[] | null>(null);
-  const [startExceptionShiftCodes, setStartExceptionShiftCodes] = useState<string[]>([]);
+  const [recommendedStartShiftCodes, setRecommendedStartShiftCodes] = useState<string[]>([]);
+  const [startRecommendationHint, setStartRecommendationHint] = useState('');
   const [shiftSelectionHint, setShiftSelectionHint] = useState('Выберите свою смену на сегодня.');
   const [shiftCorrectionOpen, setShiftCorrectionOpen] = useState(false);
   const [shiftCorrectionCodes, setShiftCorrectionCodes] = useState<string[]>([]);
@@ -2472,7 +2473,8 @@ export function EmployeeTodayClient({
     setQrDepartmentConfirmed(null);
     setWorkdayStartIntentId(null);
     setStartShiftCodes(null);
-    setStartExceptionShiftCodes([]);
+    setRecommendedStartShiftCodes([]);
+    setStartRecommendationHint('');
     setShiftSelectionHint('Выберите свою смену на сегодня.');
     setQrScannerOpen(true);
     if (usesWorkdayQrPhotoFallback(user)) qrPhotoRef.current?.openCamera();
@@ -2504,14 +2506,16 @@ export function EmployeeTodayClient({
       setQrDepartmentConfirmed(department);
       setWorkdayStartIntentId(payload.startIntentId);
       setStartShiftCodes(Array.isArray(payload.shiftSelection?.allowedShiftCodes) ? payload.shiftSelection.allowedShiftCodes : null);
-      setStartExceptionShiftCodes(Array.isArray(payload.shiftSelection?.exceptionShiftCodes) ? payload.shiftSelection.exceptionShiftCodes : []);
+      setRecommendedStartShiftCodes(Array.isArray(payload.shiftSelection?.recommendedShiftCodes) ? payload.shiftSelection.recommendedShiftCodes : []);
+      setStartRecommendationHint(typeof payload.shiftSelection?.recommendationHint === 'string' ? payload.shiftSelection.recommendationHint : '');
       setShiftSelectionHint(typeof payload.shiftSelectionHint === 'string' ? payload.shiftSelectionHint : 'Выберите свою смену на сегодня.');
       setShiftPickerOpen(true);
     } catch (reason) {
       setQrDepartmentConfirmed(null);
       setWorkdayStartIntentId(null);
       setStartShiftCodes(null);
-      setStartExceptionShiftCodes([]);
+      setRecommendedStartShiftCodes([]);
+      setStartRecommendationHint('');
       setError(reason instanceof Error ? reason.message : 'Не удалось подтвердить QR-код');
     } finally {
       setIsSaving(false);
@@ -4541,31 +4545,20 @@ export function EmployeeTodayClient({
               </button>
             </div>
             <div className='mt-5 grid gap-2'>
-              {availableStartShiftOptions.map((shift) => (
-                <button
-                  key={shift.code}
-                  type='button'
-                  disabled={isSaving}
-                  onClick={() => void chooseShiftAfterQr(shift.code)}
-                className='employee-material-choice flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'
-                >
-                  <span>{shiftLabel(shift.code)}</span>
-                  <span className='text-xs font-extrabold uppercase text-green-700'>Начать</span>
+              {recommendedStartShiftCodes.length > 0 && <p className='mb-1 text-xs font-bold text-slate-500'>{startRecommendationHint || 'По графику на сегодня'}</p>}
+              {(recommendedStartShiftCodes.length ? availableStartShiftOptions.filter(shift=>recommendedStartShiftCodes.includes(shift.code)) : availableStartShiftOptions).map((shift) => (
+                <button key={shift.code} type='button' disabled={isSaving} onClick={() => void chooseShiftAfterQr(shift.code)}
+                  className='employee-material-choice flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'>
+                  <span>{shiftLabel(shift.code)}</span><span className='text-xs font-extrabold uppercase text-green-700'>Начать</span>
                 </button>
               ))}
-              {startExceptionShiftCodes.length > 0 && (
-                <div className='mt-2 border-t border-slate-200 pt-3'>
-                  <p className='mb-2 text-xs font-bold leading-relaxed text-slate-500'>Если график не обновили и сегодня в отделе один сотрудник:</p>
-                  {availableShiftOptions.filter((shift) => startExceptionShiftCodes.includes(shift.code)).map((shift) => (
-                    <button
-                      key={shift.code}
-                      type='button'
-                      disabled={isSaving}
-                      onClick={() => void chooseShiftAfterQr(shift.code)}
-                      className='employee-material-choice flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-left text-sm font-extrabold text-slate-800 transition active:scale-[0.99] disabled:opacity-60'
-                    >
-                      <span>Сегодня один сотрудник · {shiftLabel(shift.code)}</span>
-                      <span className='text-xs font-extrabold text-green-700'>Начать</span>
+              {recommendedStartShiftCodes.length > 0 && availableStartShiftOptions.some(shift=>!recommendedStartShiftCodes.includes(shift.code)) && (
+                <div className='mt-2 grid gap-2 border-t border-slate-200 pt-3'>
+                  <p className='mb-1 text-xs font-bold text-slate-500'>Другая смена</p>
+                  {availableStartShiftOptions.filter(shift=>!recommendedStartShiftCodes.includes(shift.code)).map((shift) => (
+                    <button key={shift.code} type='button' disabled={isSaving} onClick={() => void chooseShiftAfterQr(shift.code)}
+                      className='employee-material-choice flex min-h-12 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-left text-sm font-extrabold text-slate-800 transition active:scale-[0.99] disabled:opacity-60'>
+                      <span>{shiftLabel(shift.code)}</span><span className='text-xs font-extrabold text-green-700'>Начать</span>
                     </button>
                   ))}
                 </div>

@@ -1,11 +1,11 @@
-import { getShiftOptionsForDepartment } from '@/lib/workday';
+import { getMoscowMinutes, getShiftOptionsForDepartment, getShiftOption } from '@/lib/workday';
 import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import type { prisma } from '@/lib/prisma';
 
-export type WorkdayShiftSelectionMode = 'incomplete_schedule' | 'solo' | 'first_of_pair' | 'remaining' | 'outside_schedule_remaining' | 'outside_schedule' | 'unavailable';
+type WorkdayRecommendationMode = 'incomplete_schedule' | 'solo' | 'first_of_pair' | 'remaining' | 'outside_schedule_remaining' | 'outside_schedule' | 'unavailable';
 
-export type WorkdayShiftSelection = {
-  mode: WorkdayShiftSelectionMode;
+type Recommendation = {
+  mode: WorkdayRecommendationMode;
   scheduledCount: number;
   allowedShiftCodes: string[];
   exceptionShiftCodes: string[];
@@ -22,7 +22,7 @@ const shiftCodesByDepartmentAndCount: Record<'retail' | 'wholesale', Record<numb
   },
 };
 
-function fallbackSelection(department: string): WorkdayShiftSelection {
+function fallbackSelection(department: string): Recommendation {
   return {
     mode: 'unavailable',
     scheduledCount: 0,
@@ -31,13 +31,13 @@ function fallbackSelection(department: string): WorkdayShiftSelection {
   };
 }
 
-export function deriveWorkdayShiftSelection(input: {
+function deriveShiftRecommendation(input: {
   department: string;
   currentUserId: number;
   scheduledWorkingUserIds: number[];
   missingScheduleUserIds?: number[];
   startedWorkdays: Array<{ userId: number; shiftCode: string }>;
-}): WorkdayShiftSelection {
+}): Recommendation {
   if (input.department !== 'retail' && input.department !== 'wholesale') {
     return fallbackSelection(input.department);
   }
@@ -129,25 +129,63 @@ export function deriveWorkdayShiftSelection(input: {
   };
 }
 
-export function permittedWorkdayShiftCodes(selection: WorkdayShiftSelection) {
-  return [...selection.allowedShiftCodes, ...selection.exceptionShiftCodes];
-}
+export type WorkdayShiftSelection = {
+  mode: 'manual' | 'unavailable';
+  scheduledCount: number | null;
+  allowedShiftCodes: string[];
+  exceptionShiftCodes: string[];
+  recommendedShiftCodes: string[];
+  recommendationHint: string;
+};
 
-export function workdayShiftSelectionHint(selection: WorkdayShiftSelection) {
-  if (selection.mode === 'incomplete_schedule') return 'Не все отметили график на сегодня. Выберите свою фактическую смену.';
-  if (selection.mode === 'solo') return 'Сегодня в отделе один сотрудник — смена определена по графику.';
-  if (selection.mode === 'remaining') return 'Коллега уже начал рабочий день — вам доступна оставшаяся смена.';
-  if (selection.mode === 'outside_schedule_remaining') return 'Коллега уже начал рабочий день — оставшаяся смена определена автоматически.';
-  if (selection.mode === 'outside_schedule') return 'В графике на сегодня нет вашей рабочей отметки. Выберите фактическую смену.';
-  if (selection.mode === 'first_of_pair') return 'Выберите свою смену. Смена коллеги определится автоматически.';
-  return 'Проверьте график.';
+type SelectionInput = { department: string; currentUserId: number; scheduledWorkingUserIds?: number[];
+  missingScheduleUserIds?: number[]; startedWorkdays?: Array<{userId:number;shiftCode:string}>; qrAcceptedAt?: Date };
+
+/** The calendar can suggest hours, never restrict an employee's actual choice. */
+export function deriveWorkdayShiftSelection(input: SelectionInput): WorkdayShiftSelection {
+  const recommendation = input.scheduledWorkingUserIds ? deriveShiftRecommendation({
+    ...input, scheduledWorkingUserIds:input.scheduledWorkingUserIds, startedWorkdays:input.startedWorkdays ?? [],
+  }) : null;
+  const usable = recommendation && !['unavailable','incomplete_schedule','outside_schedule'].includes(recommendation.mode);
+  let recommendedShiftCodes=usable?recommendation.allowedShiftCodes:[];
+  let recommendationHint=usable?(['remaining','outside_schedule_remaining'].includes(recommendation.mode)?'С учётом смены коллеги':'По графику на сегодня'):'';
+  if(input.department==='retail'||input.department==='wholesale') {
+    const lateCode=input.department==='retail'?'11_20':'10_19';
+    const lateStart=getShiftOption(lateCode).startMinutes!;
+    const qrMinute=input.qrAcceptedAt && Number.isFinite(+input.qrAcceptedAt)?getMoscowMinutes(input.qrAcceptedAt):null;
+    const nearLate=qrMinute!==null && qrMinute>=lateStart-30;
+    const others=(input.startedWorkdays??[]).filter(day=>day.userId!==input.currentUserId);
+    const pair=shiftCodesByDepartmentAndCount[input.department][2];
+    const counterpart=others.length===1&&pair.includes(others[0].shiftCode)?pair.find(code=>code!==others[0].shiftCode):null;
+    if(counterpart && !(counterpart==='09_18' && nearLate)) {
+      recommendedShiftCodes=[counterpart];recommendationHint='С учётом смены коллеги';
+    } else if(nearLate) {
+      recommendedShiftCodes=[lateCode];recommendationHint='По времени отметки';
+    } else if(qrMinute!==null && recommendation?.mode==='first_of_pair') {
+      recommendedShiftCodes=['09_18'];recommendationHint='По графику на сегодня';
+    }
+  }
+  return {
+    mode:['retail','wholesale'].includes(input.department)?'manual':'unavailable',
+    scheduledCount:recommendation?.scheduledCount ?? null,
+    allowedShiftCodes:getShiftOptionsForDepartment(input.department).map(shift=>shift.code),
+    exceptionShiftCodes:[],
+    recommendedShiftCodes,
+    recommendationHint,
+  };
+}
+export function permittedWorkdayShiftCodes(selection: WorkdayShiftSelection) {
+  return [...selection.allowedShiftCodes,...selection.exceptionShiftCodes];
+}
+export function workdayShiftSelectionHint(_selection: WorkdayShiftSelection) {
+  return 'Выберите свою смену на сегодня.';
 }
 
 type SelectionDb = Prisma.TransactionClient | typeof prisma;
 
-export async function loadWorkdayShiftSelection(
+async function readWorkdayShiftRecommendation(
   db: SelectionDb,
-  input: { department: string; currentUserId: number; date: string },
+  input: { department: string; currentUserId: number; date: string; qrAcceptedAt?: Date },
 ) {
   const [schedules, startedWorkdays, vacations, employees] = await Promise.all([
     db.workScheduleEntry.findMany({
@@ -181,5 +219,22 @@ export async function loadWorkdayShiftSelection(
     missingScheduleUserIds: employees.filter((employee) => !filledUserIds.has(employee.id) && !vacationUserIds.has(employee.id)).map((employee) => employee.id),
     scheduledWorkingUserIds: schedules.filter((entry) => entry.status === 'working').map((entry) => entry.userId).filter((userId) => !vacationUserIds.has(userId)),
     startedWorkdays,
+    qrAcceptedAt: input.qrAcceptedAt,
   });
+}
+
+/** Only the QR picker requests a bounded hint. Starting/correcting never waits for the plan. */
+export async function loadWorkdayShiftSelection(db: SelectionDb, input: {
+  department:string;currentUserId:number;date:string;recommendation?:boolean;qrAcceptedAt?:Date;
+}) {
+  const fallback=deriveWorkdayShiftSelection(input);
+  if(!input.recommendation)return fallback;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try {
+    return await Promise.race([
+      readWorkdayShiftRecommendation(db,input),
+      new Promise<WorkdayShiftSelection>(resolve=>{timer=setTimeout(()=>resolve(fallback),1500);}),
+    ]);
+  } catch { return fallback; }
+  finally { if(timer)clearTimeout(timer); }
 }

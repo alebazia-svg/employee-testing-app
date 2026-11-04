@@ -29,14 +29,17 @@ export async function POST(req: Request) {
     });
   }
 
+  const existingIntent = await prisma.workdayStartIntent.findUnique({ where: { userId_date: { userId: user.id, date } } });
+  const reusableIntent = existingIntent && !existingIntent.consumedAt && existingIntent.expiresAt > now;
   const shiftSelection = await loadWorkdayShiftSelection(prisma, {
     department: user.department,
     currentUserId: user.id,
     date,
+    recommendation: true,
+    qrAcceptedAt: reusableIntent ? existingIntent.qrAcceptedAt : now,
   });
 
-  const existingIntent = await prisma.workdayStartIntent.findUnique({ where: { userId_date: { userId: user.id, date } } });
-  if (existingIntent && !existingIntent.consumedAt && existingIntent.expiresAt > now) {
+  if (reusableIntent) {
     return Response.json({
       startIntentId: existingIntent.id,
       qrAcceptedAt: existingIntent.qrAcceptedAt.toISOString(),

@@ -102,148 +102,86 @@ test('unscheduled starts are observable mismatches and zero-worker days remain u
   }).status, 'unavailable');
 });
 
-test('single scheduled employee receives the department long shift', () => {
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 7,
-    scheduledWorkingUserIds: [7],
-    startedWorkdays: [],
-  }), {
-    mode: 'solo',
-    scheduledCount: 1,
-    allowedShiftCodes: ['09_19'],
-    exceptionShiftCodes: [],
-  });
-
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'retail',
-    currentUserId: 2,
-    scheduledWorkingUserIds: [2],
-    startedWorkdays: [],
-  }).allowedShiftCodes, ['09_20']);
-});
-
-test('second scheduled employee receives only the remaining paired shift', () => {
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'retail',
-    currentUserId: 2,
-    scheduledWorkingUserIds: [1, 2],
-    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
-  }), {
-    mode: 'remaining',
-    scheduledCount: 2,
-    allowedShiftCodes: ['11_20'],
-    exceptionShiftCodes: [],
-  });
-
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 4,
-    scheduledWorkingUserIds: [3, 4],
-    startedWorkdays: [{ userId: 3, shiftCode: '10_19' }],
-  }).allowedShiftCodes, ['09_18']);
-});
-
-test('actual off-schedule start determines the remaining shift for the scheduled colleague', () => {
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'retail',
-    currentUserId: 2,
-    scheduledWorkingUserIds: [2],
-    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
-  }), {
-    mode: 'remaining',
-    scheduledCount: 1,
-    allowedShiftCodes: ['11_20'],
-    exceptionShiftCodes: [],
-  });
-});
-
-test('an extra off-schedule start does not guess a shift in a two-person schedule', () => {
-  const selection = deriveWorkdayShiftSelection({
-    department: 'retail',
-    currentUserId: 2,
-    scheduledWorkingUserIds: [2, 3],
-    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
-  });
-
-  assert.equal(selection.mode, 'unavailable');
-});
-
-test('first of two employees can choose either paired shift and missing schedule stays explicit', () => {
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 3,
-    scheduledWorkingUserIds: [3, 4],
-    startedWorkdays: [],
-  }).allowedShiftCodes, ['09_18', '10_19']);
-
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 3,
-    scheduledWorkingUserIds: [3, 4],
-    startedWorkdays: [],
-  }).exceptionShiftCodes, ['09_19']);
-
-  const fallback = deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 3,
-    scheduledWorkingUserIds: [],
-    startedWorkdays: [],
-  });
-  assert.equal(fallback.mode, 'outside_schedule');
-  assert.deepEqual(fallback.allowedShiftCodes, ['09_18', '09_19', '10_19']);
-});
-
-test('an unscheduled employee receives the remaining paired shift after a colleague starts', () => {
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'retail',
-    currentUserId: 2,
-    scheduledWorkingUserIds: [],
-    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
-  }), {
-    mode: 'outside_schedule_remaining',
-    scheduledCount: 0,
-    allowedShiftCodes: ['11_20'],
-    exceptionShiftCodes: [],
-  });
-
-  assert.deepEqual(deriveWorkdayShiftSelection({
-    department: 'wholesale',
-    currentUserId: 4,
-    scheduledWorkingUserIds: [3],
-    startedWorkdays: [{ userId: 3, shiftCode: '10_19' }],
-  }).allowedShiftCodes, ['09_18']);
-});
-
-
-test('incomplete department schedule offers every shift without a solo or paired assumption', () => {
+test('every department shift stays available for any schedule or colleague start', () => {
   for (const department of ['retail', 'wholesale']) {
-    const all = department === 'retail' ? ['09_18', '11_20', '09_20'] : ['09_18', '09_19', '10_19'];
-    for (const scheduledWorkingUserIds of [[], [1], [1, 2]]) {
-      for (const startedWorkdays of [[], [{ userId: 2, shiftCode: '09_18' }]]) {
-        const selection = deriveWorkdayShiftSelection({ department, currentUserId: 1, scheduledWorkingUserIds, missingScheduleUserIds: [3], startedWorkdays });
-        assert.equal(selection.mode, 'incomplete_schedule');
-        assert.deepEqual(new Set(selection.allowedShiftCodes), new Set(all));
-        assert.deepEqual(selection.exceptionShiftCodes, []);
+    const expected = department === 'retail' ? ['09_18', '09_20', '11_20'] : ['09_18', '09_19', '10_19'];
+    for (const scheduledWorkingUserIds of [[], [1], [2], [1, 2], [2, 2]]) {
+      for (const startedWorkdays of [[], [{userId:2,shiftCode:'09_18'}], [{userId:2,shiftCode:'11_20'}], [{userId:2,shiftCode:'other'}]]) {
+        for (const missingScheduleUserIds of [[], [3]]) {
+          const selection = deriveWorkdayShiftSelection({department,currentUserId:1,scheduledWorkingUserIds,startedWorkdays,missingScheduleUserIds});
+          assert.equal(selection.mode, 'manual');
+          assert.deepEqual(selection.allowedShiftCodes, expected);
+          assert.deepEqual(selection.exceptionShiftCodes, []);
+        }
       }
     }
   }
 });
 
+test('start and correction choices do not read or wait for calendar data', async () => {
+  const unavailableDb = new Proxy({}, {get(){throw Error('Calendar must not be read for shift selection');}});
+  for (const department of ['retail', 'wholesale']) {
+    const selection = await loadWorkdayShiftSelection(unavailableDb as never,{department,currentUserId:1,date:'2026-11-04'});
+    assert.equal(selection.mode, 'manual');
+    assert.equal(selection.scheduledCount,null,'calendar count is unassessed, not a fabricated zero');
+    assert.equal(selection.allowedShiftCodes.length,3);
+    assert.deepEqual(selection.exceptionShiftCodes,[]);
+  }
+});
 
-test('database selection distinguishes a missing date, a saved day off and an active vacation', async () => {
-  for (const colleagueState of ['missing', 'off', 'vacation', 'working']) {
-    const db = {
-      user: { findMany: async () => [{ id: 1 }, { id: 2 }] },
-      workScheduleEntry: { findMany: async (query: { where: { user?: { isActive?: boolean } } }) => {
-        assert.equal(query.where.user?.isActive, true);
-        return [{ userId: 1, status: 'working' }, ...(['off', 'working'].includes(colleagueState) ? [{ userId: 2, status: colleagueState }] : [])];
-      } },
-      workDayEntry: { findMany: async () => [] },
-      employeeVacation: { findMany: async () => colleagueState === 'vacation' ? [{ userId: 2 }] : [] },
-    };
-    const selection = await loadWorkdayShiftSelection(db as never, { department: 'wholesale', currentUserId: 1, date: '2026-10-23' });
-    assert.equal(selection.mode, colleagueState === 'missing' ? 'incomplete_schedule' : colleagueState === 'working' ? 'first_of_pair' : 'solo');
-    assert.deepEqual(selection.allowedShiftCodes, colleagueState === 'missing' ? ['09_18', '09_19', '10_19'] : colleagueState === 'working' ? ['09_18', '10_19'] : ['09_19']);
+test('choosing 11–20 uses its own start for lateness, including a solo day', () => {
+  assert.equal(buildLatenessShadowSnapshot(660,656).lateMinutes,0);
+  assert.equal(buildLatenessShadowSnapshot(660,665).lateMinutes,5);
+  assert.equal(buildLatenessShadowSnapshot(540,656).lateMinutes,116,'09-start remains a different, explicit choice');
+});
+
+test('calendar recommendations preserve the former helpful suggestion without hiding alternatives',()=>{
+  const solo={department:'retail',currentUserId:1,scheduledWorkingUserIds:[1],startedWorkdays:[] as Array<{userId:number;shiftCode:string}>};
+  assert.deepEqual(deriveWorkdayShiftSelection(solo).recommendedShiftCodes,['09_20']);
+  assert.deepEqual(deriveWorkdayShiftSelection({...solo,department:'wholesale'}).recommendedShiftCodes,['09_19']);
+  assert.deepEqual(deriveWorkdayShiftSelection({...solo,scheduledWorkingUserIds:[1,2]}).recommendedShiftCodes,['09_18','11_20']);
+  const remaining=deriveWorkdayShiftSelection({...solo,startedWorkdays:[{userId:2,shiftCode:'09_18'}]});
+  assert.deepEqual(remaining.recommendedShiftCodes,['11_20']);
+  assert.deepEqual(remaining.allowedShiftCodes,['09_18','09_20','11_20']);
+  for(const variant of [{...solo,missingScheduleUserIds:[2]},{...solo,scheduledWorkingUserIds:[]},{...solo,startedWorkdays:[{userId:2,shiftCode:'other'}]}]){
+    const selection=deriveWorkdayShiftSelection(variant);
+    assert.deepEqual(selection.recommendedShiftCodes,[]);
+    assert.equal(selection.allowedShiftCodes.length,3);
+  }
+});
+
+test('a failed recommendation read falls back to every normal shift',async()=>{
+  const failedDb=new Proxy({}, {get(){throw Error('Schedule unavailable');}});
+  const selection=await loadWorkdayShiftSelection(failedDb as never,{department:'retail',currentUserId:1,date:'2026-11-04',recommendation:true});
+  assert.deepEqual(selection.recommendedShiftCodes,[]);
+  assert.deepEqual(selection.allowedShiftCodes,['09_18','09_20','11_20']);
+});
+
+test('first arrival recommendations follow Moscow QR time, including early arrival for a late shift',()=>{
+  for(const [department,clock,code] of [
+    ['wholesale','09:29:59','09_19'],['wholesale','09:30:00','10_19'],['wholesale','10:05:00','10_19'],
+    ['retail','10:29:59','09_20'],['retail','10:30:00','11_20'],['retail','10:36:00','11_20'],['retail','11:05:00','11_20'],
+  ]){
+    const selection=deriveWorkdayShiftSelection({department,currentUserId:1,scheduledWorkingUserIds:[1],startedWorkdays:[],qrAcceptedAt:new Date(`2026-11-04T${clock}+03:00`)});
+    assert.deepEqual(selection.recommendedShiftCodes,[code],`${department} ${clock}`);
+    assert.equal(selection.allowedShiftCodes.length,3);
+  }
+});
+
+test('a real opening colleague suggests the paired late shift even with missing plans',()=>{
+  for(const [department,code] of [['wholesale','10_19'],['retail','11_20']]){
+    const selection=deriveWorkdayShiftSelection({department,currentUserId:2,scheduledWorkingUserIds:[],missingScheduleUserIds:[1,2],startedWorkdays:[{userId:1,shiftCode:'09_18'}],qrAcceptedAt:new Date('2026-11-04T09:10:00+03:00')});
+    assert.deepEqual(selection.recommendedShiftCodes,[code]);
+    assert.equal(selection.recommendationHint,'С учётом смены коллеги');
+    assert.equal(selection.allowedShiftCodes.length,3);
+  }
+});
+
+test('two late arrivals do not recommend a fictitious early start to the second employee',()=>{
+  for(const [department,code,clock] of [['wholesale','10_19','10:05:00'],['retail','11_20','11:05:00']]){
+    const selection=deriveWorkdayShiftSelection({department,currentUserId:2,scheduledWorkingUserIds:[1,2],startedWorkdays:[{userId:1,shiftCode:code}],qrAcceptedAt:new Date(`2026-11-04T${clock}+03:00`)});
+    assert.deepEqual(selection.recommendedShiftCodes,[code]);
+    assert.equal(selection.recommendationHint,'По времени отметки');
+    assert.ok(selection.allowedShiftCodes.includes('09_18'));
   }
 });
