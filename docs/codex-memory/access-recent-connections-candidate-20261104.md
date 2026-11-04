@@ -1,7 +1,8 @@
 # Recent connections — approved first stage, local candidate
 
 Phase: launch hardening / pilot. Owner approved implementation on 4 November
-2026 and requested the real screen before release. No deployment authorized.
+2026 and requested the real screen before release. After the real-screen review,
+the owner explicitly approved production release of both stages on 4 November.
 Base: origin/design-local-updates 4590581, package version 1.21.23 retained for
 local testing. Choose a new version only during a separately approved release.
 
@@ -55,7 +56,7 @@ the fixture was then restored. Desktop 1366px and normal narrow 375px layout
 were inspected, with no horizontal overflow in the history form. Temporary
 viewport overrides were reset. No physical phone test performed.
 
-Owner approval is still needed for the resulting local interface and any release.
+Owner approved the resulting local interface and production release on 4 November.
 Responsive browser checks do not verify physical iPhone/PWA delivery or reload.
 The main checkout's unrelated dirty files are untouched; work is isolated in
 the access-recent-connections managed worktree.
@@ -104,3 +105,28 @@ new field sources and sample timestamp. Desktop and 375px narrow details were
 reviewed; iOS raw 18.7 is retained only in technical evidence, Safari version
 is separate, and assigned Mac Бэлы / Mac Аслана / Codex names remain unchanged.
 No physical iPhone/Android test, no release or production write.
+
+## Authorized release queue and final compatibility check
+
+Production release is approved for the first stage plus automatic diagnostics,
+with names preserved and ADMIN action audit excluded. The owner also directly
+approved coordinating messages to Procurement and AUSN chats. Separate explicit
+owner approval in Procurement adds only commit 1b9f0e0 (local cherry-pick 6a75897):
+omit the redundant “Предстоящие” prefix before future dates. Eight existing
+Procurement list tests pass; all other calendar behavior stays unchanged.
+
+After merging already-published upstream work, the local candidate is 1.21.28;
+this number is not reserved in origin. Recheck live metadata and origin before
+pushing. Runtime through 3901900 has a successful production build and TypeScript,
+41 UI/collector and 27 auth/server/journal checks, including isolated PostgreSQL.
+Old open tabs and older cached samples can no longer replace new-format device
+evidence or refresh its collection timestamp. Contact/push/context reporting
+continues; old-format-only sessions remain compatible.
+
+Procurement 1.21.26 is deployed and verified. AUSN 1.21.27 is deployed from
+c23a436, but its refresh/full-report verification hit HTTP500; current-image
+registration and safe restart handoff are still pending in that task. This task
+has not pushed its candidate or deployed. No production names or audit policy
+changed. Do not restart portal-app until the release queue is handed over and
+the verified-image preflight is satisfied. Regenerate any temporary deploy script
+with the final commit/version/baseline, rather than reusing stale /tmp scripts.

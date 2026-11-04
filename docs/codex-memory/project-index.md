@@ -282,7 +282,10 @@ project from scratch.
   Clearer statuses and search by name/code/period; ADMIN action audit deferred.
   Approved automatic diagnostics follow-up adds per-field provenance, bounded
   retries and sample timestamps; reduced/legacy OS versions remain unconfirmed.
-  Pending owner review of the real local screen; no release authorized.
+  Real local screen reviewed; owner approved release of both stages. Local
+  1.21.28 candidate awaits AUSN verification/restart handoff; not deployed yet.
+  Includes the separately owner-approved one-line future-date prefix correction
+  from Procurement. Recheck release number against live/origin before publication.
 
 - Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
   Production baseline retains last visits without a time cutoff; separate explicit service connections.
