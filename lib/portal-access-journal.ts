@@ -43,11 +43,13 @@ export async function recordPortalAccess(input: { userId: number; token: string 
   const mismatched = connectionMismatch(existing?.browserInstanceId, input.browserInstanceId);
   const origin = portalObservationOrigin(input.origin);
   const interaction = input.push?.interactionAt;
+  const sampledAt = input.push?.device?.collectedAt;
+  const deviceCheckedAt = sampledAt ? Date.parse(sampledAt) <= now.getTime() + 5000 ? new Date(Math.min(Date.parse(sampledAt), now.getTime())) : null : now;
   const evidence = {
     ...(input.browserInstanceId ? { observedBrowserId: input.browserInstanceId } : {}),
     ...(origin ? { observedOrigin: origin } : {}),
     ...(input.push?.device || !existing?.deviceObservation || input.browserInstanceId && input.browserInstanceId !== existing.observedBrowserId
-      ? { deviceObservation: input.push?.device ?? deviceObservationFromUa(input.userAgent), deviceCheckedAt: now } : {}),
+      ? { deviceObservation: input.push?.device ?? deviceObservationFromUa(input.userAgent), deviceCheckedAt } : {}),
     ...(interaction && interaction <= now.getTime() + 5000 && interaction >= now.getTime() - 120000 && (!existing?.lastInteractionAt || interaction > existing.lastInteractionAt.getTime())
       ? { lastInteractionAt: new Date(Math.min(interaction, now.getTime())) } : {}),
   };

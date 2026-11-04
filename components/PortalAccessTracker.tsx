@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { portalDisplayMode } from '../lib/portal-display-mode';
 import { appClientObservation, appStateEvent, acceptAppCommand } from '../lib/portal-app-client';
 import { observationWithin } from '../lib/portal-observation-deadline';
-import { collectDeviceObservation } from '../lib/portal-device-observation';
+import { createDeviceObservationCollector } from '../lib/portal-device-observation';
 
 /** Observes existing permission/subscription only; never prompts or subscribes. */
 export function PortalAccessTracker() {
@@ -14,8 +14,8 @@ export function PortalAccessTracker() {
     if (!/^\/(admin|employee|procurement)(\/|$)/.test(path)) return;
     let stopped = false, busy = false, lastAttempt = 0, dirty = true;
     let interactionAt = 0;
-    // One bounded collection per mounted screen, never on every heartbeat.
-    const deviceObservation = collectDeviceObservation(navigator);
+    // Cached reads with bounded retries; no permission requests or employee actions.
+    const deviceObservation = createDeviceObservationCollector(navigator);
     const interacted = (event: Event) => { if (event.isTrusted && document.visibilityState === 'visible') interactionAt = Date.now(); };
     // Only the timestamp; no key, pointer position, field value or business content.
     document.addEventListener('pointerdown', interacted, { passive: true });
@@ -44,7 +44,7 @@ export function PortalAccessTracker() {
       const displayMode = portalDisplayMode(query => window.matchMedia(query).matches, (navigator as Navigator & { standalone?: boolean }).standalone);
       try { if (!stopped) {
         const app = appClientObservation();
-        const device = await deviceObservation;
+        const device = await deviceObservation();
         const response = await fetch('/api/auth/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }), signal: request.signal });
         if (response.ok && !stopped) acceptAppCommand((await response.json()).updateCommand);
         else dirty = true;
