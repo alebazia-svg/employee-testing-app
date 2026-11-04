@@ -123,8 +123,9 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
 
 function HealthPanel({ health, refresh, archivedReport }: { health: HealthIssue[]; refresh?: React.ReactNode; archivedReport?: boolean }) {
   const tone = health.some((item) => item.level === 'error') ? 'error' : 'warn';
-  return <section className='tax-panel tax-queue' data-tone={tone} aria-label='Что не работает'>
-    <header><AlertTriangle className={`h-4 w-4 ${tone === 'error' ? 'text-[#b63636]' : 'text-[#a8771c]'}`} /><h2>{archivedReport ? 'Обновление исходного отчёта' : 'Что не работает'}</h2><span>{health.length}</span></header>
+  return <section className='tax-panel tax-queue' data-tone={tone} aria-label={archivedReport ? 'Автоматическое обновление' : 'Что не работает'}>
+    <header><AlertTriangle className={`h-4 w-4 ${tone === 'error' ? 'text-[#b63636]' : 'text-[#a8771c]'}`} /><h2>{archivedReport ? 'Автоматическое обновление' : 'Что не работает'}</h2><span>{health.length}</span></header>
+    {archivedReport && health.some(item => item.id === 'stale') && <div className='tax-item'><p className='tax-small'>Ежедневный ручной запуск не нужен. Сервер автоматически обновляет учётный отчёт 1С/банка и ККТ; сейчас обновление задерживается. Сводка выше — сохранённая документальная сверка с указанной датой. Новая выгрузка ФНС загружается отдельно.</p></div>}
     {health.map((item) => <div key={item.id} className='tax-item'><b className='inline-flex items-center gap-1.5'>{item.title}<More><p>{item.text}</p>{item.action && <p className='mt-1.5'>{item.action}</p>}</More></b>{item.id === 'stale' && refresh}</div>)}
   </section>;
 }
@@ -351,7 +352,7 @@ function Footer({ full, current, refresh }: TaxesWorkspaceProps) {
       {refresh}
       <p className='font-semibold pt-2'>Откуда данные</p>
       {Object.entries(latest.sourceCompleteness).map(([name, value]) => <p key={name}><span className='tax-muted'>{name}:</span> {value}</p>)}
-      <p className='tax-muted pt-1'>Цифры пересчитываются каждое утро и после каждой загрузки документа. Версия расчёта {latest.codeVersion?.slice(0, 12) || '—'} · 1С {latest.agentApiUser || '—'} / {latest.agentApiVersion || '—'}</p>
+      <p className='tax-muted pt-1'>Сервер проверяет свежесть каждый час с 08:10 до 21:10 по Москве и обновляет отчёт, когда он старше 20 часов. Обрабатываемые выгрузки также запускают пересчёт; архивные документы — нет. Версия расчёта {latest.codeVersion?.slice(0, 12) || '—'} · 1С {latest.agentApiUser || '—'} / {latest.agentApiVersion || '—'}</p>
       <p className='flex flex-wrap gap-4 pt-1'>{reports.map((report) => <a key={report.sourceFile} className='tax-link' href={`/api/admin/taxes/report?file=${encodeURIComponent(report.sourceFile)}`}><FileText /> {report.kind === 'full' ? 'Полный отчёт за год' : 'Отчёт за текущий месяц'}</a>)}</p>
     </div></div>}
   </details>;

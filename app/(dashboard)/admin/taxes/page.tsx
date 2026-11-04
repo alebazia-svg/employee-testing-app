@@ -40,7 +40,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
       {...data}
       documents={documents.map((document) => ({ ...document, uploadedBy: document.uploadedBy?.name }))}
       upload={({ documentType, periodKey }) => <TaxDocumentUpload fixedType={documentType as never} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} />}
-      refresh={<RefreshFigures />}
+      refresh={<RefreshFigures label="Повторить обновление" />}
       afterUpload={<TaxUploadStatus placement='page' />}
       generalUpload={<TaxDocumentUpload defaultDocumentType='AUSN_KKT' defaultPeriod={latestDuePeriod} latestDuePeriod={latestDuePeriod} />}
     />

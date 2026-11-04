@@ -12,6 +12,9 @@ export type TaxManagementReview = {
   findings: { title: string; status: 'verified' | 'open' | 'owner_reported'; detail: string; action: string; sourceName: string }[];
   sources: { title: string; originalName: string; purpose: string; documentId?: string }[];
   documentId?: string;
+  accountantConfirmation?: { exceededOn: string; confirmedOn: string; source: string };
+  accountingIncome?: { from: string; through: string; incomeCents: number; sourceName: string };
+  accounting?: { checkedAt: string; sourceName: string; rows: { posted: true; saleNumber: string; saleCents: number; bankCents: number; cashCents: number | null; finding: string; action: string }[] };
 };
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown, max: number): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
@@ -22,7 +25,7 @@ export function managementTotals(review: TaxManagementReview) {
   const baseline = review.q1UsnCents + review.q1PsnCents;
   let fns = baseline, payments = baseline;
   const months = review.months.map(row => ({ ...row, fnsYearCents: fns += row.fnsCents, paymentsYearCents: payments += row.paymentsCents }));
-  return { baseline, fns, payments, difference: payments - fns, months, limitCents: 6_000_000_000 };
+  return { baseline, fns, payments, accounting: review.accountingIncome ? baseline + review.accountingIncome.incomeCents : undefined, difference: payments - fns, months, limitCents: 6_000_000_000 };
 }
 
 export function parseTaxManagementReview(raw: string): TaxManagementReview | undefined {
@@ -42,6 +45,20 @@ export function parseTaxManagementReview(raw: string): TaxManagementReview | und
     if (new Set(sourceNames).size !== sourceNames.length) return;
     if (!Array.isArray(value.findings) || !value.findings.length || value.findings.length > 20 || value.findings.some(f => !object(f) || !text(f.title, 160) || !['verified', 'open', 'owner_reported'].includes(String(f.status)) || !text(f.detail, 1400) || !text(f.action, 700) || !sourceNames.includes(f.sourceName))) return;
     const review = value as TaxManagementReview;
+    if (review.accountingIncome !== undefined) {
+      const a = review.accountingIncome;
+      if (!object(a) || a.from !== `${year}-04-01` || a.through !== review.cutoff || !money(a.incomeCents) || a.incomeCents < 0 || !sourceNames.includes(a.sourceName) || !money(a.incomeCents + review.q1UsnCents + review.q1PsnCents)) return;
+    }
+    if (review.accountantConfirmation !== undefined && (!object(review.accountantConfirmation) || !date(review.accountantConfirmation.exceededOn) || review.accountantConfirmation.exceededOn !== review.fnsCrossing || !date(review.accountantConfirmation.confirmedOn) || review.accountantConfirmation.confirmedOn < review.accountantConfirmation.exceededOn || !text(review.accountantConfirmation.source, 700))) return;
+    if (review.accounting !== undefined) {
+      const a = review.accounting;
+      if (!object(a) || !date(a.checkedAt) || !sourceNames.includes(a.sourceName) || !Array.isArray(a.rows) || !a.rows.length || a.rows.length > 100) return;
+      const numbers = new Set<string>();
+      for (const r of a.rows) {
+        if (!object(r) || r.posted !== true || !text(r.saleNumber, 60) || numbers.has(r.saleNumber) || !money(r.saleCents) || r.saleCents <= 0 || !money(r.bankCents) || r.bankCents < 0 || !(r.cashCents === null || (money(r.cashCents) && r.cashCents >= 0)) || !text(r.finding, 1400) || !text(r.action, 700)) return;
+        numbers.add(r.saleNumber);
+      }
+    }
     const totals = managementTotals(review);
     if (!money(totals.fns) || !money(totals.payments) || review.bridge.reduce((sum, row) => sum + row.cents, 0) !== totals.difference) return;
     // A claimed crossing must agree with the cumulative monthly series.

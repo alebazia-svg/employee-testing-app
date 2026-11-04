@@ -84,7 +84,7 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
       incomeEvidence={incomeEvidence}
       documents={documents}
       notice={notice}
-      refresh={<RefreshFigures demo />}
+      refresh={<RefreshFigures demo label="Повторить обновление" />}
       afterUpload={<UploadChanges title='Пример результата загрузки' changes={changes} />}
       upload={({ documentType, periodKey }) => demoUpload(documentType, periodKey)}
       generalUpload={demoUpload('AUSN_KKT', latestDuePeriod, false)}

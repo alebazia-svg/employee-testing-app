@@ -7,7 +7,7 @@ export type HealthIssue = { id: string; level: 'error' | 'warning'; title: strin
 export type HealthDocument = { id: string; documentType: string; status: string; originalName: string; createdAt: Date; coverageFrom?: string | null; coverageTo?: string | null; periodKey: string };
 
 const processable = new Set(['AUSN_INCOME', 'ENS_OPERATIONS', 'AUSN_CALCULATION']);
-const staleHours = 26; // daily refresh at 07:40 plus two hours of slack
+const staleHours = 26; // 20-hour refresh threshold plus retry slack
 const stuckMinutes = 20;
 const moscowDate = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(value)) : 'неизвестно когда';
 
@@ -31,7 +31,7 @@ export function taxHealth(input: { full?: PortalReport; current?: PortalReport; 
     issues.push({ id: 'report-missing', level: 'error', title: 'Расчёт АУСН сейчас недоступен', text: plainReportReason(full?.reason || current?.reason), action: 'Цифры на странице не показываются, чтобы не ввести в заблуждение. Сообщите разработчику — нужна проверка сервера расчёта.' });
   } else {
     if (!full?.available) issues.push({ id: 'full-missing', level: 'warning', title: 'Нет годового расчёта по месяцам', text: full ? plainReportReason(full.reason) : 'Сервер ещё не сохранял расчёт за весь год.', action: 'Разбивка по месяцам и сверка с налоговой появятся после следующей обработки документа. Если не появились — сообщите разработчику.' });
-    if (latest && now.getTime() - Date.parse(latest.runTimeUtc!) > staleHours * 3_600_000) issues.push({ id: 'stale', level: 'warning', title: `Цифры не обновлялись с ${moscowDate(latest.runTimeUtc)}`, text: `Данные по ${latest.dataCutoff?.split('-').reverse().join('.')}. Пересчёт пробуется каждый час с 8 до 21 и не проходит. Частая причина — Mac, через который приходят чеки Платформы ОФД, спит или без сети.`, action: 'Проверьте, что Mac включён и в сети, затем нажмите «Обновить цифры сейчас». Если не поможет — сообщите разработчику.' });
+    if (latest && now.getTime() - Date.parse(latest.runTimeUtc!) > staleHours * 3_600_000) issues.push({ id: 'stale', level: 'warning', title: `Последний успешный расчёт — ${moscowDate(latest.runTimeUtc)}`, text: `Сохранены данные по ${latest.dataCutoff?.split('-').reverse().join('.')}. Сервер проверяет свежесть каждый час с 08:10 до 21:10 по Москве и повторяет обновление, когда отчёт старше 20 часов. Новый результат пока не получен.`, action: 'Вручную обновлять каждый день не требуется. Повторный запуск — дополнительная возможность; он не устраняет недоступность источников.' });
   }
   const processedTo = new Map<string, string>();
   for (const document of documents) if (document.status === 'PROCESSED') { const to = document.coverageTo || document.periodKey; if (to > (processedTo.get(document.documentType) || '')) processedTo.set(document.documentType, to); }
