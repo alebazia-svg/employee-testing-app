@@ -7,10 +7,10 @@ retain the original helpful suggestion, show other shifts separately, and show
 the real screen before release. The owner approved the exact real local picker and combined release on November4.
 Final checks and production installation completed successfully.
 
-The release is intended to include the already-verified Procurement personal
-schedule reminders in procurement-schedule-reminders-20261104.md. The real revised picker was shown and approved.
-Release1.21.22 is prepared at5a7e8d3; the production/base at preparation
-is1.21.21. Its two-percent payment completion rule is preserved.
+The release includes the already-verified Procurement personal schedule reminders
+in procurement-schedule-reminders-20261104.md. The real revised picker was shown
+and approved. Released1.21.22 at5a7e8d3; baseline1.21.21 and its two-percent
+payment completion rule are preserved.
 
 ## Approved interaction
 
@@ -150,7 +150,8 @@ for verification. Production UI and rollback registration are verified below.
   actual attendance times. The existing ADMIN Workday pencil already permits
   this for the selected past date with history. Verified its real November3
   dialog without saving. No additional product change was needed or included.
-  Evidence:/tmp/mobo-past-schedule-admin-20261104.jpg.
+  Evidence:/tmp/mobo-past-schedule-admin-20261104.jpg and
+  /tmp/mobo-12122-past-zukhra-schedule.jpg (real manager, no save).
 - Unrelated dirty files/checkouts were left untouched. Physical-phone QR capture,
   push display and a real 1C transaction were not tested. Dependencies were not
   upgraded; the existing npm-ci audit warnings and disclosed baseline history-test
