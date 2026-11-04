@@ -8,6 +8,7 @@ const money=(n:number)=>n.toLocaleString('ru-RU',{maximumFractionDigits:2})+' �
 function dayLabel(group:string|undefined,day:string|null|undefined){
  if(!day)return group;
  const date=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(day+'T12:00:00Z'));
+ if(group==='Предстоящие')return date;
  return group?.includes(date)?group:group?`${group} · ${date}`:date;
 }
 export function ProcurementPreparationList({preparation,items,...props}:Props){
