@@ -10,6 +10,7 @@ import { loadFnsGaps } from '@/lib/ausn-fns-gaps';
 import { TaxDocumentUpload, TaxUploadStatus } from './TaxDocumentUpload';
 import { loadIncomeEvidence } from '@/lib/tax-income-evidence-source';
 import { RefreshFigures } from '@/components/taxes/RefreshFigures';
+import { loadTaxManagementReview } from '@/lib/tax-management-review-source';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
     loadPortalReports(),
     prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }),
   ]);
-  const incomeEvidence = await loadIncomeEvidence(documents);
+  const [incomeEvidence, managementReview] = await Promise.all([loadIncomeEvidence(documents), loadTaxManagementReview(documents)]);
   const now = new Date();
   const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), loadLatestFnsBankReview(documents)]);
   const gaps = originalGaps && bankReview ? attachFnsBankCandidates(originalGaps, bankReview) : originalGaps;
@@ -31,6 +32,8 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
   const latestDuePeriod = data.plan.at(-1)?.periodKey || now.toISOString().slice(0, 7);
   return <AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>
     <TaxesWorkspace
+      managementReview={managementReview}
+      managementReviewUnavailable={!managementReview && documents.some(d => /^AUSN_management_review_.*\.zip$/i.test(d.originalName) && d.documentType === 'CORRECTION_EVIDENCE')}
       incomeEvidence={incomeEvidence}
       tab={tab}
       base='/admin/taxes'

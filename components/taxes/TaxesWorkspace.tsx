@@ -12,6 +12,8 @@ import './taxes.css';
 import { TaxLimitEvidencePanel } from './TaxLimitEvidencePanel';
 import { IncomeEvidencePanel } from './IncomeEvidencePanel';
 import type { IncomeEvidenceReview } from '@/lib/tax-income-evidence';
+import type { TaxManagementReview } from '@/lib/tax-management-review';
+import { TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments } from './TaxManagementReview';
 
 export type TaxTab = 'overview' | 'income' | 'reconciliation' | 'documents';
 export const taxTabs: Array<[TaxTab, string]> = [['overview', 'Обзор'], ['income', 'Доходы'], ['reconciliation', 'Сверка с налоговой'], ['documents', 'Документы']];
@@ -45,6 +47,8 @@ const More = ({ children, label }: { children: React.ReactNode; label?: string }
 const T = ({ children, title }: { children: React.ReactNode; title: string }) => <span className='tax-term' title={title}>{children}</span>;
 
 export type TaxesWorkspaceProps = {
+  managementReview?: TaxManagementReview;
+  managementReviewUnavailable?: boolean;
   incomeEvidence?: IncomeEvidenceReview;
   tab: TaxTab;
   base: string;
@@ -92,6 +96,11 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
     <nav aria-label='Разделы налогов' className='admin-section-tabs'>
       {taxTabs.map(([key, label]) => <Link key={key} href={tabHref(key)} aria-current={tab === key ? 'page' : undefined} className='admin-section-tab'>{label}{key === 'reconciliation' && highIssues > 0 ? <span className='needs-decision'>{highIssues}</span> : null}{key === 'documents' && missingTypes.length + errors > 0 ? <span className='needs-decision'>{missingTypes.length + errors}</span> : null}</Link>)}
     </nav>
+    {props.managementReviewUnavailable && <div className='tax-callout' data-tone='error' role='status'><strong>Документальная сводка недоступна.</strong> Не удалось проверить последний архив или его источники. Прежние расчёты ниже сохранены для сравнения; их остаток не подтверждает возможность новых продаж в пределах АУСН. Проверьте последний архив в «Документах».</div>}
+    {props.managementReview && tab === 'overview' && <TaxManagementOverview review={props.managementReview} base={base} />}
+    {props.managementReview && tab === 'income' && <TaxManagementIncome review={props.managementReview} />}
+    {props.managementReview && tab === 'reconciliation' && <TaxManagementReconciliation review={props.managementReview} />}
+    {props.managementReview && tab === 'documents' && <TaxManagementDocuments review={props.managementReview} preview={base.startsWith('/taxes-development-preview')} />}
     {health.length > 0 && (tab === 'overview' || tab === 'documents') && <HealthPanel health={health} refresh={props.refresh} />}
     {tab === 'overview' && <Overview {...props} missingTypes={missingTypes} />}
     {tab === 'income' && <Income {...props} />}
@@ -114,7 +123,7 @@ const limitReport = (full?: PortalReport, current?: PortalReport) => full?.avail
 function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
   const { full, current, risk, forecast, outlook, months, base, missingTypes } = props;
   const report = limitReport(full, current);
-  if (!report) return <><TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} /><section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section></>;
+  if (!report) return <><TaxLimitEvidencePanel report={full} review={props.incomeEvidence} legacy={Boolean(props.managementReview || props.managementReviewUnavailable)} reconciliationHref={`${withTab(base)}reconciliation`} /><section className='tax-panel'><div className='tax-body'><p className='text-[14px] font-semibold'>Цифры по налогам сейчас недоступны.</p><p className='tax-small tax-muted mt-1'>Причина и что делать — в блоке «Что не работает» выше.</p></div></section></>;
   const used = report.usedPercent ?? 0;
   const year = report.year || report.dataCutoff?.slice(0, 4) || '';
   const closed = months.filter((month) => !month.partial);
@@ -128,9 +137,9 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
   const range = outlook && outlook.state !== 'exceeded' && outlook.cautious.withinYear ? (outlook.usual.withinYear && outlook.cautious.date !== outlook.usual.date ? (outlook.cautious.date?.slice(0, 7) === outlook.usual.date?.slice(0, 7) ? `${dayNum(outlook.cautious.date)}–${dayMonth(outlook.usual.date)}` : `${dayMonth(outlook.cautious.date)} – ${dayMonth(outlook.usual.date)}`) : dayMonth(outlook.cautious.date)) : undefined;
   const barLevel = risk.level !== 'unknown' ? risk.level : used >= 95 ? 'urgent' : used >= 90 ? 'plan' : used >= 80 ? 'early' : 'normal';
   return <>
-    <TaxLimitEvidencePanel report={full} review={props.incomeEvidence} reconciliationHref={`${withTab(base)}reconciliation`} />
+    <TaxLimitEvidencePanel report={full} review={props.incomeEvidence} legacy={Boolean(props.managementReview || props.managementReviewUnavailable)} reconciliationHref={`${withTab(base)}reconciliation`} />
     <section className='tax-panel' aria-label='Учётный расчёт 1С и ККТ'>
-      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>Учётный расчёт 1С и ККТ — требует проверки<More><p>Считается весь доход за год с 1 января, включая январь–март до перехода на АУСН.</p><p className='mt-1.5'>Если доход превысит 60 млн ₽, АУСН перестаёт действовать с 1 числа месяца превышения. До 15 числа следующего месяца нужно уведомить налоговую и выбрать режим (обычно УСН), иначе — общий режим с НДС.</p></More></h2><p>Данные по {dayMonth(report.dataCutoff)}. Возвраты и повторения ещё не устранены; это не подтверждённый фактический доход.</p></div><span className='tax-status' data-tone='warn'>Непроверенный расчёт</span></div>
+      <div className='tax-panel-head'><div><h2 className='inline-flex items-center gap-1.5'>{props.managementReview ? 'Прежний расчёт 1С и ККТ без ПСН — для сравнения' : 'Учётный расчёт 1С и ККТ — требует проверки'}<More><p>{props.managementReview ? 'В прежнем расчёте первый квартал включал УСН, но не ПСН. Актуальная сверка с обоими режимами показана выше.' : 'Считается весь доход за год с 1 января, включая январь–март до перехода на АУСН.'}</p><p className='mt-1.5'>Если доход превысит 60 млн ₽, АУСН перестаёт действовать с 1 числа месяца превышения. До 15 числа следующего месяца нужно уведомить налоговую и выбрать режим (обычно УСН), иначе — общий режим с НДС.</p></More></h2><p>Данные по {dayMonth(report.dataCutoff)}. Возвраты и повторения ещё не устранены; это не подтверждённый фактический доход.</p></div><span className='tax-status' data-tone='warn'>Непроверенный расчёт</span></div>
       <div className='tax-kpis'>
         <div className='tax-kpi' data-accent='true'><small>Расчётный остаток, не подтверждён</small><strong>{mln(report.remaining)}</strong><span>из 60 млн ₽</span></div>
         <div className='tax-kpi'><small>Доход по общему отчёту</small><strong>{mln(report.totalIncome)}</strong><span>использовано {used.toLocaleString('ru-RU')}%</span></div>
@@ -151,8 +160,8 @@ function Overview(props: TaxesWorkspaceProps & { missingTypes: MissingType[] }) 
       <SummaryRow title='Сверка с налоговой' tone={diffs ? 'error' : fullyChecked ? 'ok' : 'warn'} status={diffs ? `Расхождения: ${diffs}` : fullyChecked ? 'Совпадает' : 'Не всё проверено'} href={`${withTab(base)}reconciliation`}>
         {closed.length ? `Доход совпадает за ${reconciled} из ${closed.length} месяцев` : 'Нет данных'}
       </SummaryRow>
-      <SummaryRow title='Документы' tone={missingTypes.length ? 'warn' : 'ok'} status={missingTypes.length ? `Загрузить: ${missingTypes.length}` : 'Всё есть'} href={`${withTab(base)}documents`}>
-        {missingTypes.length ? missingTypes.map((item) => `${item.short} за ${item.periods.map(monthName).join(', ')}`).join('; ') : 'Все выгрузки за прошлые месяцы загружены'}
+      <SummaryRow title='Документы' tone={missingTypes.length ? 'warn' : 'ok'} status={missingTypes.length ? `Загрузить: ${missingTypes.length}` : props.managementReview ? 'По списку загружены' : 'Всё есть'} href={`${withTab(base)}documents`}>
+        {missingTypes.length ? missingTypes.map((item) => `${item.short} за ${item.periods.map(monthName).join(', ')}`).join('; ') : props.managementReview ? 'Плановые выгрузки загружены; незакрытые вопросы сверки показаны отдельно' : 'Все выгрузки за прошлые месяцы загружены'}
       </SummaryRow>
     </section>
 
@@ -264,7 +273,7 @@ function GapDetails({ issue }: { issue: TaxesWorkspaceProps['issues'][number] })
   </div>;
 }
 
-function Documents({ missingTypes, documents, upload, generalUpload, plan, afterUpload }: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
+function Documents({ missingTypes, documents, upload, generalUpload, plan, afterUpload, managementReview }: TaxesWorkspaceProps & { missingTypes: MissingType[] }) {
   const declaration = documents.find((document) => document.documentType === 'USN_DECLARATION');
   const transition = documents.find((document) => document.documentType === 'AUSN_TRANSITION_NOTICE');
   const processingTypes = new Set(['AUSN_INCOME', 'ENS_OPERATIONS', 'AUSN_CALCULATION']);
@@ -272,13 +281,13 @@ function Documents({ missingTypes, documents, upload, generalUpload, plan, after
   const statusLabel = (document: TaxDocumentRow) => document.status === 'PROCESSED' ? ['ok', 'Учтён в сверке'] : document.status === 'PROCESSING_FAILED' ? ['error', 'Не обработан'] : processingTypes.has(document.documentType) && Date.now() - new Date(document.createdAt).getTime() < 20 * 60_000 ? ['info', 'Пересчитываем…'] : ['muted', 'В архиве'];
   return <>
     <section className='tax-panel tax-queue' data-tone={missingTypes.length ? 'warn' : 'info'} aria-label='Что загрузить'>
-      <header><h2>{missingTypes.length ? 'Что загрузить' : 'Все документы загружены'}</h2>{missingTypes.length > 0 && <span>{missingTypes.length}</span>}</header>
+      <header><h2>{missingTypes.length ? 'Что загрузить' : managementReview ? 'Плановые документы загружены' : 'Все документы загружены'}</h2>{missingTypes.length > 0 && <span>{missingTypes.length}</span>}</header>
       {missingTypes.map((item) => <div key={item.type} className='tax-item'>
         <b>{item.title} — за {item.periods.map(monthName).join(', ')}</b>
         <p className='tax-muted inline-flex items-center gap-1.5'>{item.source}<More><p>{item.instruction}</p></More></p>
         <details className='tax-details group mt-2'><summary className='inline-flex'><span className='admin-material-primary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-semibold text-white'>Загрузить файл</span></summary><div className='tax-upload'>{upload({ documentType: item.type, periodKey: item.periods.at(-1)! })}</div></details>
       </div>)}
-      {!missingTypes.length && <div className='tax-item'><p className='tax-muted'>Следующие — после 16 числа</p></div>}
+      {!missingTypes.length && <div className='tax-item'><p className='tax-muted'>{managementReview ? 'Плановый список выполнен. Это не подтверждение полноты дохода или завершения сверки. Следующие плановые выгрузки — после 16 числа.' : 'Следующие — после 16 числа'}</p></div>}
     </section>
     {afterUpload}
 

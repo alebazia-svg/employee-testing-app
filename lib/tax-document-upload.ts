@@ -4,6 +4,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import { taxDocumentTypes } from './tax-document-types';
+import { parseTaxManagementReview } from './tax-management-review';
 
 export const MAX_TAX_DOCUMENT_BYTES = 12 * 1024 * 1024;
 
@@ -44,6 +45,17 @@ function parseRussianDate(value: unknown) {
 
 export async function detectTaxDocumentCoverage(input: { documentType: string; periodKey: string; originalName: string; bytes: Uint8Array; extension: string }) {
   const fallback = { coverageFrom: input.periodKey, coverageTo: input.periodKey, detected: false, note: 'Период подтверждён вручную.' };
+  if (input.documentType === 'CORRECTION_EVIDENCE' && input.extension === 'zip' && /^AUSN_management_review_.*\.zip$/i.test(input.originalName)) {
+    try {
+      const archive = await JSZip.loadAsync(input.bytes);
+      const member = archive.file('tax-management-review.json');
+      const size = (member as unknown as { _data?: { uncompressedSize?: number } })?._data?.uncompressedSize;
+      if (member && Number.isSafeInteger(size) && Number(size) <= 256 * 1024) {
+        const review = parseTaxManagementReview(await member.async('string'));
+        if (review) return { coverageFrom: `${review.cutoff.slice(0, 4)}-01`, coverageTo: review.cutoff.slice(0, 7), detected: true, note: 'Период документальной сводки; общий отчёт не пересчитывается.' };
+      }
+    } catch {}
+  }
   if (input.documentType === 'AUSN_CALCULATION') return { coverageFrom: '2026-04', coverageTo: input.periodKey, detected: false, note: 'Диапазон начинается с перехода на АУСН; последний месяц подтверждён вручную.' };
   if (input.documentType === 'AUSN_INCOME' && ['xls', 'xlsx'].includes(input.extension)) {
     try {

@@ -14,6 +14,7 @@ import { RefreshFigures } from '@/components/taxes/RefreshFigures';
 import { TaxDocumentUpload, UploadChanges } from '../(dashboard)/admin/taxes/TaxDocumentUpload';
 import { ownerFullReport, ownerFullReportAfterEns } from './owner-scenario';
 import { parseIncomeEvidence, type IncomeEvidenceReview } from '@/lib/tax-income-evidence';
+import { parseTaxManagementReview, type TaxManagementReview } from '@/lib/tax-management-review';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,14 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   const documents = archive.map(([documentType, coverageFrom, coverageTo, status, originalName, createdAt], index) => ({ id: `preview-${index}`, documentType, coverageFrom, coverageTo, periodKey: coverageTo, status: scenario === 'broken' && index === 0 ? 'PROCESSING_FAILED' : status, originalName, createdAt: new Date(createdAt), uploadedBy: 'Кештова Бэла' }));
   let gaps: FnsGaps | undefined;
   let incomeEvidence: IncomeEvidenceReview | undefined;
+  let managementReview: TaxManagementReview | undefined;
+  if (scenario === 'audit' && process.env.AUSN_PREVIEW_REPORT_PATH) {
+    full = parsePortalReport(await readFile(process.env.AUSN_PREVIEW_REPORT_PATH, 'utf8'), path.basename(process.env.AUSN_PREVIEW_REPORT_PATH));
+  }
+  if (scenario === 'audit' && process.env.AUSN_PREVIEW_MANAGEMENT_PATH) {
+    managementReview = parseTaxManagementReview(await readFile(process.env.AUSN_PREVIEW_MANAGEMENT_PATH, 'utf8'));
+    // Development links stay disabled: preview never impersonates production IDs.
+  }
   if (scenario === 'audit' && process.env.AUSN_PREVIEW_EVIDENCE_PATH) {
     incomeEvidence = parseIncomeEvidence(await readFile(process.env.AUSN_PREVIEW_EVIDENCE_PATH, 'utf8'));
   }
@@ -65,6 +74,7 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   </div>;
   return <AdminIdentityProvider name='Кештова Бэла'><AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>
     <TaxesWorkspace
+      managementReview={managementReview}
       tab={tab}
       base={`/taxes-development-preview?scenario=${scenario}`}
       {...data}
