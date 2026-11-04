@@ -74,3 +74,27 @@ maintenance program; mounted volumes and financial/user history were preserved.
 Rollback image IDs: `sha256:29f92435db1574c30fd5571e508d64acb4dd8a8637a98d597430295b3bf0f8cf`
 and `sha256:e689310bc1aa31ffc537c9120720999ad2efe99a3ef42fea41575fffd75efb74`.
 Final release and postcheck workflows both exited0; health remained `ok:true`.
+
+## Follow-up all-employee audit, 22:00 MSK — unresolved same-minute source gap
+
+Read-only audit of all7 active employees,39 handovers from October24–November4
+(including22 retail handovers), all stored KKM issues and related notification
+lifecycle states found no active false photo requests, no open KKM issues and no
+active ADMIN/employee KKM notifications. The six visible ADMIN attention items
+were unrelated to KKM closure. Zukhra's October27 two-closure history is retained.
+
+However, fresh verification of Zukhra's November3 KKT returned `unavailable`:
+report351 closed19:51, report352 opened/closed19:55; receipt FD3336 also has19:55.
+Direct proxy data explicitly identifies that receipt's `shiftNumber:352`, but
+`normalizePlatformaOfdReceipt` drops this already available field. The1.21.23
+same-minute guard therefore cannot distinguish the legitimate receipt/closure.
+This is a concrete future extra-photo risk, despite current completed workdays
+and saved confirmations correctly producing no active request or owner alert.
+
+Recommended focused correction (not implemented/released by this audit): retain
+and validate the optional OFD receipt fiscal shift number and use exact KKT+FN+
+shift equality to disambiguate equal-minute events. Different/missing/conflicting
+shift identity must retain fallback. Preserve existing historical task/confirmation
+records; do not rewrite Zukhra's saved earlier closing based on later KKT events.
+Evidence: local `output/all-kkm-audit-20261104/production-audit.json` and
+`zuhra-ofd-order.json`. No product/runtime or manual DB changes in this audit.
