@@ -1,10 +1,11 @@
-# Recent connections — approved first stage, local candidate
+# Recent connections — first stage and automatic diagnostics released
 
 Phase: launch hardening / pilot. Owner approved implementation on 4 November
 2026 and requested the real screen before release. After the real-screen review,
 the owner explicitly approved production release of both stages on 4 November.
-Base: origin/design-local-updates 4590581, package version 1.21.23 retained for
-local testing. Choose a new version only during a separately approved release.
+Original local base: origin/design-local-updates 4590581, package 1.21.23.
+Released 5 November (Moscow) as 1.21.28 / 4c49fe8 after explicit release approval.
+Production evidence: `../ops/access-devices-release-20261105.md`.
 
 ## Decision and scope
 
@@ -130,3 +131,32 @@ has not pushed its candidate or deployed. No production names or audit policy
 changed. Do not restart portal-app until the release queue is handed over and
 the verified-image preflight is satisfied. Regenerate any temporary deploy script
 with the final commit/version/baseline, rather than reusing stale /tmp scripts.
+
+
+## Production completion — 5 November 2026 (Moscow)
+
+Released 1.21.28 / 4c49fe8e3fcade136649067fe7cb076346061fcd, runtime includes
+3901900 compatibility fix. Build 2026-11-04T21:03:04.442Z (00:03 Moscow).
+Both public domains, server commit, healthy container and authenticated ADMIN
+interface verified. All seven browser-owner records have the same before/after
+count and SHA256, including names and mappings. No migrations applied.
+
+Current plus two verified reserves existed before build. Owner-approved existing
+retention ran because initial free space was below15GiB; final free space19GiB.
+The first post-deploy bytewise mount comparison stopped on Docker array ordering;
+follow-up compared every full mount object sorted by destination and confirmed
+identical content/permissions. No second build/restart was performed. Env and
+workday-notification/KKM unit pairs unchanged. Final registration succeeded with
+RELEASE_VERIFIED_AND_REGISTERED and FINISH_EXIT=0.
+
+Live verification: seven employees retained; Astemir current cards3→2, Milana3→1;
+Milana's two23October contacts retained and searchable by exact Moscow day;
+ce76a826 found in old history; Mac Бэлы / Mac Аслана / Codex visible unchanged.
+Current Edge automatically reports macOS26.6.2, full browser version and ARM with
+field sources/sample timestamp. Old Mac Аслана value27.0.1 remains in technical
+evidence; legacy source provenance is unconfirmed, not proof that the value is
+wrong. No physical iPhone/Android validation or administrative action audit.
+
+Procurement future-date headings11/12November confirmed without redundant prefix.
+AUSN new Saby correction was not included; its task received the queue after our
+verified image registration. Main checkout dirty files were left untouched.
