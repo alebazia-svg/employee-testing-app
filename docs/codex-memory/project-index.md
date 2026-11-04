@@ -30,13 +30,14 @@ project from scratch.
 ## Read First By Task
 
 - Simple encashment/original phone photos: `cash-photo-simple-candidate-20261105.md`
-  — latest owner-approved LOCAL candidate, not released. Cash-only64MiB,
+  — released/verified1.21.30 /3a6962af. Cash-only64MiB,
   exact originals, separate short financial intent/photo worker, one quiet PWA
   status. Retains the verified-photo/unsafe-memory guards below. Large pending
   photos require a compatible64MiB API during recovery/rollback.
+  Deployment/preservation proof: ../ops/cash-original-photo-release-20261105.md.
 
 - First-photo retention follow-up: `cash-photo-retention-candidate-20261104.md`
-  — owner-approved LOCAL candidate, not released. Verified full-file readback,
+  — included in released/verified1.21.30. Verified full-file readback,
   retained original on IndexedDB refusal, same-file retries and explicit unsafe
   storage warning. Do not confuse this stronger fallback with deployed1.21.24.
 
