@@ -37,3 +37,23 @@ source totals. Authenticated production upload/readback remains pending release.
 Production release and exact sudo authority are pending. Recheck the live
 metadata, deployment branch, runtime commit, storage and verified-image registry
 before assigning a version or deploying. No current production release claimed.
+
+## Owner-approved UX refinement, November4
+
+Owner requested a finished manager-first preview before any release. Current
+candidate3072064 replaces the dense leading table with three source cards and
+an explicit next action. On narrow screens the action precedes the source cards.
+Month rows become labelled mobile cards. All prior overview/income/reconciliation
+blocks, controls, values, forecasts and report sources are preserved inside a
+closed-by-default comparison disclosure, explicitly labelled without PSN.
+Current reconciliation badge counts the new review's unresolved findings; prior
+high-severity counts remain visible in the comparison summary. Open questions
+lead; evidence and completed checks remain expandable. Upload/history behavior
+and all calculation/source contracts are unchanged by this refinement.
+
+Real preview reviewed at desktop and narrow widths: archive open/close, old
+figures/forecast/calculator retention, action-to-reconciliation navigation,
+finding evidence disclosure and all four tabs. No page-level horizontal overflow
+in the mobile overview and income views. Preview explicitly discloses its selected
+archive records and disabled upload/download links. Production document download
+readback remains pending release; no production mutation was performed.
