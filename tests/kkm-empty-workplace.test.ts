@@ -68,3 +68,12 @@ test('replacement workplace reuses real overlapping workdays, including when the
  entries.push({userId:4,startedAt:new Date(date+'T07:00Z'),endedAt:new Date(date+'T16:00Z'),user:{name:'Абшаева Зухра'}});
  assert.equal(await resolveKkmCloseWorkplace(db,5,date),null,'three overlapping employees do not establish a unique replacement workstation');
 });
+
+test('new OFD receipt and second closure confirm the mapped KKT even when both are absent from 1C',async()=>{
+ const s=scenario();
+ s.sources.loadPlatformaOfdReceipts=async()=>({complete:true,checkedAt:'2026-11-01T08:01:00Z',data:[{kktRegistrationNumber:'milana-kkt',fiscalDriveNumber:'fn',fiscalDocumentNumber:'3342',fiscalSign:'123',receiptAt:'2026-11-01T07:50:00Z'}]});
+ const first={kktRegistrationNumber:'milana-kkt',fiscalDriveNumber:'fn',shiftNumber:'82',openedAt:'2026-11-01T07:12:00Z',closedAt:'2026-11-01T07:47:00Z',documentLink:'report-82'};
+ s.setReports([first]);assert.notEqual((await s.verify()).status,'confirmed');
+ s.setReports([first,{...first,shiftNumber:'83',openedAt:'2026-11-01T07:49:00Z',closedAt:'2026-11-01T07:52:00Z'}]);
+ const result=await s.verify();assert.equal(result.status,'confirmed');assert.equal(result.fiscalShiftNumber,'83');assert.equal(result.ofdReceiptRead?.fiscalDocumentNumber,'3342');
+});
