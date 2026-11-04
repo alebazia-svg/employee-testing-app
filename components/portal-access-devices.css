@@ -157,3 +157,26 @@
 .access-identity-warning p { margin-top: 6px; font-size: 13px; line-height: 1.55; }
 .access-name-field select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #d8d0c7; border-radius: 9px; background: white; color: #30363a; }
 .access-last-seen .access-send-warning { display: block; margin-top: 5px; font-size: 12px; font-weight: 500; color: #8c4e20; }
+.access-dormant-content { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 18px; font-size:12px; color:#62696f; }
+.access-dormant-content time { color:#3f454a; font-weight:600; }
+.access-push .access-badge { max-width:100%; }
+.access-badge > svg { flex-shrink:0; }
+.access-toolbar:has(.access-history-search) { align-items:flex-start; }
+.access-toolbar form.access-history-search { width:100%; flex-wrap:wrap; align-items:flex-end; }
+.access-history-search > label:first-of-type { flex:1 0 100%; }
+.access-toolbar .access-search-field { display:flex; flex-direction:column; align-items:stretch; gap:4px; flex:1 1 150px; border:0; border-radius:0; background:transparent; padding:0; color:#62696f; font-size:11px; }
+.access-toolbar .access-search-field:focus-within { outline:none; }
+.access-search-field select, .portal-neutral-design.admin-shell .admin-workspace .access-toolbar .access-search-field input { width:100%; min-width:0; height:44px; padding:8px 10px; border:1px solid #d8d1c8 !important; border-radius:9px; background:white !important; color:#292d31; font-size:13px; }
+.access-search-field input:focus-visible, .access-search-field select:focus-visible { outline:2px solid #97623c !important; outline-offset:2px; }
+.access-search-error { padding:12px; margin:0 0 12px; color:#86520d; background:#fff0d7; border-radius:9px; font-size:13px; }
+@media(max-width:600px) {
+  .access-dormant-content { flex-direction:column; align-items:stretch; padding:12px 14px; }
+  .access-history-search .access-secondary { flex:1 0 auto; text-align:center; }
+  .access-toolbar .access-search-field { flex-basis:calc(50% - 8px); }
+  .access-toolbar .access-search-field:first-of-type { flex-basis:100%; }
+}
+
+.access-device-note { margin:14px 0; font-size:12px; line-height:1.6; color:#62696f; }
+.access-facts dt { flex-shrink:0; max-width:45%; }
+.access-facts dd { min-width:0; overflow-wrap:anywhere; }
+.access-facts dd .access-note { font-weight:400; }

@@ -56,7 +56,7 @@ test('ADMIN page authorizes before journal reads and never selects auth hashes o
     'next/navigation': { redirect: (path: string) => { throw Error(`redirect:${path}`); } },
     'react/jsx-runtime': { jsx: (...args: any[]) => args, jsxs: (...args: any[]) => args },
     '@/lib/auth': { getCurrentUser: async () => user },
-    '@/lib/prisma': { prisma: { portalAccessSession: { findMany: async (q: any) => { queries.push(q); return []; } } } },
+    '@/lib/prisma': { prisma: { portalAccessSession: { findMany: async (q: any) => { queries.push(q); return []; } }, portalAccessBrowserOwner: { findMany: async () => [] } } },
     '@/components/AdminShell': { AdminShell: () => null },
     '@/components/admin/AdminPageHeader': { AdminPageHeader: () => null },
     '@/components/PortalAccessDevices': { PortalAccessDevices: () => null },

@@ -4,19 +4,20 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Monitor, Smartphone, Search, Check, BellOff, Clock3, X, ChevronRight } from 'lucide-react';
 import type { AccessJournalRow } from './PortalAccessJournal';
-import { accessPushView, accessWhen, groupAccessRows, accessLatestVisits, accessOverviewRows, groupServiceConnections, accessNotificationDetail, accessModeLabel, accessLastPushView, accessRecentPushFailure, accessIsAdministrative, accessSystemLabel } from '../lib/portal-access-view';
+import { accessPushView, accessWhen, groupAccessRows, accessLatestVisits, accessOverviewRows, groupServiceConnections, accessNotificationDetail, accessModeLabel, accessLastPushView, accessRecentPushFailure, accessIsAdministrative, accessSystemLabel, accessHasRecentContact, accessMatchesSearch, accessNotificationLabel } from '../lib/portal-access-view';
 import { startVisibleSync } from '../lib/visible-sync';
 import { appUpdateStatus } from '../lib/portal-app-update-view';
 import type { AppRelease } from '../lib/employee-app-update';
 import { accessConnectionCode } from '../lib/portal-access-identity';
-import { reportedSystem, connectionMismatch } from '../lib/portal-device-observation';
+import { deviceSystemSummary, deviceSystemExplanation, deviceSourceLabel, connectionMismatch } from '../lib/portal-device-observation';
+import type { AccessHistoryFilters } from '../lib/portal-access-search';
 
 function connectionAppStatus(row: AccessJournalRow, release: AppRelease | null | undefined, now: Date) {
   if (connectionMismatch(row.browserInstanceId, row.observedBrowserId)) return { label: 'Требует сверки', reason: 'Показана прежняя версия сеанса. До сверки подключения нельзя подтвердить его текущую версию или отправить команду обновления.', tone: 'unknown', canRequest: false, needsUpdate: false };
   return appUpdateStatus(row.appUpdate, release, now);
 }
 
-export type AccessDevicesProps = { rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string, linkSessionId?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
+export type AccessDevicesProps = { historyFilters?: AccessHistoryFilters; rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string, linkSessionId?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
 
 export function PortalAccessDevices(props: AccessDevicesProps) {
   const router = useRouter();
@@ -136,7 +137,7 @@ function AppUpdateDetails({ row, now, currentRelease, onRequest }: { row: Access
 function PushBadge({ row, now }: { row: AccessJournalRow; now: Date }) {
   const push = accessNotificationDetail(row, now);
   const Icon = push.tone === 'ok' ? Check : push.tone === 'warning' ? BellOff : Clock3;
-  return <span className={`access-badge access-badge-${accessIsAdministrative(row) && push.tone !== 'ok' ? 'unknown' : push.tone}`}><Icon size={14} aria-hidden />{push.label}</span>;
+  return <span className={`access-badge access-badge-${accessIsAdministrative(row) && push.tone !== 'ok' ? 'unknown' : push.tone}`}><Icon size={14} aria-hidden />{accessNotificationLabel(row, now)}</span>;
 }
 
 function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row: AccessJournalRow; now: Date; onClose: () => void; extra?: React.ReactNode; settings?: React.ReactNode; snapshot?: boolean }) {
@@ -158,11 +159,13 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
       {row.connectionLabel ? <p className='access-note'>Название подтверждено администратором · {row.device}. Оно не определяет, кто именно пользовался устройством.</p> : row.role === 'ADMIN' || row.adminObserved ? <p className='access-note'>Владелец не подтверждён. Аккаунт администратора сам по себе не определяет человека.</p> : null}
       {row.adminObserved && row.role !== 'ADMIN' ? <p className='access-note'>Этот же идентификатор браузера замечен под администратором. Это подтверждает использование разных кабинетов, но не личность человека.</p> : null}
       {extra}
+      {!row.deviceObservation ? <p className='access-note'>Подробные характеристики для этой записи не сохранены. В старых версиях портал собирал только тип устройства и браузера.</p> : !row.deviceObservation.platformVersion || !row.deviceObservation.browserVersion ? <p className='access-note'>Браузер сообщил не все версии системы и приложения. Показаны только полученные сведения.</p> : null}
+      {row.deviceObservation ? <p className='access-device-note'>{deviceSystemExplanation(row.deviceObservation)}</p> : null}
       <dl className='access-facts'>
         <div><dt>Устройство</dt><dd>{row.device}</dd></div>
-        <div><dt>Система по данным браузера</dt><dd>{reportedSystem(row.deviceObservation) ?? accessSystemLabel(row.device) ?? 'Не определена'}</dd></div>
-        <div><dt>Браузер</dt><dd>{row.browser}{row.deviceObservation?.browserVersion ? ` ${row.deviceObservation.browserVersion}` : ''}</dd></div>
-        {row.deviceObservation?.model ? <div><dt>Модель по данным браузера</dt><dd>{row.deviceObservation.model}</dd></div> : null}
+        <div><dt>Система по данным браузера</dt><dd>{deviceSystemSummary(row.deviceObservation) ?? accessSystemLabel(row.device) ?? 'Не определена'}</dd></div>
+        <div><dt>Браузер</dt><dd>{row.browser}{row.deviceObservation?.browserVersion ? <>{` ${row.deviceObservation.browserVersion}`}<small className='block access-note'>{deviceSourceLabel(row.deviceObservation, 'browserVersion')}</small></> : null}</dd></div>
+        {row.deviceObservation?.model ? <div><dt>Модель по данным браузера</dt><dd>{row.deviceObservation.model}<small className='block access-note'>{deviceSourceLabel(row.deviceObservation, 'model')}</small></dd></div> : null}
         <div><dt>Последнее обращение к порталу</dt><dd>{accessWhen(row.lastSeenAt, now)}</dd></div>
         {row.lastInteractionAt ? <div><dt>Действие в окне портала</dt><dd>{accessWhen(row.lastInteractionAt, now)}<small className='block access-note'>По сообщению браузера · не определяет, кто пользовался устройством</small></dd></div> : null}
         {row.loginAt ? <div><dt>Последняя авторизация</dt><dd>{accessWhen(row.loginAt, now)}</dd></div> : null}
@@ -175,7 +178,9 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
         {row.contextCheckedAt ? <div><dt>Способ открытия проверен</dt><dd>{accessWhen(row.contextCheckedAt, now)}</dd></div> : null}
         {row.observedOrigin ? <div><dt>Адрес портала при последней связи</dt><dd className='break-all'>{row.observedOrigin}</dd></div> : null}
         <div><dt>Идентификатор впервые закреплён</dt><dd>{row.identityBoundAt ? accessWhen(row.identityBoundAt, now) : 'Время не записано'}<small className='block access-note'>Не подтверждает устройство для более ранних входов</small></dd></div>
-        {row.deviceCheckedAt ? <div><dt>Характеристики получены</dt><dd>{accessWhen(row.deviceCheckedAt, now)} · {row.deviceObservation?.source === 'client-hints' ? 'Расширенные сведения браузера' : 'Описание браузера; версии могут быть ограничены'}</dd></div> : null}
+        {row.deviceCheckedAt ? <div><dt>Характеристики получены</dt><dd>{accessWhen(row.deviceCheckedAt, now)} · {row.deviceObservation?.fieldSources ? 'Источник указан у каждого значения' : row.deviceObservation?.source === 'client-hints' ? 'Старая запись; источники отдельных значений не уточнены' : 'Описание браузера; версии могут быть ограничены'}</dd></div> : null}
+        {row.deviceObservation?.platformVersion ? <div><dt>Переданная версия системы</dt><dd>{row.deviceObservation.platformVersion}<small className='block access-note'>{deviceSourceLabel(row.deviceObservation, 'platformVersion')}</small></dd></div> : null}
+        {row.deviceObservation?.hintsState && ['partial', 'timeout', 'error'].includes(row.deviceObservation.hintsState) ? <div><dt>Расширенная проверка</dt><dd>{row.deviceObservation.hintsState === 'partial' ? 'Браузер передал часть сведений' : row.deviceObservation.hintsState === 'timeout' ? 'Браузер не ответил вовремя' : 'Сведения временно недоступны'}<small className='block access-note'>Автоматические попытки ограничены; часть сведений может быть недоступна</small></dd></div> : null}
         {row.deviceObservation?.architecture ? <div><dt>Архитектура</dt><dd>{row.deviceObservation.architecture}</dd></div> : null}
         {!snapshot ? <div><dt>IP последнего подключения</dt><dd>{row.lastIp ?? 'Ещё не записан'}</dd></div> : null}
         {row.ipCheckedAt ? <div><dt>IP получен</dt><dd>{accessWhen(row.ipCheckedAt, now)}</dd></div> : null}
@@ -195,7 +200,7 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
   </dialog>;
 }
 
-export function PortalAccessDevicesView({ rows, query, history, service = false, page, hasMore, unavailable, nowIso, basePath = '/admin/employees/access', renderDeviceExtra, renderDetailExtra, currentRelease, onRequestUpdate, onSetService, onSetOwner, onRefresh, refreshing, presentation }: AccessDevicesProps) {
+export function PortalAccessDevicesView({ rows, query, history, service = false, page, hasMore, unavailable, nowIso, basePath = '/admin/employees/access', renderDeviceExtra, renderDetailExtra, currentRelease, onRequestUpdate, onSetService, onSetOwner, onRefresh, refreshing, presentation, historyFilters = { from: '', to: '', dateField: 'contact' } }: AccessDevicesProps) {
   const [search, setSearch] = useState(query);
   const [filter, setFilter] = useState<'all' | 'warning' | 'unknown' | 'updates'>('all');
   const [detail, setDetail] = useState<AccessJournalRow | null>(null);
@@ -210,18 +215,21 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
   // A UI snapshot already contains grouped rows and deliberately omits private IDs.
   // Do not invent identifiers or regroup those displayed records by their names.
   const candidates = (snapshot ? rows : accessLatestVisits(rows)).filter(row => accessIsAdministrative(row) === service);
-  const connections = snapshot ? candidates : accessOverviewRows(candidates);
+  const overview = snapshot ? candidates : accessOverviewRows(candidates);
+  const connections = overview.filter(row => accessHasRecentContact(row, now));
+  // Retain the employee, not an obsolete device card or obsolete warning counts.
+  const dormant = service ? [] : groupAccessRows(overview).filter(group => !group.some(row => accessHasRecentContact(row, now))).map(group => group[0]);
   const archivedCount = candidates.length - connections.length;
-  const needle = search.trim().toLocaleLowerCase('ru-RU');
-  const groups = (service ? groupServiceConnections(connections) : groupAccessRows(connections)).filter(group => group.some(row => `${row.name} ${row.login} ${row.device} ${accessSystemLabel(row.device) ?? ''} ${row.browser} ${row.connectionLabel ?? ''}`.toLocaleLowerCase('ru-RU').includes(needle)));
-  const needsAttention = (row: AccessJournalRow) => accessPushView(row, now).tone === 'warning';
-  const needsUpdate = (row: AccessJournalRow) => connectionAppStatus(row, currentRelease, now).needsUpdate;
-  const needsData = (row: AccessJournalRow) => accessPushView(row, now).tone === 'unknown' || Boolean(currentRelease && (!row.appUpdate || (!needsUpdate(row) && connectionAppStatus(row, currentRelease, now).tone === 'unknown')));
+  const groups = (service ? groupServiceConnections(connections) : groupAccessRows([...connections, ...dormant])).filter(group => group.some(row => accessMatchesSearch(row, search)));
+  const needsAttention = (row: AccessJournalRow) => accessHasRecentContact(row, now) && accessPushView(row, now).tone === 'warning';
+  const needsUpdate = (row: AccessJournalRow) => accessHasRecentContact(row, now) && connectionAppStatus(row, currentRelease, now).needsUpdate;
+  const needsData = (row: AccessJournalRow) => !accessHasRecentContact(row, now) || accessPushView(row, now).tone === 'unknown' || Boolean(currentRelease && (!row.appUpdate || (!needsUpdate(row) && connectionAppStatus(row, currentRelease, now).tone === 'unknown')));
   const visible = groups.filter(group => filter === 'all' || group.some(row => filter === 'updates' ? needsUpdate(row) : filter === 'warning' ? needsAttention(row) : needsData(row)));
   const updates = groups.filter(group => group.some(needsUpdate)).length;
   const warning = groups.filter(group => group.some(needsAttention)).length;
   const unknown = groups.filter(group => group.some(needsData)).length;
-  const href = (next: number) => `${basePath}?${new URLSearchParams({ view: 'history', q: query, page: String(next) })}`;
+  const href = (next: number) => `${basePath}?${new URLSearchParams({ view: 'history', q: query, page: String(next), from: historyFilters.from, to: historyFilters.to, dateField: historyFilters.dateField })}`;
+  const employeeHistory = (login: string) => `${basePath}?${new URLSearchParams({ view: 'history', q: login })}`;
   return <section aria-label={history ? 'История входов' : 'Устройства сотрудников'} className='access-screen mx-auto max-w-6xl'>
     <nav className='admin-section-tabs access-tabs' aria-label='Устройства и история'>
       <Link className={`admin-section-tab ${!history && !service ? 'is-active' : ''}`} aria-current={!history && !service ? 'page' : undefined} href={basePath}>Сотрудники</Link>
@@ -233,29 +241,41 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
     </div> : null}
     {notice ? <div role='status' className='access-saved'><Check size={17} aria-hidden /><span>{notice}</span><button type='button' aria-label='Скрыть подтверждение' onClick={() => setNotice('')}><X size={17} /></button></div> : null}
     {!history && service ? <p className='access-period'>Подтверждённые устройства и отдельные подключения. Внутри — браузеры и кабинеты, которые из них открывали.</p> : null}
-    <div className='access-toolbar'><form method='get' action={basePath} onSubmit={history ? undefined : e => e.preventDefault()}>
+    <div className='access-toolbar'><form key={`${historyFilters.from}:${historyFilters.to}:${historyFilters.dateField}`} className={history ? 'access-history-search' : undefined} method='get' action={basePath} onSubmit={history ? undefined : e => e.preventDefault()}>
       {history ? <input type='hidden' name='view' value='history' /> : null}
-      <label><Search size={17} aria-hidden /><span className='sr-only'>Поиск сотрудника или устройства</span><input name='q' value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder='Сотрудник, телефон или браузер' /></label>
-      {history ? <button type='submit' className='access-secondary'>Найти</button> : null}
+      <label><Search size={17} aria-hidden /><span className='sr-only'>Поиск сотрудника или устройства</span><input name='q' value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder='Имя, устройство или код подключения' /></label>
+      {history ? <>
+        <label className='access-search-field'><span>Искать по дате</span><select name='dateField' defaultValue={historyFilters.dateField}><option value='contact'>Последняя связь</option><option value='login'>Авторизация</option></select></label>
+        <label className='access-search-field'><span>С даты</span><input type='date' name='from' defaultValue={historyFilters.from} /></label>
+        <label className='access-search-field'><span>По дату включительно</span><input type='date' name='to' defaultValue={historyFilters.to} /></label>
+        <button type='submit' className='access-secondary'>Найти</button>
+        {query || historyFilters.from || historyFilters.to || historyFilters.error ? <Link className='access-secondary' href={`${basePath}?view=history`}>Сбросить поиск</Link> : null}
+      </> : null}
     </form>{!history && !unavailable ? <span className='access-note'>{service ? 'Подключений' : 'Сотрудников'}: {groups.length}</span> : null}{onRefresh ? <button className='access-secondary' title={`Сведения: ${accessWhen(nowIso, now)}. Обновляются автоматически.`} disabled={refreshing} onClick={onRefresh}>{refreshing ? 'Обновляем…' : 'Обновить'}</button> : null}</div>
+    {history && historyFilters.error ? <p role='alert' className='access-search-error'>{historyFilters.error}</p> : null}
+    {!history ? <p className='access-period'>Подключения с обращениями за последние 7 дней. Более старые записи доступны в истории и вернутся сюда при новой связи.</p> : null}
     {unavailable ? <p role='alert' className='access-unavailable'>Журнал временно недоступен. Это не означает, что сотрудники вышли из портала или отключили уведомления.</p> : <>
       {!history ? <>
         {!service ? <>
         <label className='access-mobile-filter'><span className='sr-only'>Показать подключения</span><select value={filter} onChange={e => setFilter(e.target.value as typeof filter)}>
-          <option value='all'>Все сотрудники</option><option value='warning'>Не подключены · {warning}</option><option value='unknown'>Нет свежих данных · {unknown}</option>
-          {currentRelease ? <option value='updates'>Нужно обновить · {updates}</option> : null}
+          <option value='all'>Все сотрудники</option><option value='warning'>Уведомления не подключены · {warning}</option><option value='unknown'>Нет свежих данных · {unknown}</option>
+          {currentRelease ? <option value='updates'>Доступно обновление · {updates}</option> : null}
         </select></label>
         <div className='access-filters' aria-label='Фильтр подключений'>
           <button type='button' aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>Все сотрудники</button>
-          <button type='button' aria-pressed={filter === 'warning'} onClick={() => setFilter('warning')}>Не подключены <span className={warning ? 'access-count-warning' : ''}>{warning}</span></button>
+          <button type='button' aria-pressed={filter === 'warning'} onClick={() => setFilter('warning')}>Уведомления не подключены <span className={warning ? 'access-count-warning' : ''}>{warning}</span></button>
           <button type='button' aria-pressed={filter === 'unknown'} onClick={() => setFilter('unknown')}>Нет свежих данных <span>{unknown}</span></button>
-          {currentRelease ? <button type='button' aria-pressed={filter === 'updates'} onClick={() => setFilter('updates')}>Нужно обновить <span className={updates ? 'access-count-warning' : ''}>{updates}</span></button> : null}
+          {currentRelease ? <button type='button' aria-pressed={filter === 'updates'} onClick={() => setFilter('updates')}>Доступно обновление <span>{updates}</span></button> : null}
         </div>
         </> : null}
         <div className='access-accounts'>{visible.map(group => {
+          if (!service && !accessHasRecentContact(group[0], now)) return <section className='access-account access-dormant' key={group[0].login} aria-label={group[0].name}>
+            <header className='access-account-header'><h2>{group[0].name}</h2><span>Нет обращений более 7 дней</span></header>
+            <div className='access-dormant-content'><p>Последняя связь: <time dateTime={group[0].lastSeenAt}>{accessWhen(group[0].lastSeenAt, now)}</time></p><Link className='access-detail-button' href={employeeHistory(group[0].login)}>Открыть историю<ChevronRight size={14} aria-hidden /></Link></div>
+          </section>;
           return <section className='access-account' key={service ? group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
             <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${[...new Set(group.map(r => r.browser))].join(', ')} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span></header>
-            <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Был в портале</span><span>Уведомления</span><span>Версия портала</span><span /></div>
+            <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Последняя связь</span><span>Уведомления</span><span>Версия портала</span><span /></div>
             {group.map(row => {
               const Icon = /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
               const sameNames = group.filter(other => other.device === row.device && other.browser === row.browser)
@@ -263,27 +283,27 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
               const version = connectionAppStatus(row, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
-                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[reportedSystem(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
-                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
+                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[deviceSystemSummary(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
+                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Последняя связь</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
                 <div className='access-push'><PushBadge row={row} now={now} />{!service && accessRecentPushFailure(row, now) ? <p className='access-send-warning'>Последняя отправка не подтверждена</p> : null}</div>
                 <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>
                 <button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}, подключение ${number}`}>Подробнее<ChevronRight size={14} aria-hidden /></button>
               </article>;
             })}
           </section>;
-        })}{!visible.length ? <div className='access-empty'>{connections.length ? <><h2>Нет совпадений</h2><p>Измените поиск или выберите «Все сотрудники».</p><button type='button' className='access-secondary' onClick={() => { setFilter('all'); setSearch(''); }}>Сбросить фильтры</button></> : <><h2>{service ? 'Администраторских подключений пока нет' : 'Посещений пока нет'}</h2><p>{service ? 'Здесь появятся подключения администраторов и отмеченные проверки.' : 'Записи появятся после открытия портала сотрудниками.'}</p></>}</div> : null}</div>
-        {archivedCount > 0 ? <p className='access-note mt-3'>Предыдущие записи ({archivedCount}) сохранены в <Link className='underline' href={`${basePath}?view=history`}>истории входов</Link>.</p> : null}
+        })}{!visible.length ? <div className='access-empty'>{overview.length && (search.trim() || filter !== 'all') ? <><h2>Нет совпадений</h2><p>Измените поиск или выберите «Все сотрудники».</p><button type='button' className='access-secondary' onClick={() => { setFilter('all'); setSearch(''); }}>Сбросить фильтры</button></> : <><h2>{service ? 'За последние 7 дней подключений нет' : 'Посещений пока нет'}</h2><p>{service ? 'Предыдущие подключения доступны в истории. При новой связи они появятся здесь автоматически.' : 'Записи появятся после открытия портала сотрудниками.'}</p></>}</div> : null}</div>
+        {archivedCount > 0 ? <p className='access-note mt-3'>Записи вне текущего списка ({archivedCount}) сохранены в <Link className='underline' href={`${basePath}?view=history`}>истории входов</Link>.</p> : null}
       </> : <div className='access-history'>
         <div className='access-history-title'><h2>История входов и подключений</h2><p>Здесь остаются и старые подключения. Вход — авторизация; связь — последнее обращение портала. Записи не удаляются, подписки не отключаются.</p></div>
-        <div className='access-history-head' aria-hidden><span>Сотрудник</span><span>Устройство</span><span>Вход</span><span>Выход</span></div>
-        {rows.map(row => <article key={row.id} className='access-history-row'><div><h3>{row.name}</h3><p>{row.login}{row.isService ? ' · Служебное' : ''}</p></div><div><p>{row.connectionLabel || row.device} · {row.browser}</p>{accessSystemLabel(row.device) ? <p className='access-note'>{accessSystemLabel(row.device)}</p> : null}<p className='access-note'>Связь: {accessWhen(row.lastSeenAt, now)}</p><button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}`}>Уведомления и подробности</button></div>
-          <div><span className='access-mobile-label'>Вход</span>{row.loginAt ? accessWhen(row.loginAt, now) : 'Не зафиксирован'}</div>
-          <div><span className='access-mobile-label'>Выход</span>{row.loggedOutAt ? accessWhen(row.loggedOutAt, now) : new Date(row.expiresAt) <= now ? 'Срок входа истёк' : 'Не зафиксирован'}</div>
-        </article>)}{!rows.length ? <p className='access-empty'>{query ? 'Совпадений нет. Измените поиск.' : 'Записей пока нет.'}</p> : null}
+        <div className='access-history-head' aria-hidden><span>Сотрудник</span><span>Устройство</span><span>Авторизация</span><span>Завершение</span></div>
+        {rows.map(row => <article key={row.id} className='access-history-row'><div><h3>{row.name}</h3><p>{row.login}{row.isService ? ' · Служебное' : ''}</p></div><div><p>{row.connectionLabel || row.device} · {row.browser}</p>{accessSystemLabel(row.device) ? <p className='access-note'>{accessSystemLabel(row.device)}</p> : null}<p className='access-note'>Связь: {accessWhen(row.lastSeenAt, now)}</p><button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}`}>Подробнее</button></div>
+          <div><span className='access-mobile-label'>Авторизация</span>{row.loginAt ? accessWhen(row.loginAt, now) : 'Не зафиксирован'}</div>
+          <div><span className='access-mobile-label'>Завершение</span>{row.loggedOutAt ? accessWhen(row.loggedOutAt, now) : new Date(row.expiresAt) <= now ? 'Срок входа истёк' : 'Не зафиксирован'}</div>
+        </article>)}{!rows.length ? <p className='access-empty'>{historyFilters.error ? 'Укажите корректный период и повторите поиск.' : query || historyFilters.from || historyFilters.to ? 'Совпадений нет. Измените поиск или период.' : 'Записей пока нет.'}</p> : null}
       </div>}
       {history && (page > 1 || hasMore) ? <nav aria-label='Страницы истории' className='access-pagination'>{page > 1 ? <Link href={href(page - 1)}>Назад</Link> : null}<span>Страница {page}</span>{hasMore ? <Link href={href(page + 1)}>Далее</Link> : null}</nav> : null}
     </>}
-    <p className='access-footnote'>Время московское. «Был в портале» — последнее обращение приложения или вкладки, в том числе автоматическое. Это не означает, что сотрудник сейчас онлайн.</p>
+    <p className='access-footnote'>Время московское. «Последняя связь» — последнее обращение приложения или вкладки, в том числе автоматическое. Это не означает, что сотрудник сейчас онлайн.</p>
     {namingCurrent && currentConnection && onSetOwner ? <CurrentConnectionNaming row={currentConnection} onSave={onSetOwner} onClose={() => setNamingCurrent(false)} onDone={() => saved('Название сохранено. Входы из этого подключения под сотрудниками отделены. Доступ и уведомления не изменены.')} /> : null}
     {detail ? <ConnectionHelp row={detail} now={now} snapshot={snapshot}
       extra={<>
