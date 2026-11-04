@@ -1,3 +1,4 @@
+import { fetchSabyOfdJson } from './saby-ofd-transport';
 import 'server-only';
 import process from 'node:process';
 
@@ -110,6 +111,7 @@ type SabyOfdConfig = {
   appSecret: string;
   secretKey: string;
   requestTimeoutMs: number;
+  networkAttempts?: number;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -207,28 +209,6 @@ function extractSid(payload: unknown) {
   return candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ?? '';
 }
 
-async function fetchJson(url: string, init: RequestInit, timeoutMs: number) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...init, signal: controller.signal, cache: 'no-store' });
-    const text = await response.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { text: text.slice(0, 500) };
-      }
-    }
-
-    return { response, data };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function tokenRequest(config: SabyOfdConfig, contentType: 'json' | 'form') {
   const url = `${config.baseUrl}${TOKEN_PATH}`;
   const body =
@@ -244,7 +224,7 @@ async function tokenRequest(config: SabyOfdConfig, contentType: 'json' | 'form')
           secret_key: config.secretKey,
         }).toString();
 
-  return fetchJson(
+  return fetchSabyOfdJson(
     url,
     {
       method: 'POST',
@@ -254,7 +234,8 @@ async function tokenRequest(config: SabyOfdConfig, contentType: 'json' | 'form')
       },
       body,
     },
-    config.requestTimeoutMs
+    config.requestTimeoutMs,
+    config.networkAttempts
   );
 }
 
@@ -327,13 +308,14 @@ async function restProbe(
   if (auth.sid) headers.Cookie = `sid=${auth.sid}`;
   if (auth.accessToken) headers['X-SBISAccessToken'] = auth.accessToken;
 
-  const { response, data } = await fetchJson(
+  const { response, data } = await fetchSabyOfdJson(
     `${OFD_API_BASE_URL}${path}`,
     {
       method: 'GET',
       headers,
     },
-    config.requestTimeoutMs
+    config.requestTimeoutMs,
+    config.networkAttempts
   );
 
   return {
@@ -821,7 +803,7 @@ function normalizedReceiptForExport(receipt: JsonRecord, analysis: ReceiptAnalys
 }
 
 export async function exportSabyOfdReceipts(options: SabyOfdReceiptExportOptions = {}) {
-  const config = readConfig();
+  const config = { ...readConfig(), networkAttempts: 3 };
   const missing = missingConfig(config);
   const steps: ProbeStep[] = [];
   const errors: string[] = [];
