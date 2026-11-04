@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OFD cash shift closures every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00 Europe/Moscow
+Persistent=false
+AccuracySec=5s
+Unit=offonika-kkm-close-refresh.service
+
+[Install]
+WantedBy=timers.target

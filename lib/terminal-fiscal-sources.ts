@@ -395,6 +395,8 @@ export async function loadPlatformaOfdReceipts(input: {
 }, dependencies: {
   fetchJson?: typeof fetchJson;
   sleep?: (milliseconds: number) => Promise<void>;
+  attempts?: number;
+  timeoutMs?: number;
 } = {}): Promise<SourceSnapshot<OfdReceipt>> {
   const checkedAt = new Date().toISOString();
   const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
@@ -403,9 +405,9 @@ export async function loadPlatformaOfdReceipts(input: {
   const request = dependencies.fetchJson ?? fetchJson;
   const sleep = dependencies.sleep ?? ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   let latest: SourceSnapshot<OfdReceipt> = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < (dependencies.attempts ?? 3); attempt += 1) {
     try {
-      const { response, body } = await request(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, { headers: { Accept: 'application/json' } });
+      const { response, body } = await request(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, { headers: { Accept: 'application/json' }, ...(dependencies.timeoutMs?{signal:AbortSignal.timeout(dependencies.timeoutMs)}:{}) });
       const root = record(body);
       if (!response.ok || !root) {
         latest = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
@@ -426,7 +428,7 @@ export async function loadPlatformaOfdReceipts(input: {
     } catch {
       latest = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
     }
-    if (latest.complete || attempt === 2) return latest;
+    if (latest.complete || attempt === (dependencies.attempts ?? 3)-1) return latest;
     await sleep((attempt + 1) * 1_000);
   }
   return latest;

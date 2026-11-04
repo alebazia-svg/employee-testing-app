@@ -34,6 +34,14 @@ project from scratch.
   receipt and explicit ADMIN recovery; automatic financial retries stay disabled.
   Additive migration and compatible rollback require a separate release gate.
 
+- Durable OFD closure proof: `../ops/kkm-durable-close-release-20261104.md` —
+  released/verified1.21.23 / c42dd3e. Dedicated minute collector is installed,
+  enabled and verified running on schedule; exact KKT/FN/shift observations
+  persist across empty replies/restarts. Direct OFD receipts guard reopening
+  before1C catches up. Photo/not-printed fallback remains. Preserve the separate
+  collector unit and existing notification dispatcher; app-only deployment is
+  insufficient. See the candidate note for architecture/tests/rollback boundaries.
+
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
   every normal department shift remains selectable. Combined with Procurement
