@@ -87,3 +87,17 @@ task's dev process was moved to explicit127.0.0.1:3258; the other process was no
 touched. Current preview: /taxes-development-preview?scenario=audit on3258.
 Focused tests now cover date confirmation, posted evidence and independent
 accounting-model totals. Deployment and production upload still await approval.
+
+Changed source files for this preview refinement:
+- components/taxes/TaxManagementReview.tsx
+- components/taxes/TaxesWorkspace.tsx
+- components/taxes/taxes.css
+- components/taxes/RefreshFigures.tsx
+- app/taxes-development-preview/page.tsx
+- app/(dashboard)/admin/taxes/page.tsx
+- lib/tax-health.ts
+- lib/tax-management-review.ts
+- tests/tax-management-review.test.tsx
+
+Final owner-correction validation: production build passed; 19 focused tests
+passed. Source documents and canonical report calculations were not rewritten.
