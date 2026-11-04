@@ -29,10 +29,16 @@ project from scratch.
 
 ## Read First By Task
 
+- Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
+  — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
+  every normal department shift remains selectable. Combined with Procurement
+  personal reminders; financial matching and historical shifts preserved.
+
 - Procurement personal schedule reminders: `procurement-schedule-reminders-20261104.md`
-  — owner-approved local candidate. Same today/tomorrow completion, one daily
-  cycle and native day editor for both Procurement cabinets; no staffing,
-  shift-selection or salary changes. Not released.
+  — released/verified1.21.22 /5a7e8d3. Same today/tomorrow completion, one daily
+  cycle and native day editor for both Procurement cabinets; no staffing or
+  salary changes. In-app reminders confirmed for both; Astemir push accepted,
+  Muhamed device subscription not confirmed (see combined release evidence).
 
 - ADMIN team calendar: `../ops/team-calendar-release-20261103.md` — released/verified
   1.21.20 / c93687b. Includes active Procurement employees. A genuinely empty

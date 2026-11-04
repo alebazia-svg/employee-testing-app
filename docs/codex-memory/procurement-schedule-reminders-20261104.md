@@ -1,8 +1,10 @@
-# Procurement personal schedule reminders — local candidate, 2026-11-04
+# Procurement personal schedule reminders — released 1.21.22, 2026-11-04
 
 Owner explicitly approved giving Astemir and Muhamed the same personal schedule
-completion reminders as other employees. Prepared and verified locally; no
-production release, version increment or production notification dispatch.
+completion reminders as other employees. Released with the approved shift picker
+in1.21.22 /5a7e8d3. Final production verification and delivery limits are recorded
+in workday-shift-choice-candidate-20261104.md; the sections below retain the
+initial isolated verification evidence.
 
 ## Approved behavior and boundaries
 
@@ -79,6 +81,8 @@ These are existing production changes, not writes made by this candidate.
 The current start picker opens after QR, but the complete one-person Retail plan
 normally permits only09_20 unless an already-recorded colleague supplies a paired
 shift. An unrecorded/shiftless morning helper does not supply that evidence.
-This explains why an open picker can still offer no actual choice. Any proposal
-to change this accepted shift-selection restriction is separate and unimplemented;
-do not infer a later planned start merely from a late actual QR mark.
+This explains why an open picker can still offer no actual choice. The owner
+subsequently approved free department-shift choice with an optional suggestion;
+see workday-shift-choice-candidate-20261104.md for the approved combined release
+and real production verification. Do not infer a later planned start merely from a
+late actual QR mark. No historical production shifts were changed here.
