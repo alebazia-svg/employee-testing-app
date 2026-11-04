@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Independent cash intent / resumable original photo: `cash-intent-photo-candidate-20261104.md`
+  — local candidate only. Same-amount transfers, request identity, independent photo
+  receipt and explicit ADMIN recovery; automatic financial retries stay disabled.
+  Additive migration and compatible rollback require a separate release gate.
+
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
   every normal department shift remains selectable. Combined with Procurement
