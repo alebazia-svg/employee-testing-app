@@ -57,3 +57,33 @@ finding evidence disclosure and all four tabs. No page-level horizontal overflow
 in the mobile overview and income views. Preview explicitly discloses its selected
 archive records and disabled upload/download links. Production document download
 readback remains pending release; no production mutation was performed.
+
+## Owner corrections after preview, November4
+
+Owner confirmed that October22 was already agreed with the accountant. The
+private review now records this owner-reported confirmation explicitly; it does
+not invent a submitted notification, FNS ruling or accountant attachment. UI no
+longer asks to agree the date again. The preliminary payment reconciliation is
+still distinguished from that agreed FNS-export date and retains its limitations.
+
+The third main value is the existing 1C/bank+KKT accounting-model income with the
+same book-backed Q1 baseline added for annual comparison. It is labelled as a
+comparison model, not a pure standalone 1C extract or certified actual income.
+The original runner/report is unchanged and included in the private evidence
+bundle. Optional accounting evidence lists the five posted realizations, cash
+parts, bank amounts for matching, missing direct fiscal links and suggested
+checks. It does not infer that an unlinked receipt was never issued or that FNS
+necessarily omitted the income.
+
+Read-only systemctl verification: existing offonika-ausn-refresh.timer is active,
+hourly08:10–21:10 Moscow; last November4 21:10 attempt failed (exit1). Separate
+canonical read failed waiting for OFD. No timer/service/secrets changes or restarts
+were made. UI explains automatic accounting-report refresh, dated documentary
+FNS review, last successful run and optional retry; removes speculative Mac
+sleep guidance and incorrect every-morning/every-file wording.
+
+Port3244 was concurrently used by an unrelated worktree on IPv4. Only this
+task's dev process was moved to explicit127.0.0.1:3258; the other process was not
+touched. Current preview: /taxes-development-preview?scenario=audit on3258.
+Focused tests now cover date confirmation, posted evidence and independent
+accounting-model totals. Deployment and production upload still await approval.
