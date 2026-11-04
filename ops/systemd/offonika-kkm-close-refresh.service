@@ -1,0 +1,11 @@
+[Unit]
+Description=Prefetch OFD cash shift closure proof and reconcile pending closures
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-kkm-close-refresh.lock /usr/bin/docker exec -w /app portal-app node --conditions=react-server --import tsx scripts/refresh-kkm-closures.ts
+TimeoutStartSec=3min
+NoNewPrivileges=true
