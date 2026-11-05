@@ -242,3 +242,16 @@ source reconciliation; subjective UI assessment must never certify those. Exact
 sudo authority is still pending. Do not confuse repeated implementation approval
 with sudo/deployment approval. Before any release recheck live/version/branch and
 storage reserves. Current plus rollback images, DB and uploads must be retained.
+
+Final verification: standalone production build passed after the last refinements.
+Preview restarted at3258 and final screenshot manager-nine-final-20261105.png
+captured from the running app. Production remains unchanged; no sudo performed.
+Exact source files in this operational UX step:
+- components/taxes/TaxManagementReview.tsx
+- components/taxes/TaxesWorkspace.tsx
+- components/taxes/taxes.css
+- components/taxes/TaxBriefCopy.tsx
+- components/taxes/TaxOperations.tsx
+- lib/tax-manager-brief.ts
+- tests/tax-operations.test.tsx
+Documentation: this file only. Unrelated node_modules symlink left untouched.
