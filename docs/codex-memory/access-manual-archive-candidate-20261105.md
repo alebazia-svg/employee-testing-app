@@ -3,8 +3,10 @@
 Owner approved removing the three unconfirmed old entries discussed on5November:
 Chrome0de10d6c…, Chrome94efb4eb…, and mismatched Edge50a1b246…. The positively
 matched current Codex389754da… is outside this action. Saved names remain intact.
-Production has NOT been changed by this candidate. New production migration
-approval and a fresh release version/queue check are required before deployment.
+Production has NOT been changed by this candidate. Bela explicitly approved the
+exact additive migration, release and hiding these three browser codes on5November
+(`Хорошо, разрешаем`). Do not ask for the same approval again. A fresh release
+version/queue check is still required before deployment.
 
 ## Design and scope
 
@@ -68,3 +70,21 @@ Physical-phone validation and production migration/deployment remain unperformed
 - prisma/migrations/20261105170000_access_list_archive/migration.sql
 - tests/access-recent-connections.test.tsx
 - tests/access-list-archive.test.ts
+
+## Approved release waiting on the preceding installation
+
+On5November20:42MSK the preceding AUSN1.21.35 installation had stopped at
+`FAILED_background_refresh` after the app itself restarted successfully. Its
+verification/verified-image registration remained incomplete; its follow-up native
+Terminal `Taxes refresh verification` was awaiting Bela's sudo input. Devices
+deployment/migration/production archive writes have NOT started. Do not build
+over an unregistered current image. Also the preceding root checkout left
+`.git/HEAD` and `.git/index` root-owned mode600; the AUSN chat was notified to
+restore these exact files' normal accessibility before the next release.
+
+Authorized queue messages were sent to Procurement and AUSN. Procurement continues
+local work; no parallel deployment was started here. Local branch merged upstream
+1.21.35 at185b578 without conflicts. Build, TypeScript,37UI tests,6server tests
+(including isolated PostgreSQL) and5release metadata tests passed again. No new
+version chosen or release pushed while the queue is blocked. Worktree stayed clean
+except this scoped documentation update; unrelated main-checkout files untouched.
