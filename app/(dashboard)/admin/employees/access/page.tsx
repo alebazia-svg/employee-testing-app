@@ -38,7 +38,7 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
       where: history ? (historyFilters.error ? { id: { in: [] } } : accessHistoryWhere(query, matchingNames.map(r => r.browserInstanceId), historyFilters)) : { user: { isActive: true } },
       orderBy: history ? [{ firstSeenAt: 'desc' }, { id: 'desc' }] : [{ userId: 'asc' }, { firstSeenAt: 'asc' }, { id: 'asc' }],
       ...(history ? { skip: (page - 1) * 50, take: 51 } : {}),
-      select: { id: true, userId: true, device: true, browser: true, browserInstanceId: true, observedBrowserId: true, identityBoundAt: true, observedOrigin: true, deviceObservation: true, deviceCheckedAt: true, lastInteractionAt: true, lastIp: true, ipCheckedAt: true, isService: true, serviceMarkedAt: true, displayMode: true, contextCheckedAt: true, appObservation: true, appCheckedAt: true, appUpdateCommand: true, firstSeenAt: true, loginAt: true, lastSeenAt: true, expiresAt: true, loggedOutAt: true, pushState: true, pushCheckedAt: true, pushSubscriptionId: true,
+      select: { id: true, userId: true, device: true, browser: true, browserInstanceId: true, observedBrowserId: true, identityBoundAt: true, observedOrigin: true, deviceObservation: true, deviceCheckedAt: true, lastInteractionAt: true, lastIp: true, ipCheckedAt: true, isService: true, serviceMarkedAt: true, listArchivedAt: true, displayMode: true, contextCheckedAt: true, appObservation: true, appCheckedAt: true, appUpdateCommand: true, firstSeenAt: true, loginAt: true, lastSeenAt: true, expiresAt: true, loggedOutAt: true, pushState: true, pushCheckedAt: true, pushSubscriptionId: true,
         user: { select: { name: true, login: true, role: true } }, pushSubscription: { select: { userId: true, disabledAt: true, lastPushUserId: true, lastPushAttemptAt: true, lastPushResultAt: true, lastPushOutcome: true, lastPushErrorCode: true } } },
     });
     hasMore = history && records.length > 50;
@@ -53,7 +53,7 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
       const ownership = accessOwnerView(owner?.ownerUserId, r.userId, user.id);
       const mismatched = connectionMismatch(r.browserInstanceId, r.observedBrowserId);
       return { id: r.id, ...r.user, device: r.device, browser: r.browser,
-      browserInstanceId: r.browserInstanceId, isService: !ownership.ownerBrowser && (r.isService || ownership.ownerInspection), serviceMarkedAt: r.serviceMarkedAt?.toISOString() ?? null,
+      browserInstanceId: r.browserInstanceId, isService: !ownership.ownerBrowser && (r.isService || ownership.ownerInspection), serviceMarkedAt: r.serviceMarkedAt?.toISOString() ?? null, listArchivedAt: r.listArchivedAt?.toISOString() ?? null,
       ...ownership,
       canMarkOwner: ownership.canMarkOwner && !mismatched,
       observedBrowserId: r.observedBrowserId, identityBoundAt: r.identityBoundAt?.toISOString() ?? null,

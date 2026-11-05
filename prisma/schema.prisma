@@ -1037,6 +1037,7 @@ model PortalAccessSession {
   isService          Boolean @default(false)
   serviceMarkedAt    DateTime?
   serviceMarkedBy    Int?
+  listArchivedAt     DateTime?
   appObservation     Json?
   appCheckedAt       DateTime?
   appUpdateCommand   Json?

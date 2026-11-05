@@ -19,6 +19,7 @@ export type AccessJournalRow = {
   lastInteractionAt?: string | null;
   isService?: boolean;
   serviceMarkedAt?: string | null;
+  listArchivedAt?: string | null;
   unidentifiedCount?: number;
   ownerInspection?: boolean;
   ownerBrowser?: boolean;

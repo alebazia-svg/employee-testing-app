@@ -71,3 +71,14 @@ test('normal statuses distinguish notifications and contact; history pagination 
   assert.match(html, /from=2026-11-03&amp;to=2026-11-04&amp;dateField=login/);
   assert.match(html, /Сбросить поиск/);
 });
+
+test('manually hidden administrative connection stays in searchable history and returns only after newer contact', () => {
+  const hidden = { ...base, name: 'Администратор', login: 'admin', role: 'ADMIN', device: 'Mac', browser: 'Chrome', listArchivedAt: now.toISOString(), lastSeenAt: new Date(+now - 60000).toISOString() };
+  const named = { ...hidden, id: 'named', browserInstanceId: 'other', connectionLabel: 'Mac Бэлы', listArchivedAt: null };
+  const html = render([hidden, named], false, true);
+  assert.match(html, /Mac Бэлы/); assert.doesNotMatch(render([hidden], false, true), /<article /);
+  assert.match(render([hidden], true), /Убрано из основного списка/);
+  assert.equal(accessMatchesSearch(hidden, hidden.browserInstanceId!), true);
+  assert.equal(accessHasRecentContact(hidden, now), false);
+  assert.equal(accessHasRecentContact({ ...hidden, lastSeenAt: new Date(+now + 1).toISOString() }, new Date(+now + 1)), true);
+});

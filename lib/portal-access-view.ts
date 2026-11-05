@@ -31,10 +31,15 @@ export function accessModeLabel(mode?: string | null) {
 }
 
 export const ACCESS_RECENT_DAYS = 7;
-/** Visibility only: expiry, subscription, ownership and history never change. */
-export function accessHasRecentContact(row: Pick<AccessJournalRow, 'lastSeenAt'>, now: Date) {
+export function accessIsListArchived(row: Pick<AccessJournalRow, 'lastSeenAt' | 'listArchivedAt'>) {
+  const archived = row.listArchivedAt ? Date.parse(row.listArchivedAt) : NaN;
+  const contact = Date.parse(row.lastSeenAt);
+  return Number.isFinite(archived) && Number.isFinite(contact) && contact <= archived;
+}
+/** Visibility only: a new contact returns the connection; history/auth never change. */
+export function accessHasRecentContact(row: Pick<AccessJournalRow, 'lastSeenAt' | 'listArchivedAt'>, now: Date) {
   const at = Date.parse(row.lastSeenAt);
-  return Number.isFinite(at) && at >= now.getTime() - ACCESS_RECENT_DAYS * 86400000 && at <= now.getTime() + 300000;
+  return !accessIsListArchived(row) && Number.isFinite(at) && at >= now.getTime() - ACCESS_RECENT_DAYS * 86400000 && at <= now.getTime() + 300000;
 }
 
 export function accessMatchesSearch(row: AccessJournalRow, query: string) {
