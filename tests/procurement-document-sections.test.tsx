@@ -15,14 +15,16 @@ test('cash and QR cash-out have only receipt section; transfer methods retain re
     assert.match(html,/Чеки оплаты/);
   }
   for(const method of ['USDT','CNY','BANK']){
-    assert.match(render(method),/Прикрепить файл/);
+    assert.match(render(method),/Добавить реквизиты/);
+    assert.doesNotMatch(render(method),/Прикрепить файл/);
     assert.doesNotMatch(render(method),/Не добавлены/);
   }
 });
 test('retained files survive method changes without irrelevant QR checks or new upload actions',()=>{
   for(const method of ['CASH','ACCOUNTABLE_QR']){
     const html=render(method,[legacy]);
-    assert.match(html,/saved.pdf/);
+    assert.match(html,/QR-код для оплаты/);
+    assert.doesNotMatch(html,/saved.pdf/);
     assert.doesNotMatch(html,/Прикрепить файл|Требует проверки|Заменить/);
   }
   assert.doesNotMatch(render('BANK',[legacy]),/Требует проверки/);
@@ -31,7 +33,7 @@ test('retained files survive method changes without irrelevant QR checks or new 
 });
 test('completed payment hides an empty requisites section but preserves saved documents',()=>{
   assert.doesNotMatch(render('USDT',[],true),/Реквизиты для оплаты/);
-  assert.match(render('USDT',[legacy],true),/saved.pdf/);
+  assert.match(render('USDT',[legacy],true),/QR-код для оплаты/);
   assert.doesNotMatch(render('USDT',[legacy],true),/Требует проверки|Прикрепить файл/);
 });
 test('admin has one context-specific request action, no unrelated-method or completed requests',()=>{

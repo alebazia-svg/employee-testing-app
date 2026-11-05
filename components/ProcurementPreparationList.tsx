@@ -1,9 +1,10 @@
 'use client';
 import React from 'react';
+import {ProcurementDailyRates} from './ProcurementDailyRates';
 import {ProcurementAdminList} from './ProcurementAdminList';
 import type {DayPreparation} from '@/lib/procurement-day-preparation';
 import './procurement-preparation-list.css';
-type Props=React.ComponentProps<typeof ProcurementAdminList>&{preparation:Map<string,DayPreparation>};
+type Props=React.ComponentProps<typeof ProcurementAdminList>&{dailyRateCurrencies?:Map<string,string[]>;preparation:Map<string,DayPreparation>};
 const money=(n:number)=>n.toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';
 function dayLabel(group:string|undefined,day:string|null|undefined){
  if(!day)return group;
@@ -11,7 +12,7 @@ function dayLabel(group:string|undefined,day:string|null|undefined){
  if(group==='Предстоящие')return date;
  return group?.includes(date)?group:group?`${group} · ${date}`:date;
 }
-export function ProcurementPreparationList({preparation,items,...props}:Props){
+export function ProcurementPreparationList({preparation,items,dailyRateCurrencies,...props}:Props){
  const days=new Map<string,typeof items>();
  for(const item of items){const r=preparation.get(item.id);const key=(r?.day||'9999')+'|'+(item.group||'');days.set(key,[...(days.get(key)||[]),item]);}
  const ordered:typeof items=[];
@@ -41,7 +42,7 @@ export function ProcurementPreparationList({preparation,items,...props}:Props){
    totals.set(anchor,[...(totals.get(anchor)||[]),total]);
   }
  }
- return <ProcurementAdminList {...props} groupedDates showPreparation items={ordered} renderAfterItem={id=>{
+ return <ProcurementAdminList {...props} groupedDates showPreparation items={ordered} renderGroupAccessory={group=>{const item=ordered.find(p=>p.group===group);const day=item?preparation.get(item.id)?.day:null;const currencies=day?dailyRateCurrencies?.get(day):undefined;return day&&currencies?.length?<ProcurementDailyRates day={day} admin currencies={currencies}/>:null;}} renderAfterItem={id=>{
   return !props.searchQuery?.trim()?totals.get(id)?.map(total=><div key={total.label} className="procurement-prepare-total"><strong>{total.label}</strong><strong>{total.amount===null?'Уточняется':(total.estimated?'≈ ':'')+money(total.amount)}</strong></div>):null;
  }}/>;
 }

@@ -75,6 +75,7 @@ model User {
   procurementPaymentEvents         SupplierPaymentPlanEvent[]
   procurementReceipts              SupplierPaymentReceipt[]
   confirmedProcurementQr           SupplierPaymentReceipt[] @relation("ConfirmedProcurementQr")
+  procurementDailyRates           ProcurementDailyRate[]
   taxDocuments                    TaxControlDocument[]
 }
 
@@ -1694,4 +1695,19 @@ model PayrollDayReview {
 
   @@index([employeeId, periodKey, status])
   @@index([status, submittedAt])
+}
+
+// Immutable confirmations: a new approval appends a revision, never rewrites history.
+model ProcurementDailyRate {
+  id          String   @id @default(cuid())
+  day         DateTime @db.Date
+  currency    String
+  rate        Decimal  @db.Decimal(18, 6)
+  revision    Int
+  actorUserId Int
+  snapshot    Json
+  createdAt   DateTime @default(now())
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([day, currency, revision])
 }
