@@ -8,10 +8,19 @@ export function requisitesShareAmount(plan:Plan):number|null{
  if(e.state==='PARTIALLY_PAID_BY_ONE_C'&&Number(e.remainingForeignAmount)>0&&Number.isFinite(e.remainingForeignAmount))return e.remainingForeignAmount!;
  return null;
 }
+/** Plain decimal for copying into a transfer amount field: no grouping or scientific notation. */
+export function transferAmountText(amount:number){
+ if(!Number.isFinite(amount)||amount<=0)throw Error('Укажите сумму перевода.');
+ const value=amount.toLocaleString('en-US',{useGrouping:false,maximumFractionDigits:8});
+ if(Number(value)<=0)throw Error('Укажите сумму не меньше 0.00000001.');
+ return value;
+}
 /** Only transfer instructions. Supplier, request, comments and rates are excluded by contract. */
 export function requisitesShareText({amount,currency,text,network,hasFile}:{amount:number;currency:string;text:string;network?:string;hasFile:boolean}){
  if(!['CNY','USDT'].includes(currency)||!Number.isFinite(amount)||amount<=0)throw Error('Укажите сумму перевода.');
  const recipient=hasFile?'':text.trim();if(!recipient&&!hasFile)throw Error('Добавьте реквизиты для оплаты.');
  if(currency==='USDT'&&recipient&&!network?.trim())throw Error('Укажите сеть кошелька.');
- return [`${amount.toLocaleString('ru-RU',{maximumFractionDigits:8})} ${currency}`,currency==='USDT'&&recipient?network!.trim():'',recipient].filter(Boolean).join('\n');
+ const plain=transferAmountText(amount);
+ const printable=hasFile?Number(plain).toLocaleString('ru-RU',{maximumFractionDigits:8}):plain;
+ return [`${printable} ${currency}`,currency==='USDT'&&recipient?network!.trim():'',recipient].filter(Boolean).join('\n');
 }

@@ -41,15 +41,3 @@ export async function requisitesImageWithAmount(file: File, transferText: string
     return new File([blob], 'qr-code-with-amount.png', { type: 'image/png' });
   } finally { URL.revokeObjectURL(url); }
 }
-
-/** Text-only requisites become one readable card when included in a multi-payment bundle. */
-export async function requisitesTextImage(text:string):Promise<File>{
- const canvas=document.createElement('canvas');canvas.width=1000;
- const lines=text.split('\n').flatMap(line=>line.match(/.{1,48}/gu)||['']);
- canvas.height=80+lines.length*52;
- const ctx=canvas.getContext('2d');if(!ctx)throw Error('Не удалось подготовить реквизиты.');
- ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';
- lines.forEach((line,i)=>{ctx.font=`${i===0?'600 40px system-ui':'30px monospace'}`;ctx.fillText(line,500,66+i*52,936);});
- const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось подготовить реквизиты.')),'image/png'));
- return new File([blob],'requisites-with-amount.png',{type:'image/png'});
-}
