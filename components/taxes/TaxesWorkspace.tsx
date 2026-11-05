@@ -9,6 +9,7 @@ import { taxDocumentHelp } from '@/lib/tax-document-plan';
 import { LimitScenario } from './LimitScenario';
 import type { LimitOutlook } from '@/lib/ausn-limit-outlook';
 import './taxes.css';
+import { TaxOperations } from './TaxOperations';
 import { TaxLimitEvidencePanel } from './TaxLimitEvidencePanel';
 import { IncomeEvidencePanel } from './IncomeEvidencePanel';
 import type { IncomeEvidenceReview } from '@/lib/tax-income-evidence';
@@ -99,7 +100,7 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
       {taxTabs.map(([key, label]) => <Link key={key} href={tabHref(key)} aria-current={tab === key ? 'page' : undefined} className='admin-section-tab'>{label}{key === 'reconciliation' && highIssues > 0 ? <span className='needs-decision'>{highIssues}</span> : null}{key === 'documents' && missingTypes.length + errors > 0 ? <span className='needs-decision'>{missingTypes.length + errors}</span> : null}</Link>)}
     </nav>
     {props.managementReviewUnavailable && <div className='tax-callout' data-tone='error' role='status'><strong>Документальная сводка недоступна.</strong> Не удалось проверить последний архив или его источники. Прежние расчёты ниже сохранены для сравнения; их остаток не подтверждает возможность новых продаж в пределах АУСН. Проверьте последний архив в «Документах».</div>}
-    {props.managementReview && tab === 'overview' && <TaxManagementOverview review={props.managementReview} base={base} accountingReport={props.full} previousReport={props.previousFull} />}
+    {props.managementReview && tab === 'overview' && <><TaxManagementOverview review={props.managementReview} base={base} accountingReport={props.full} previousReport={props.previousFull} /><TaxOperations review={props.managementReview} report={props.full} base={base} /></>}
     {props.managementReview && tab === 'income' && <><TaxAccountingMonths review={props.managementReview} report={props.full} /><TaxManagementIncome review={props.managementReview} /></>}
     {props.managementReview && tab === 'reconciliation' && <TaxManagementReconciliation review={props.managementReview} />}
     {props.managementReview && tab === 'documents' && <TaxManagementDocuments review={props.managementReview} preview={base.startsWith('/taxes-development-preview')} accountingReport={props.full} />}
