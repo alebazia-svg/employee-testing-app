@@ -54,9 +54,9 @@ export function ProcurementRequisitesEditor({method,supplier,disabled,initialTex
       <div className="requisites-editor-attachment"><span>{qr?'QR-код для оплаты':'Файл с реквизитами'}</span>
         {existingFileName&&!file?<details className="text-sm font-normal text-slate-600"><summary>Текущий файл</summary><p className="mt-2 break-words">{existingFileName}</p></details>:null}
         {file?<div className="requisites-editor-file"><span>{file.name}<small>{procurementFileSize(file.size)}</small></span><button type="button" disabled={busy} className="procurement-receipt-button" onClick={()=>setFile(null)}>Убрать</button></div>:null}
-        <button type="button" disabled={busy} className="procurement-receipt-button" onClick={()=>input.current?.click()}><Paperclip size={16}/>{file?'Заменить файл':qr?'Выбрать QR-код':'Выбрать файл'}</button>
+        <button type="button" disabled={busy} className="procurement-receipt-button" onClick={()=>input.current?.click()}><Paperclip size={16}/>{file?'Заменить':'Выбрать файл'}</button>
+        <p className="text-sm font-normal text-slate-600">JPG, PNG, WebP или PDF · до 10 МБ</p>
       </div>
-      <p className="text-sm text-slate-600">Можно добавить текст, файл или оба варианта. Фото или PDF до 10 МБ.</p>
       {error?<p role="alert" className="text-sm text-red-700">{error}</p>:null}
       {saving?<p role="status" className="text-sm">Сохраняем реквизиты…</p>:null}
       <footer className="requisites-editor-footer"><button type="button" disabled={busy} className="procurement-receipt-button" onClick={onClose}>Отмена</button><button type="submit" className="procurement-receipt-button requisites-editor-save" disabled={busy||!hasChanges||(method==='USDT'&&!!text.trim()&&!network.trim())}>Сохранить</button></footer>
