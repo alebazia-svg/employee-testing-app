@@ -7,16 +7,16 @@ import {procurementFileSize} from '@/lib/procurement-file-size';
 import {Paperclip} from 'lucide-react';
 import type {Receipt,ReceiptPlan} from './ProcurementReceipts';
 import {isPaymentReceipt,qrIsConfirmed,receiptCoverageCount,pendingQrCoversPayment,paymentRequisites,type DocumentPurpose} from '@/lib/procurement-document-policy';
-import {canCollectQrReceiptBeforePayment,hasConfirmedReceiptPayment,needsProcurementReceipt,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
+import {canCollectQrReceiptBeforePayment,hasConfirmedReceiptPayment,needsProcurementReceipt,receiptPaymentAmount,receiptPaymentDate,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
 import {paymentDeferral} from '@/lib/procurement-schedule';
 
-type Props={plan:ReceiptPlan;files:Receipt[];admin:boolean;disabled:boolean;today:string;
+type Props={compactInbox?:boolean;plan:ReceiptPlan;files:Receipt[];admin:boolean;disabled:boolean;today:string;
   onSaveText?:(text:string,network:string,replace?:Receipt)=>Promise<boolean>;
   onRequestQr?:()=>Promise<boolean>;
   onAdd:(files:File[],purpose:DocumentPurpose,replace?:Receipt,refs?:string[])=>Promise<boolean>;
   onChange:(file:Receipt,action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT',purpose?:DocumentPurpose,refs?:string[])=>Promise<boolean>;
   onOpen:(file:Receipt,button:HTMLButtonElement)=>void};
-export function ProcurementDocumentSections({plan,files,admin,disabled,today,onAdd,onChange,onOpen,onRequestQr,onSaveText}:Props){
+export function ProcurementDocumentSections({compactInbox=false,plan,files,admin,disabled,today,onAdd,onChange,onOpen,onRequestQr,onSaveText}:Props){
   const mobile=!!useProcurementMobilePresentation();
   const [editorSource,setEditorSource]=useState<Receipt>(),[copyMessage,setCopyMessage]=useState('');
   const [panel,setPanel]=useState<string>('');
@@ -80,17 +80,20 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
       {panel===`link:${file.id}`?<div className="payment-document-panel">{paymentChoices}<div><button type="button" disabled={disabled||!selected.length} className="procurement-receipt-button" onClick={async()=>{if(await onChange(file,'LINK_PAYMENT',undefined,selected))setPanel('');}}>Связать чек</button><button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div></div>:null}
     </li>;
   })}</ul>;
-  return <div className="payment-document-sections">
+  const paymentDate=[...(plan.evidence?.cashOrders||[]),...(plan.evidence?.currencyPayments||[])].map(p=>receiptPaymentDate(p.date||'')).sort().at(-1);
+  const addReceiptButton=canAddReceipt?<button type="button" disabled={disabled} className="procurement-receipt-button receipt-inbox-add" onClick={chooseReceipt}>Добавить чек</button>:null;
+  return <div className={'payment-document-sections'+(compactInbox?' payment-document-inbox':'')}>
+    {compactInbox?<div className="receipt-inbox-heading"><div><h3>{plan.supplierPartner}</h3><p>{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'Оплата поставщику'}{paymentDate?' · '+new Date(paymentDate+'T12:00:00Z').toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:'UTC'}):''}</p></div><div className="receipt-inbox-money"><strong>{receiptPaymentAmount(plan)}</strong>{['USDT','CNY'].includes(plan.paymentMethod||'')&&Number(plan.foreignAmount)>0?<small>{Number(plan.foreignAmount).toLocaleString('ru-RU',{maximumFractionDigits:4})} {plan.paymentMethod==='CNY'?'¥':'USDT'} · по заявке</small>:null}</div>{addReceiptButton}</div>:null}
     {copyMessage?<p role="status">{copyMessage}</p>:null}
     {panel==='requisites'&&requisitesOptions?<ProcurementRequisitesEditor method={plan.paymentMethod||''} supplier={plan.supplierPartner} disabled={disabled} initialText={editorSource?.textContent||''} initialNetwork={editorSource?.network||undefined} existingFileName={editorSource&&!editorSource.textContent?editorSource.originalName:undefined} onSaveText={onSaveText?(value,network)=>onSaveText(value,network,editorSource?.textContent?editorSource:undefined):undefined} onSaveFile={file=>onAdd([file],editorSource?.purpose==='REQUISITES'?'REQUISITES':defaultRequisitesPurpose,editorSource&&!editorSource.textContent?editorSource:undefined)} onClose={()=>setPanel('')}/>:null}
-    {requisites.length||requisitesOptions&&!complete?<section><div className="payment-document-heading"><h3>Реквизиты для оплаты</h3>{requisitesOptions&&!complete?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>{setEditorSource(undefined);setPanel('requisites');}}>Добавить реквизиты</button>:null}</div>
+    {requisites.length||requisitesOptions&&!complete?<section className="receipt-inbox-requisites"><div className="payment-document-heading"><h3>Реквизиты для оплаты</h3>{requisitesOptions&&!complete?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>{setEditorSource(undefined);setPanel('requisites');}}>Добавить реквизиты</button>:null}</div>
       {canRequest?<button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('request-qr')}>{requestLabel}</button>:null}
       {panel==='request-qr'&&canRequest?<div className="payment-document-panel"><p>{hasQr?'Попросить закупщика подтвердить актуальность QR или заменить его?':plan.paymentMethod==='CNY'?'Попросить закупщика добавить QR-код или ID получателя в Alipay?':'Попросить закупщика добавить адрес кошелька или QR-код для этой оплаты?'}</p><div><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={async()=>{if(await onRequestQr?.())setPanel('');}}>Отправить запрос</button><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('')}>Отмена</button></div></div>:null}
       {requisites.length?list(requisites):null}
       {admin&&requisites.length>0?<ProcurementSingleTransfer plan={plan}/>:null}
     </section>:null}
-    <section><div className="payment-document-heading"><h3>Чеки оплаты {needReceipt?<span className="payment-document-warning">Нужен чек</span>:null}</h3>{canAddReceipt?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={chooseReceipt}>Добавить чек</button>:null}</div>
-      {receipts.length?list(receipts):<p className="payment-document-empty">{canAddReceipt?'Чек ещё не добавлен':'После оплаты здесь будет чек'}</p>}
+    <section className="receipt-inbox-receipts">{!compactInbox?<div className="payment-document-heading"><h3>Чеки оплаты {needReceipt?<span className="payment-document-warning">Нужен чек</span>:null}</h3>{addReceiptButton}</div>:receipts.length?<h3>Чеки оплаты</h3>:null}
+      {receipts.length?list(receipts):!compactInbox?<p className="payment-document-empty">{canAddReceipt?'Чек ещё не добавлен':'После оплаты здесь будет чек'}</p>:null}
       {!mobile?panel==='receipt'?<div className="payment-document-panel">{payments.length?paymentChoices:<p>Подтверждение перевода поставщику по QR</p>}<div><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>input.current?.click()}>Выбрать чек</button><button type="button" className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null:panel==='receipt'?<div className="payment-document-panel">{payments.length>1?paymentChoices:!payments.length?<p>Подтверждение перевода поставщику по QR</p>:null}<div><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>cameraInput.current?.click()}>Сфотографировать</button><button type="button" disabled={disabled||(payments.length>0&&!selected.length)} className="procurement-receipt-button" onClick={()=>input.current?.click()}>Выбрать файл</button><button type="button" className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null}
     </section>
     {old.length?<details><summary>Прежние реквизиты · {old.length}</summary>{list(old,true)}</details>:null}

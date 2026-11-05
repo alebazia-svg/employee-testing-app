@@ -1,4 +1,7 @@
 "use client";
+import {ProcurementCalendarRates} from '@/components/ProcurementCalendarRates';
+import {ProcurementCalendarReceiptEntry} from '@/components/ProcurementCalendarReceiptEntry';
+import {procurementListRate} from '@/lib/procurement-history-rate';
 import {ProcurementSavedRate} from '@/components/ProcurementSavedRate';
 import {ProcurementFxBudget} from '@/components/ProcurementFxBudget';
 import {activePaymentDeferral,paymentPreparationDate,paymentScheduleLabel,paymentScheduleDetail} from '@/lib/procurement-schedule';
@@ -235,6 +238,8 @@ export default function AdminProcurementClient({
 }) {
   const router = useRouter();
   const visualPreview = useProcurementVisualPreview();
+  const [rateReceiptTarget,setRateReceiptTarget]=useState<HTMLDivElement|null>(null);
+  const [refreshTarget,setRefreshTarget]=useState<HTMLDivElement|null>(null);
 
   // Adopt new evidence in the same render as its readiness flag. An effect
   // would briefly enable actions against the previous cached plan array.
@@ -242,6 +247,7 @@ export default function AdminProcurementClient({
   const plans = localPlans.source===initialPlans ? localPlans.value : initialPlans;
   const rateCurrenciesByDay=useMemo(()=>{const days=new Map<string,string[]>();for(const p of plans){const day=paymentPreparationDate(p);if(day&&['CNY','USDT'].includes(p.paymentMethod)&&['SUBMITTED','APPROVED'].includes(p.status))days.set(day,[...new Set([...(days.get(day)||[]),p.paymentMethod])]);}return days;},[plans]);
   const [receiptCounts,setReceiptCounts]=useState<Record<string,number>>({});
+  const [receiptLoadState,setReceiptLoadState]=useState<'loading'|'ready'|'error'>('loading');
   const stage=(plan:Plan)=>qrPaymentStage(plan,receiptCounts[plan.id]??null);
   const setPlans = (update:(current:Plan[])=>Plan[]) => setLocalPlans(previous=>({
     source:initialPlans,value:update(previous.source===initialPlans?previous.value:initialPlans),
@@ -514,7 +520,8 @@ export default function AdminProcurementClient({
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"admin-section-tab is-active":"admin-section-tab"}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
-      <div className="pam-toolbar">{tab==='approved'&&!visualPreview?<ProcurementRequisitesBatch plans={plans} today={todayKey}/>:null}{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen/>{visualPreview?.receiptControl ?? (!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts}/> : null)}</div>
+      {<div className="procurement-calendar-tools">{visualPreview?.rateSummary??<ProcurementCalendarRates admin today={todayKey} plans={plans} references={{USDT:usdtRateReference}}/>}<div className="procurement-calendar-refresh-target" ref={setRefreshTarget}/><div className="procurement-calendar-receipt-target" ref={setRateReceiptTarget}/></div>}
+      <div className="pam-toolbar">{tab==='approved'&&!visualPreview?<ProcurementRequisitesBatch plans={plans} today={todayKey}/>:null}{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen desktopTarget={refreshTarget}/>{visualPreview?.receiptControl ?? (!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts} onLoadState={setReceiptLoadState} renderEntry={state=><ProcurementCalendarReceiptEntry {...state} target={rateReceiptTarget}/>}/> : null)}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
@@ -534,9 +541,9 @@ export default function AdminProcurementClient({
           </div>)}
       <section hidden={tab !== "pending"} className="space-y-4">
         {revisionReview || <ProcurementRevisionReview items={plans.flatMap(plan=>{const revision=readPaymentRevision(plan.oneCCashEvidence);return revision?[{id:plan.id,supplierPartner:plan.supplierPartner,revision}]:[];})}/>}
-        <ProcurementPreparationList dailyRateCurrencies={rateCurrenciesByDay} preparation={dailyPreparation} onOpen={()=>setForecastRequested(true)} key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()||pendingEditState.dirty} busy={!!busy||pendingEditState.busy||documentBusy} onClose={closeDecision} error={actionMessage}
+        <ProcurementPreparationList dailyRateCurrencies={undefined} preparation={dailyPreparation} onOpen={()=>setForecastRequested(true)} key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()||pendingEditState.dirty} busy={!!busy||pendingEditState.busy||documentBusy} onClose={closeDecision} error={actionMessage}
           renderFooter={(id,close)=>pendingEditState.editing?<button type="button" className="pam-button" disabled={pendingEditState.busy} onClick={close}>Закрыть</button>:returningId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={close}>Отмена</button><button type="button" className="pam-button pam-primary" disabled={!!busy||returnReason.trim().length<3} onClick={()=>act(id,"RETURN")}>{busy===id?"Сохраняем…":"Вернуть Астемиру"}</button></>:cancellingId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={()=>setCancellingId("")}>Назад</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"CANCEL")}>{busy===id?"Сохраняем…":"Отменить заявку"}</button></>:<><button type="button" className="pam-cancel" disabled={!!busy} onClick={()=>{setCancellingId(id);setActionMessage("");}}>Отменить заявку</button><button type="button" className="pam-button" disabled={!!busy} onClick={()=>{setReturningId(id);setReturnReason("");setActionMessage("");}}><Undo2 size={16}/>Вернуть на исправление</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"APPROVE")}><Check size={18}/>{busy===id?"Сохраняем…":"Согласовать"}</button></>}
-          items={[...submitted].sort((a,b)=>(paymentPreparationDate(a)||'9999-12-31').localeCompare(paymentPreparationDate(b)||'9999-12-31')).map(plan=>{const day=paymentPreparationDate(plan);return {id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',warning:paymentScheduleLabel(plan),basis:orderLabel(plan),method:methodLabel(plan),search:plan.orderNumbers.join(" "),priority:day&&day<todayKey?"overdue":day===todayKey?"today":"later",group:!day?'Дата уточняется':day<todayKey?"Срок прошёл":day===todayKey?"Сегодня":day===nextDayKey(todayKey)?"Завтра":"Предстоящие"};})}
+          items={[...submitted].sort((a,b)=>(paymentPreparationDate(a)||'9999-12-31').localeCompare(paymentPreparationDate(b)||'9999-12-31')).map(plan=>{const day=paymentPreparationDate(plan);return {id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),rateLabel:procurementListRate(plan),meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',warning:paymentScheduleLabel(plan),basis:orderLabel(plan),method:methodLabel(plan),search:plan.orderNumbers.join(" "),priority:day&&day<todayKey?"overdue":day===todayKey?"today":"later",group:!day?'Дата уточняется':day<todayKey?"Срок прошёл":day===todayKey?"Сегодня":day===nextDayKey(todayKey)?"Завтра":"Предстоящие"};})}
           empty="Новых заявок на согласование нет." renderDetail={id=>{
           const plan=submitted.find(p=>p.id===id)!;const funding=fundingByPlanId.get(plan.id);
           if(returningId===id)return <div className="pam-return"><h3>{plan.supplierPartner}</h3><label>Что исправить<textarea autoFocus value={returnReason} onChange={e=>setReturnReason(e.target.value)} maxLength={300} rows={4} placeholder="Укажите, что нужно изменить в заявке"/></label><p>Астемир увидит пояснение и сможет изменить заявку.</p></div>;
@@ -581,9 +588,9 @@ export default function AdminProcurementClient({
           <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>paymentPreparationDate(plan)===todayKey).length}</strong></span>
           <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>paymentPreparationDate(plan)===nextDayKey(todayKey)).length}</strong></span>
         </div>
-<ProcurementPreparationList dailyRateCurrencies={rateCurrenciesByDay} preparation={dailyPreparation} key="approved" dirty={rescheduleState.dirty} busy={rescheduleState.busy||documentBusy} searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>{
+<ProcurementPreparationList dailyRateCurrencies={undefined} preparation={dailyPreparation} key="approved" dirty={rescheduleState.dirty} busy={rescheduleState.busy||documentBusy} searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>{
  const day=paymentPreparationDate(plan), sortDay=day||'9999-12-31';
- return {id:plan.id,name:plan.supplierPartner,amount:paymentListRemainder(plan)?.replace(/^Доплатить /,'')||amountLabel(plan),amountCaption:paymentListRemainder(plan)?'Доплатить':undefined,meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',basis:orderLabel(plan),method:methodLabel(plan),priority:!stage(plan)&&sortDay<todayKey?'overdue' as const:day===todayKey?'today' as const:'later' as const,search:plan.orderNumbers.join(' '),group:stage(plan)?'Оплаты по QR':!day?'Дата уточняется':day<todayKey?'Просрочено':day===todayKey?'Сегодня':day===nextDayKey(todayKey)?'Завтра':'Далее',warning:plan.evidence.paymentAmountNeedsConfirmation?'Проверьте найденную оплату':plan.evidence.state==='MISMATCH'?'Расхождение с 1С':stage(plan)||paymentScheduleLabel(plan)||(['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)?'Частично оплачено':plan.evidence.state==='NO_EVIDENCE'&&day&&day>=todayKey&&!plan.evidence.collection?'Деньги будут готовы':undefined)};
+ return {id:plan.id,name:plan.supplierPartner,amount:paymentListRemainder(plan)?.replace(/^Доплатить /,'')||amountLabel(plan),amountCaption:paymentListRemainder(plan)?'Доплатить':undefined,rateLabel:procurementListRate(plan),meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',basis:orderLabel(plan),method:methodLabel(plan),priority:!stage(plan)&&sortDay<todayKey?'overdue' as const:day===todayKey?'today' as const:'later' as const,search:plan.orderNumbers.join(' '),group:stage(plan)?'Оплаты по QR':!day?'Дата уточняется':day<todayKey?'Просрочено':day===todayKey?'Сегодня':day===nextDayKey(todayKey)?'Завтра':'Далее',warning:plan.evidence.paymentAmountNeedsConfirmation?'Проверьте найденную оплату':plan.evidence.state==='MISMATCH'?'Расхождение с 1С':stage(plan)||paymentScheduleLabel(plan)||(['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)?'Частично оплачено':plan.evidence.state==='NO_EVIDENCE'&&day&&day>=todayKey&&!plan.evidence.collection?'Деньги будут готовы':undefined)};
  })} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
           const deferred=activePaymentDeferral(plan);
@@ -616,7 +623,7 @@ export default function AdminProcurementClient({
         {paymentLinks}
       </section>
       <section hidden={tab !== "history"} className="space-y-4">
-        <ProcurementPaymentHistory plans={completedPlans} showManager splitView adminDialogs searchQuery={searchQuery}/>
+        <ProcurementPaymentHistory plans={completedPlans} receiptCounts={receiptCounts} receiptLoadState={receiptLoadState} showManager splitView adminDialogs searchQuery={searchQuery}/>
         {paymentLinkHistory}
       </section>
     </div>

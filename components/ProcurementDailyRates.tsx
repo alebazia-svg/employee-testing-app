@@ -23,18 +23,18 @@ export function ProcurementDailyRates({day,admin=false,currencies=['USDT','CNY']
   {selected?<DailyRateDialog day={day} currency={selected} quote={quotes.find(q=>q.currency===selected)??null} reference={referenceRates[selected]} admin={admin&&state==='ready'} close={()=>select(null)} onSaved={()=>{select(null);window.dispatchEvent(new Event('procurement-rates-changed'));router.refresh();}}/>:null}
  </div>;
 }
-function DailyRateDialog({day,currency,quote,reference,admin,close,onSaved}:{day:string;currency:DailyCurrency;quote:DailyQuote|null;reference?:number|null;admin:boolean;close:()=>void;onSaved:()=>void}){
+export function DailyRateDialog({day,currency,quote,reference,admin,close,onSaved}:{day:string;currency:DailyCurrency;quote:DailyQuote|null;reference?:number|null;admin:boolean;close:()=>void;onSaved:(quote?:DailyQuote)=>void}){
  const ref=useRef<HTMLDialogElement>(null),[rate,setRate]=useState(String(quote?.rate??reference??'')),[preview,setPreview]=useState<Preview|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{const d=ref.current!,opener=document.activeElement as HTMLElement|null;d.showModal();const overflow=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{d.close();document.body.style.overflow=overflow;opener?.focus();};},[]);
  async function submit(action:'PREVIEW'|'CONFIRM'){
   setBusy(true);setError('');
-  try{const r=await fetch('/api/admin/procurement/daily-rates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,day,currency,rate:Number(rate.replace(',','.')),...(action==='CONFIRM'?{fingerprint:preview?.fingerprint}:{})})});const b=await r.json();if(!r.ok)throw Error(b.error||'Не удалось сохранить курс.');if(action==='PREVIEW')setPreview(b);else onSaved();}
+  try{const r=await fetch('/api/admin/procurement/daily-rates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,day,currency,rate:Number(rate.replace(',','.')),...(action==='CONFIRM'?{fingerprint:preview?.fingerprint}:{})})});const b=await r.json();if(!r.ok)throw Error(b.error||'Не удалось сохранить курс.');if(action==='PREVIEW')setPreview(b);else onSaved(b.quote);}
   catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить курс.');if(action==='CONFIRM')setPreview(null);}finally{setBusy(false);}
  }
  return <dialog ref={ref} className="procurement-rate-dialog" aria-labelledby="daily-rate-title" onCancel={e=>{e.preventDefault();if(!busy)close();}}>
   <header><div><h2 id="daily-rate-title">Курс {currency}</h2><p>{new Date(day+'T12:00:00Z').toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}</p></div><button type="button" onClick={close} disabled={busy} aria-label="Закрыть курс"><X size={22}/></button></header>
   <div className="procurement-rate-dialog-body">
-   {quote?<p className="procurement-rate-confirmation">Утверждён · {quote.actor}<br/><span>{new Date(quote.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})}</span></p>:<p>Курс не утверждён</p>}
+   {quote?<p className="procurement-rate-confirmation">Курс утверждён<br/><span>{new Date(quote.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})}</span></p>:<p>Курс не утверждён</p>}
    {admin?<label className="procurement-rate-input">Рублей за 1 {currency}<input autoFocus inputMode="decimal" value={rate} disabled={busy} onChange={e=>{setRate(e.target.value);setPreview(null);}}/></label>:<strong>{quote?.rate?fmt(quote.rate)+' ₽':reference?fmt(reference)+' ₽ · ориентир':'—'}</strong>}
    {preview?<><h3>Пересчёт заявок</h3>{preview.rows.length?<div className="procurement-rate-preview">{preview.rows.map(row=><div key={row.id}><div><strong>{row.supplier}</strong><small>{row.foreignAmount!==null?`${fmt(row.foreignAmount)} ${currency}`:'Сумма задана в рублях'}</small></div><div><span>{rub(row.before)}</span><strong>→ {rub(row.after)}</strong></div></div>)}</div>:<p>Заявок для обновления нет. Будет сохранён только курс.</p>}
     <p className="procurement-rate-preview-note">Согласование заявок сохраняется. Оплаченные и частично оплаченные заявки не меняются.</p>

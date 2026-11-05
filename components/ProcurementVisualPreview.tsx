@@ -13,6 +13,7 @@ export const ProcurementVisualPreview = createContext<{
   fundingPlan?: ReactNode;
   forecastReader?: () => Promise<AdminForecastSources>;
   initialAdminTab?: 'plan' | 'history';
+  initialBuyerTab?: 'current' | 'history';
   labels?: Record<string, string>;
   methods?: Record<string, string>;
   historyWarnings?: Record<string, string>;

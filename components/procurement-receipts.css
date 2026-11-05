@@ -136,3 +136,30 @@
  .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-timing{grid-template-columns:minmax(0,1fr);padding-top:0}
  .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-timing dd{font-size:12px;line-height:18px;font-weight:400;color:#777167}
 }
+
+/* Receipt inbox is a compact task list; full document cards retain their layout. */
+.procurement-receipts-inbox-list>li{display:block;padding:16px 0}
+.procurement-receipts-inbox-list>li:first-child{padding-top:0}
+.payment-document-inbox{gap:10px}
+.receipt-inbox-heading{display:grid;grid-template-columns:minmax(130px,1fr) auto auto;align-items:center;gap:14px}
+.receipt-inbox-heading h3{font-size:15px!important;line-height:21px}
+.receipt-inbox-heading p{font-size:13px!important;line-height:18px;color:#6a6b66;margin-top:4px}
+.receipt-inbox-money{text-align:right;font-variant-numeric:tabular-nums}
+.receipt-inbox-money strong{display:block;font-size:16px}
+.receipt-inbox-money small{display:block;margin-top:4px;font-size:12px;line-height:18px;color:#6b6b64;white-space:nowrap}
+.payment-document-inbox .receipt-inbox-add{min-height:44px;color:#70441e;background:#fff8ee;border-color:#c8aa86;font-size:14px}
+.payment-document-inbox>section+section{padding-top:0;border-top:0}
+.payment-document-inbox .receipt-inbox-requisites>.payment-document-heading{display:none}
+.payment-document-inbox .receipt-inbox-requisites .payment-document-files{display:flex;flex-wrap:wrap;gap:6px 16px}
+.payment-document-inbox .receipt-inbox-requisites .payment-document-files>li{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;padding:0;margin:0;border:0}
+.payment-document-inbox .receipt-inbox-requisites .payment-document-open{padding:0;min-height:36px;font-size:13px}
+.payment-document-inbox .receipt-inbox-requisites .payment-document-meta{font-size:12px;margin:0}
+.payment-document-inbox .receipt-inbox-receipts:empty{display:none}
+@media(max-width:560px){
+ .receipt-inbox-heading{grid-template-columns:minmax(0,1fr) auto;gap:10px 12px}
+ .receipt-inbox-heading>div:first-child{grid-column:1/-1}
+ .receipt-inbox-heading .receipt-inbox-money{grid-column:1;text-align:left}
+ .receipt-inbox-heading .receipt-inbox-add{grid-column:2}
+ .receipt-inbox-heading p{font-size:13px!important}
+}
+.payment-document-inbox .receipt-inbox-requisites .payment-document-open{width:auto;align-items:center}

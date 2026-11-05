@@ -36,3 +36,162 @@
 /* Fiscal notification: retain a focused window on narrow ADMIN screens. */
 .pam-dialog.fiscal-notification-dialog{max-width:640px}
 @media(max-width:650px){.pam-dialog.fiscal-notification-dialog{width:calc(100% - 24px);height:auto;max-height:calc(100dvh - 32px);border:1px solid #d8d1c7;border-radius:16px}.fiscal-notification-dialog .pam-dialog-content{flex:initial}}
+
+/* Historical payments share the calendar's list and focused detail window. */
+.pam-history-workspace{container-type:inline-size}
+.pam-history .pam-row,.pam-history .pam-columns{grid-template-columns:105px minmax(120px,1fr) minmax(115px,145px) minmax(130px,160px) 108px 16px;gap:12px;padding-inline:16px}
+.pam-history .pam-row{min-height:78px;padding-block:12px}
+.pam-history-date{display:flex;flex-direction:column;gap:5px;font-size:13px;line-height:18px;font-weight:600}
+.pam-history-date small{font-size:12px;font-weight:400;color:#72736f}
+.pam-history-identity{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px}
+.pam-history .pam-history-identity strong{display:inline;font-size:14px;line-height:20px}
+.pam-history-foreign strong,.pam-history-rubles strong{display:block;font-size:15px;font-weight:650;line-height:21px}
+.pam-history-foreign small,.pam-history-rubles small{display:block;margin-top:3px;font-size:13px;line-height:18px;font-weight:400;color:#6a6a64}
+.pam-history-mobile-rub{display:none}
+.pam-history-money{display:contents}
+.pam-history-mobile-day{display:none}
+.pam-receipt-state{display:inline-flex;align-items:center;gap:3px;font-size:12px;line-height:18px;font-weight:500;white-space:nowrap;color:#747771}
+.pam-receipt-state svg{flex-shrink:0}
+.pam-receipt-state[data-state=present]{color:#287153}
+.pam-receipt-state[data-state=needed]{color:#9b642e}
+@container(max-width:760px){
+ .pam-history .pam-columns{display:none}
+ .pam-history .pam-history-mobile-day{display:block;padding:10px 14px;border-top:1px solid #e7e2da;background:#f5f1eb;font-size:13px;font-weight:650;color:#5d554b}
+ .pam-history .pam-history-date>span{display:none}
+ .pam-history .pam-row{grid-template-columns:minmax(0,1fr) auto 14px;gap:5px 10px;padding:12px 14px;align-items:start}
+ .pam-history .pam-supplier{grid-column:1;grid-row:1}
+ .pam-history .pam-supplier>small:not(.pam-warning){display:none}
+ .pam-history .pam-history-money{grid-column:2;grid-row:1/4;display:flex;flex-direction:column;align-items:flex-end;gap:6px;align-self:center}
+ .pam-history .pam-history-foreign{grid-column:auto;grid-row:auto}
+ .pam-history .pam-history-date{grid-column:1;grid-row:2;gap:2px}
+ .pam-history .pam-history-rubles{grid-column:auto;grid-row:auto}
+ .pam-history .pam-chevron{grid-column:3;grid-row:1/4;align-self:center}
+ .pam-history .pam-history-receipt{grid-column:1;grid-row:3}
+ .pam-history-foreign .pam-history-desktop-dash{display:none}
+ .pam-history-foreign .pam-history-mobile-rub{display:inline}
+ .pam-history-rubles[data-single=true]{display:none}
+}
+@media(max-width:650px){
+ .pam-history-workspace .pam-dialog article{grid-template-columns:minmax(0,1fr);gap:12px}
+ .pam-history-workspace .pam-dialog article>div{grid-column:1}
+ .pam-history-workspace .pam-dialog article>div:nth-child(2){text-align:left}
+ .pam-history-workspace .payment-history-money{grid-template-columns:1fr;gap:10px;padding:12px}
+}
+
+@media(max-width:650px){
+ body .pam-dialog.pam-procurement-dialog{inset:auto 0 0!important;margin:0 auto!important;width:100%;max-width:520px;height:auto!important;max-height:90dvh!important;border:1px solid #ded8cf;border-bottom:0;border-radius:22px 22px 0 0;padding:0!important}
+ .pam-procurement-dialog .pam-dialog-content{flex:0 1 auto;min-height:0;padding:14px 16px;overflow-y:auto}
+ .pam-procurement-dialog .pam-dialog-heading{min-height:56px;padding:8px 14px}
+ .pam-procurement-dialog .pam-dialog-footer{padding:10px 14px max(12px,env(safe-area-inset-bottom))}
+ .pam-procurement-dialog .pam-identity{margin-bottom:12px;gap:8px}
+ .pam-procurement-dialog .pam-identity h3{font-size:18px;line-height:24px}
+ .pam-procurement-dialog .pam-key-info{gap:10px;padding:12px;margin-bottom:12px}
+ .pam-procurement-dialog .pam-key-info strong{font-size:18px;line-height:25px}
+ .pam-history-workspace .pam-procurement-dialog .payment-history-money{gap:8px;padding:10px 12px}
+ .pam-history-workspace .pam-procurement-dialog .payment-history-money>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 10px}
+ .pam-history-workspace .pam-procurement-dialog .payment-history-money>div>span{font-size:13px;line-height:19px}
+ .pam-history-workspace .pam-procurement-dialog .payment-history-money strong{font-size:16px;line-height:22px;margin:0;white-space:nowrap}
+ .pam-history-workspace .pam-procurement-dialog .payment-history-money p{grid-column:1/-1;font-size:13px;line-height:19px;margin:0}
+}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog{height:auto;max-height:90dvh!important}
+ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .procurement-responsive-shell .pam-search input{border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;outline:none!important;padding:0!important}
+}
+
+/* Owner-approved detail simplification: one financial group, original documents/actions. */
+.payment-history-summary{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;border:1px solid #e3ddd4;border-radius:12px;padding:12px 14px;background:#faf8f4}
+.payment-history-summary>div{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:3px 10px}
+.payment-history-summary span{font-size:13px;color:#646963}
+.payment-history-summary strong{font-size:17px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.payment-history-summary small{grid-column:1/-1;text-align:right;font-size:13px;line-height:19px;color:#646963}
+.payment-history-summary .payment-history-course{grid-column:1/-1;border-top:1px solid #e3ddd4;padding-top:8px;margin-top:9px}
+.payment-history-summary .payment-history-course strong{font-size:14px;line-height:21px;font-weight:600}
+.payment-history-detail .payment-history-documents{padding:0!important;border:0!important;background:transparent!important;font-size:13px;line-height:20px}
+.payment-history-detail .payment-history-documents>div{margin:0!important}
+.payment-history-detail .procurement-change-history{font-size:13px;line-height:20px}
+.payment-history-detail .procurement-change-history summary{min-height:36px;display:flex;align-items:center;gap:6px}
+.payment-history-detail .procurement-change-history summary::before{content:'▸';font-size:12px}
+.payment-history-detail .procurement-change-history[open] summary::before{content:'▾'}
+.procurement-edit-form .procurement-edit-schedule{align-items:start}
+.procurement-edit-form>.sticky{gap:8px}
+@media(max-width:650px){
+ .payment-history-summary{grid-template-columns:1fr;gap:9px;padding:12px}
+ .payment-history-summary strong{font-size:16px;line-height:22px}
+ .payment-history-summary .payment-history-course{margin-top:0}
+ .payment-history-detail{gap:10px!important}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog:has(.procurement-edit-form)>header{min-height:54px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-edit-form{padding:10px 16px}
+ body:has(.procurement-responsive-shell) .procurement-payment-dialog .procurement-edit-form>*+*{margin-top:10px!important}
+ body:has(.procurement-responsive-shell) .procurement-edit-form>details>summary{padding:9px 10px;min-height:42px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form [aria-label='Долг и суммы по 1С']{padding-top:8px;margin-top:8px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form [aria-label='Долг и суммы по 1С'] dt{font-size:12px;line-height:18px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form [aria-label='Долг и суммы по 1С'] dd{font-size:13px;line-height:18px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form .procurement-fx-inputs>label,
+ body:has(.procurement-responsive-shell) .procurement-edit-form .procurement-fx-inputs>div>label{grid-template-rows:auto 44px;row-gap:4px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form .procurement-fx-inputs>label>span{font-size:11px;line-height:16px}
+ body:has(.procurement-responsive-shell) .procurement-edit-form>.sticky{flex-direction:row;align-items:center;padding-top:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+ body:has(.procurement-responsive-shell) .procurement-edit-form>.sticky>button{flex:1;min-height:44px}
+}
+@media(min-width:380px) and (max-width:650px){
+ .procurement-edit-form .procurement-edit-schedule{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:10px}
+ .procurement-edit-schedule input,.procurement-edit-schedule select{min-width:0}
+}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-documents-inline .procurement-receipts-list>li{padding:4px 0}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-document-sections{gap:10px}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-document-sections section+section{padding-top:10px}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-document-files>li{display:flex;align-items:center;flex-wrap:wrap;gap:2px 10px;padding:4px 0}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-document-files .payment-document-meta{margin:0;font-size:12px;line-height:18px}
+.pam-history-workspace .pam-dialog .payment-history-detail .payment-document-open{min-height:40px}
+@media(max-width:650px){
+ .pam-history-workspace .pam-dialog .payment-history-detail{grid-template-columns:minmax(0,1fr) auto}
+ .pam-history-workspace .pam-dialog .payment-history-detail>div{grid-column:1/-1}
+ .pam-history-workspace .pam-dialog .payment-history-detail>div:first-child{grid-column:1}
+ .pam-history-workspace .pam-dialog .payment-history-detail>div:nth-child(2){grid-column:2;max-width:125px;text-align:right}
+ .payment-history-detail .payment-requisites-text{flex-basis:100%}
+}
+
+.procurement-edit-form .procurement-fx-inputs>label,
+.procurement-edit-form .procurement-fx-inputs>div>label{display:grid;grid-template-rows:auto 44px;row-gap:6px;align-items:end;min-width:0}
+.procurement-edit-form .procurement-fx-inputs input{margin-top:0!important;height:44px;min-width:0}
+/* Buyer current-request disclosure: mobile sheet, original desktop disclosure. */
+.buyer-plan-detail-content{padding:14px 16px}
+.buyer-plan-detail-identity{display:grid;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid #e4ded4}
+.buyer-plan-detail-identity h3{font-size:18px;line-height:24px;font-weight:700}
+.buyer-plan-detail-state{margin-top:6px}
+.buyer-plan-detail-money{border:1px solid #e3ddd4;border-radius:12px;background:#faf8f4;padding:10px 12px}
+.buyer-plan-detail-money>p{font-size:13px;margin-bottom:4px;color:#686c64}
+.buyer-plan-detail-money .procurement-money-columns{display:flex!important;justify-content:space-between;align-items:baseline;gap:12px!important;flex-wrap:wrap}
+.buyer-plan-detail-money .procurement-money-columns>span{font-size:16px!important;line-height:23px;font-weight:650}
+.buyer-plan-detail-content .mobile-payment-facts{display:grid!important;grid-template-columns:1fr 1fr;gap:8px 14px;padding:0!important;border:0!important;background:transparent!important}
+.buyer-plan-detail-content .mobile-payment-facts>div{display:block!important;margin:0!important;padding:0!important;border:0!important;min-width:0}
+.buyer-plan-detail-content .mobile-payment-facts dt{font-size:12px!important;line-height:18px;color:#6a6c64}
+.buyer-plan-detail-content .mobile-payment-facts dd{margin:2px 0 0!important;text-align:left!important;font-size:14px!important;line-height:21px;overflow-wrap:anywhere}
+.buyer-plan-detail-content .mobile-payment-facts .mobile-payment-timing{grid-column:2;align-self:end}
+.buyer-plan-detail-content .mobile-payment-facts .mobile-payment-timing dd{font-size:12px!important;color:#6a6c64}
+.buyer-plan-detail-content .mobile-payment-comment{grid-column:1/-1!important}
+.buyer-plan-detail-content .payment-request-rate{margin:8px 0;font-size:14px}
+.buyer-plan-detail-content .procurement-receipts-list>li{padding:8px 0!important}
+.buyer-plan-detail-content .payment-document-sections{gap:10px}
+.buyer-plan-detail-content .payment-document-sections section+section{padding-top:10px}
+.buyer-plan-detail-content .procurement-change-history{font-size:13px;line-height:20px}
+.buyer-plan-detail-content .procurement-change-history summary{min-height:40px}
+.buyer-plan-detail-footer{display:flex;gap:8px;flex-shrink:0;border-top:1px solid #e4ded4;background:#fff;padding:10px 16px max(12px,env(safe-area-inset-bottom))}
+.buyer-plan-detail-footer>button{flex:1;min-height:44px}
+.buyer-plan-detail-inline>.space-y-2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px}
+.buyer-plan-detail-inline>.space-y-2>p{margin-top:0!important}
+.buyer-plan-detail-inline .payment-documents-inline{flex-basis:100%}
+.buyer-plan-detail-inline .procurement-change-history{flex-basis:100%;font-size:13px}
+.buyer-plan-detail-inline .payment-documents-inline .procurement-receipts-list>li{padding:8px 0}
+@media(max-width:767px){
+ body:has(.procurement-responsive-shell) .buyer-plan-detail-dialog{height:auto;max-height:90dvh!important}
+ body:has(.procurement-responsive-shell) .buyer-plan-detail-dialog>header{min-height:54px}
+}
+
+body:has(.procurement-responsive-shell) .buyer-plan-detail-dialog .buyer-plan-detail-content{border:0!important;border-radius:0!important;background:transparent!important;padding:14px 16px!important}
+.buyer-plan-detail-inline{container-type:inline-size}
+@container(min-width:620px){
+ .buyer-plan-detail-inline .payment-document-sections{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+ .buyer-plan-detail-inline .payment-document-sections>section+section{border-top:0;border-left:1px solid #e6e2dc;padding-top:0;padding-left:16px}
+ .buyer-plan-detail-inline .payment-document-sections>:not(section){grid-column:1/-1}
+}
+.buyer-plan-detail-dialog .buyer-plan-detail-content .payment-document-heading{flex-direction:row!important;align-items:center!important;gap:8px}
