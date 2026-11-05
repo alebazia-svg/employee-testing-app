@@ -1,6 +1,6 @@
 # Procurement requisites transfer — 2026-11-05
 
-Owner approved single + selected daily bundles, iPhone/desktop, keeping financial behavior and originals unchanged. Candidate 1.21.34; NOT DEPLOYED until runtime verification below is appended.
+Owner approved single + selected daily bundles, iPhone/desktop, keeping financial behavior and originals unchanged. Released and independently verified: 1.21.34 / 2835d854b21a62243cdc0ee89cc732c3b1d40e44 on 2026-11-05. Earlier candidate notes below are historical; final verification supersedes pending statements.
 
 - Existing document section adds one ADMIN transfer entry; existing ADMIN approved toolbar adds day/selection dialog. No schema, document reclassification, financial matching, notifications or 1C writes.
 - Read-only ADMIN manifest endpoint checks roles/origin, at most10 unique agreed plans/versions, pending revision/finished/uncertain evidence, per-plan document ownership and exact revisions/content hashes. It rereads plans/documents and validates the manifest again after browser file preparation. Proof fingerprint includes actual payments even when the currency amount must be entered manually. Unknown currency remainders never derive from RUB partials; a fresh confirmed foreign remainder may populate the amount. Prepared export expires after60s and invalidates on document mutation events.
@@ -13,3 +13,29 @@ Owner approved single + selected daily bundles, iPhone/desktop, keeping financia
 Final local follow-up: multiple current images require explicit selection; source file URL is still bound to its own plan. The day picker reuses existing paymentPreparationDate (including funding deferrals); list amounts use the same conservative currency-remainder helper, not original total. Concurrent disappearance/status changes disable stale selections. Latest typecheck,31 focused tests, isolated PostgreSQL binding test and full1.21.34 build passed. Owner unlock question pending: native Mac reported locked; no remote scripts uploaded, no cache cleanup, no production push/deploy yet. Candidate source branch remains local; recheck live release/remote branch before any publication.
 
 Resumed acceptance: owner unlocked Mac. Explicit multi-QR selection checked with two distinct synthetic QR values; selected second code appeared in output. Native Telegram received all3 earlier prepared image items (1CNY/2USDT/3CNY test ID); messaging order changed, associations stayed self-contained. After owner required copyable wallet text, revised export to PNG+TXT and separate native text/QR actions. Actual ID and numeric-copy buttons verified by pasting into a local test textarea (exact ID and exact `3`, respectively); clipboard connector readText alone was empty and was not used as proof. Downloaded new ZIP independently verified two unchanged QR regions and exact plain TXT bytes. Latest mobile390x844 screen saved transfer-batch-mobile-text-final.png; no horizontal overflow. Final33 focused tests, typecheck and production build passed. Latest changes still unpublished; version/source gate and server install/verification remain.
+
+## Final production verification
+
+- Native macOS Terminal opened the reviewed release command; owner entered server sudo password there. No passwords handled in chat.
+- Preflight checked all3 verified rollback images and current image identity. Only unused build cache was pruned to satisfy15GiB start gate; no image/container/volume/upload/database cleanup. No migrations or financial writes.
+- Server source independently read:2835d854b21a62243cdc0ee89cc732c3b1d40e44; tracked checkout clean. Running image sha256:b7735701908ea5cd2999021b9e1e4e20c84520b149bc1f01ef3406e2c6dbbde4.
+- Public release-info:1.21.34, built2026-11-05T14:05:52.385Z (17:05MSK). Metadata revision remains null/source unknown because Docker omits Git metadata; source commit verified independently.
+- Authenticated actual ADMIN calendar visibly shows1.21.34/17:05 and new Send Several button. Actual dialog opens; today's eligible list is empty (all current approved requests already completed). No live approved-unpaid happy-path manifest was available for a non-mutating production export test; isolated PostgreSQL + local real-component tests cover that path.33 focused tests, isolated DB binding test, HTTP role/origin test and build passed.
+- Anonymous share endpoint401; calendar no persistent500. Existing counts retained:2 submitted,47 historical,2 missing receipts at inspection. No real transfer/message/receipt mutations performed in production.
+- Independent verification marker delivered only after server/public/UI checks. Server registered image as verified and printed RELEASE_EXIT=0. Backup metadata /root/mobo-transfer-20261105; preserve existing verified image registry rollback procedure.
+- Final interface: one QR with amount in PNG; address/Alipay ID stays copyable plain text, with numeric copy separate. Mixed bundles use separate QR-only and text-only native shares; ZIP contains PNG+TXT. Mac WhatsApp has no Share extension and uses downloaded file/archive fallback. Shared files contain no supplier names. Actual empty-state UI screenshot transfer-release-production-1.21.34.png; local mixed phone UI transfer-batch-mobile-text-final.png in owner's visualization directory.
+
+## Changed source files
+
+- app/(dashboard)/admin/procurement/AdminProcurementClient.tsx — batch entry only.
+- components/ProcurementDocumentSections.tsx — single transfer entry only.
+- components/ProcurementRequisitesTransfer.tsx and components/procurement-requisites-transfer.css — responsive single/batch preparation, exact QR choice, copy/download/native sharing.
+- app/api/admin/procurement/requisites-share/route.ts — authenticated ADMIN read-only manifest endpoint.
+- lib/procurement-share-manifest.ts — version/document/financial-proof binding and revalidation.
+- lib/procurement-share-client.ts — exact attachment path/hash validation and per-request output.
+- lib/procurement-share-image.ts — full source raster plus separate amount footer; no original overwrite.
+- lib/procurement-requisites-share.ts — conservative foreign remainder and plain copyable text.
+- tests/procurement-share-{manifest,client,image}.test.ts, tests/procurement-requisites-share.test.ts, tests/procurement-share-manifest.integration.test.ts, tests/procurement-share-route.http.test.ts.
+- package.json/package-lock.json —1.21.34 only; no dependency changes.
+
+Other pending speed, bidirectional requisites notifications and wider buyer UI work remain in /Users/bela/Projects/portal-remainder-20261104 and were deliberately excluded; do not call those released with1.21.34.
