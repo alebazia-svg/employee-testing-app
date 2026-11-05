@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementRequestRate} from '@/components/ProcurementRequestRate';
 import {ProcurementMobilePresentation,ProcurementMobileReceiptEntry} from '@/components/ProcurementMobilePresentation';
 import {activePaymentDeferral,paymentPreparationDate,paymentScheduleLabel,paymentScheduleDetail} from '@/lib/procurement-schedule';
 import {canCollectQrReceiptBeforePayment,qrPaymentStage} from '@/lib/procurement-receipt-policy';
@@ -792,6 +793,7 @@ export default function ProcurementPaymentCalendarClient({
                         <p className={compact ? 'mt-0.5 hidden text-xs text-slate-500 sm:block' : 'mt-0.5 text-sm font-semibold text-slate-600'}>
                           {visualPreview?.methods?.[plan.id] ?? methodLabel(plan.paymentMethod)}
                         </p>
+                        <ProcurementRequestRate method={plan.paymentMethod} rate={plan.exchangeRate} evidence={plan.evidence}/>
                         {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
                         {!compact && buyerPaymentComment(plan.condition) ? (
                           <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={buyerPaymentComment(plan.condition)}>
@@ -855,8 +857,8 @@ export default function ProcurementPaymentCalendarClient({
                           {visualPreview?.detail?.(plan.id)}
                           {mobile ? <div className='mobile-payment-detail-actions'>
                             {['SUBMITTED','NEEDS_CHANGES','APPROVED'].includes(plan.status) ? <button type="button" disabled={editingBlocked||!!plan.revision} title={plan.revision?'Изменения уже на согласовании':editingBlocked?'Не удалось загрузить заявку или подтвердить доступ.':undefined} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`} className="procurement-secondary-action procurement-receipt-button">Изменить оплату</button> : null}
-                            {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single/> : null}
-                          </div> : (!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single/> : null)}
+                          </div> : null}
+                          {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single inline/> : null}
                         </div>
                       </div> : null}
                     </article>

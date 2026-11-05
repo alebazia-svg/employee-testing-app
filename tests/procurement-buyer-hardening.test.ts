@@ -73,12 +73,12 @@ test('collection appears inside its request, with date and cashbox, but does not
 function render(props:unknown, view:'current'|'history'='current', expanded:string|null=null) {
   const key = `${view}:${expanded}`;
   renderers[key] ??= (async()=>{
-    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',loader:{'.css':'empty'},plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
+    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',loader:{'.css':'empty'},plugins:[{name:'router',setup(b){b.onLoad({filter:/\.module\.css$/},()=>({contents:'export default {}',loader:'js'}));b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
       b.onLoad({filter:/ProcurementPaymentCalendarClient\.tsx$/},async args=>{
         const source=await readFile(args.path,'utf8');
-        const initial="useState<'current' | 'history'>('current')";
+        const initial="useState<'current' | 'accountable' | 'history'>('current')";
         assert.ok(source.includes(initial));
-        return {contents:source.replace(initial,`useState<'current' | 'history'>('${view}')`).replace('const [expandedPlan, setExpandedPlan] = useState<string | null>(null);', `const [expandedPlan, setExpandedPlan] = useState<string | null>(${JSON.stringify(expanded)});`),loader:'tsx'};
+        return {contents:source.replace(initial,`useState<'current' | 'accountable' | 'history'>('${view}')`).replace('const [expandedPlan, setExpandedPlan] = useState<string | null>(null);', `const [expandedPlan, setExpandedPlan] = useState<string | null>(${JSON.stringify(expanded)});`),loader:'tsx'};
       });
     }}]});
     const module={exports:{} as {render:(p:unknown)=>string}};
@@ -299,4 +299,27 @@ test('planning suggestions show supplier debt and action without order document 
   assert.match(html,/Уже запланировано/);
   assert.match(html,/1\s000,00/);
   assert.doesNotMatch(html,/Заказы и приобретения|Приобретения и оплаты/);
+});
+
+
+test('current buyer requests show their saved rate before and after approval without a market-rate fallback', async()=>{
+  const props=buyerReviewScenario('basis-edit-approved','2026-11-05')!;
+  const base=props.initialPlans[0];
+  for(const status of ['SUBMITTED','APPROVED']) for(const method of ['USDT','CNY']) {
+    const html=await render({...props,initialPlans:[{...base,status,paymentMethod:method,exchangeRate:'13.6',foreignAmount:'100',plannedAmount:'1360'}]});
+    assert.match(html.replace(/<[^>]+>/g,''),new RegExp(`Курс заявки: 13,6 ₽ / ${method}`));
+    assert.doesNotMatch(html,/Курс оплаты:/);
+  }
+  const missing=await render({...props,initialPlans:[{...base,paymentMethod:'USDT',exchangeRate:null}]});
+  assert.match(missing.replace(/<[^>]+>/g,''),/Курс заявки: не указан/);
+  const cash=await render({...props,initialPlans:[{...base,paymentMethod:'CASH',exchangeRate:'99'}]});
+  assert.doesNotMatch(cash,/Курс заявки:/);
+});
+
+test('expanded buyer request exposes requisites and receipts directly instead of the ambiguous document entry', async()=>{
+  const props=buyerReviewScenario('basis-edit-approved','2026-11-05')!;
+  const source=await readFile('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');
+  assert.match(source,/<ProcurementReceipts plans=\{\[plan\]\} single inline\/>/);
+  const html=await render(props,'current',props.initialPlans[0].id);
+  assert.doesNotMatch(html,/>Документы оплаты</);
 });
