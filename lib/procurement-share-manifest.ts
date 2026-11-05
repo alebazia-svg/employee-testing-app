@@ -4,7 +4,7 @@ import {isFinishedPaymentState} from './procurement-small-remainder';
 import {readPaymentRevision} from './procurement-plan-revision';
 export class SharePreparationError extends Error {constructor(message:string,public status=409){super(message);}}
 export type ShareSelection={id:string;version:string};
-export type ShareEntry={id:string;version:string;supplier:string;currency:string;amount:number|null;text:string;network:string;files:{id:string;sha256:string;mimeType:string;size:number}[]};
+export type ShareEntry={id:string;version:string;supplier:string;currency:string;amount:number|null;text:string;network:string;files:{id:string;sha256:string;mimeType:string;size:number;originalName?:string;createdAt?:string}[]};
 export type ShareManifest={entries:ShareEntry[];stamp:string;checkedAt:string};
 /** Every attachment is selected by its own planId, never by list position or supplier name. */
 export async function prepareShareManifest(db:any,actor:{role:string},selection:ShareSelection[],readEvidence:()=>Promise<any>,expectedStamp?:string):Promise<ShareManifest>{
@@ -19,13 +19,13 @@ export async function prepareShareManifest(db:any,actor:{role:string},selection:
   const p=plans.find((p:any)=>p.id===s.id),e=evidence.get(p.id);
   if(evidence.versions.get(p.id)!==s.version||!e||['MISMATCH','NEEDS_REVIEW','SOURCE_UNAVAILABLE'].includes(e.state)||e.paymentAmountNeedsConfirmation||e.rubleAllocationNeedsReview||isFinishedPaymentState(e.state))throw new SharePreparationError('Оплата изменилась или требует сверки. Обновите комплект.');
   const own=docs.filter((d:any)=>d.planId===p.id);
-  const images=own.filter((d:any)=>!d.textContent);
-  if(images.length>1)throw new SharePreparationError(`${p.supplierPartner}: несколько действующих QR. Оставьте актуальный QR через «Заменить».`);
-  if(images.some((d:any)=>!['image/png','image/jpeg','image/webp'].includes(d.mimeType)))throw new SharePreparationError(`${p.supplierPartner}: для отправки с суммой нужен QR в формате фото, не PDF.`);
+  const images=own.filter((d:any)=>!d.textContent&&['image/png','image/jpeg','image/webp'].includes(d.mimeType));
+
+
   const texts=own.filter((d:any)=>d.textContent?.trim());
-  if(!images.length&&texts.length!==1)throw new SharePreparationError(`${p.supplierPartner}: добавьте однозначные реквизиты для оплаты.`);
+  if(!images.length&&texts.length!==1)throw new SharePreparationError(`${p.supplierPartner}: добавьте один адрес получателя или QR в формате фото для отправки с суммой.`);
   const chosen=texts.at(-1);
-  return {id:p.id,version:s.version,supplier:p.supplierPartner,currency:p.paymentMethod,amount:requisitesShareAmount({paymentMethod:p.paymentMethod,foreignAmount:p.foreignAmount,evidence:{...e,verification:'current'}}),text:images.length?'':chosen.textContent.trim(),network:images.length?'':chosen.network||'',files:images.map((d:any)=>({id:d.id,sha256:d.sha256,mimeType:d.mimeType,size:d.size}))};
+  return {id:p.id,version:s.version,supplier:p.supplierPartner,currency:p.paymentMethod,amount:requisitesShareAmount({paymentMethod:p.paymentMethod,foreignAmount:p.foreignAmount,evidence:{...e,verification:'current'}}),text:images.length?'':chosen.textContent.trim(),network:images.length?'':chosen.network||'',files:images.map((d:any)=>({id:d.id,sha256:d.sha256,mimeType:d.mimeType,size:d.size,originalName:d.originalName,createdAt:d.createdAt?.toISOString()}))};
  });
  if(entries.reduce((sum,e)=>sum+e.files.reduce((n,f)=>n+f.size,0),0)>40*1024*1024)throw new SharePreparationError('Комплект больше 40 МБ. Отправьте его частями.');
  // Include revisions and text as well as exact file hashes; replacing an attachment invalidates a prepared bundle.

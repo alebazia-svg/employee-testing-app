@@ -18,13 +18,13 @@ test('batch binds identical filenames to exact plan IDs, preserves amounts and n
  f.docs[0].revision++;
  await assert.rejects(prepareShareManifest(f.db,actor,[...f.selection].reverse(),async()=>f.evidence,result.stamp),/изменились/);
 });
-test('authorization, duplicate IDs, stale plan/evidence, already-paid and ambiguous QR fail closed',async()=>{
+test('authorization, duplicate IDs, stale plan/evidence, already-paid fail closed; ambiguous files remain explicit choices',async()=>{
  const f=fixture();await assert.rejects(prepareShareManifest(f.db,{role:'EMPLOYEE'},f.selection,async()=>f.evidence),/Нет доступа/);
  await assert.rejects(prepareShareManifest(f.db,actor,[f.selection[0],f.selection[0]],async()=>f.evidence),/разных заявок/);
  await assert.rejects(prepareShareManifest(f.db,actor,[{...f.selection[0],version:'old'},f.selection[1]],async()=>f.evidence),/изменилась/);
  f.evidence.versions.set('a','old');await assert.rejects(prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence),/требует сверки/);f.evidence.versions.set('a',f.selection[0].version);
  f.evidence.set('a',{state:'ISSUED_BY_ONE_C'});await assert.rejects(prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence),/требует сверки/);f.evidence.set('a',{state:'NO_EVIDENCE'});
- f.docs.push({...f.docs[1],id:'another'});await assert.rejects(prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence),/несколько действующих QR/);
+ f.docs.push({...f.docs[1],id:'another'});const options=await prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence);assert.deepEqual(options.entries[0].files.map(f=>f.id),['file-a','another']);
 });
 test('missing QR uses only own text; partial RUB payment never invents a currency remainder',async()=>{
  const f=fixture();f.docs.splice(1,1);f.docs.push({id:'address-a',planId:'a',purpose:'REQUISITES',textContent:'alipay-a',network:'',revision:0} as any);
@@ -33,7 +33,7 @@ test('missing QR uses only own text; partial RUB payment never invents a currenc
  assert.equal(result.entries[0].text,'alipay-a');assert.equal(result.entries[0].amount,null);assert.equal(result.entries[0].files.length,0);
  assert.equal(result.entries[1].text,'');assert.equal(result.entries[1].files[0].id,'file-b');
  f.docs.push({id:'another-address-a',planId:'a',purpose:'REQUISITES',textContent:'other',network:'',revision:0} as any);
- await assert.rejects(prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence),/однозначные реквизиты/);
+ await assert.rejects(prepareShareManifest(f.db,actor,f.selection,async()=>f.evidence),/один адрес/);
 });
 test('a new RUB partial payment invalidates even a manually entered currency amount',async()=>{
  const f=fixture();f.evidence.set('a',{state:'PARTIALLY_ISSUED',issuedAmount:100,remainingForeignAmount:100} as any);
