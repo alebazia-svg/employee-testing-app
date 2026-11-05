@@ -1,5 +1,6 @@
 'use client';
 import React,{useRef,useState} from 'react';
+import {ProcurementSingleTransfer} from './ProcurementRequisitesTransfer';
 import {useProcurementMobilePresentation} from './ProcurementMobilePresentation';
 import {procurementFileSize} from '@/lib/procurement-file-size';
 import {Paperclip} from 'lucide-react';
@@ -90,6 +91,7 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
       {canRequest?<button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('request-qr')}>{requestLabel}</button>:null}
       {panel==='request-qr'&&canRequest?<div className="payment-document-panel"><p>{hasQr?'Попросить закупщика подтвердить актуальность QR или заменить его?':plan.paymentMethod==='CNY'?'Попросить закупщика добавить QR-код или ID получателя в Alipay?':'Попросить закупщика добавить адрес кошелька или QR-код для этой оплаты?'}</p><div><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={async()=>{if(await onRequestQr?.())setPanel('');}}>Отправить запрос</button><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('')}>Отмена</button></div></div>:null}
       {requisites.length?list(requisites):null}
+      {admin&&requisites.length>0?<ProcurementSingleTransfer plan={plan}/>:null}
     </section>:null}
     <section><div className="payment-document-heading"><h3>Чеки оплаты {needReceipt?<span className="payment-document-warning">Нужен чек</span>:null}</h3>{canAddReceipt?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={chooseReceipt}>Добавить чек</button>:null}</div>
       {receipts.length?list(receipts):<p className="payment-document-empty">{canAddReceipt?'Чек ещё не добавлен':'После оплаты здесь будет чек'}</p>}

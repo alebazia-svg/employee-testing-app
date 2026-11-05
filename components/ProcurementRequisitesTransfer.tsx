@@ -1,0 +1,60 @@
+'use client';
+import React,{useEffect,useRef,useState} from 'react';
+import {ArrowLeft,Check,Download,Share2,Copy,X} from 'lucide-react';
+import {zipSync} from 'fflate';
+import type {ShareManifest,ShareSelection} from '@/lib/procurement-share-manifest';
+import {prepareTransfer,type PreparedTransfer} from '@/lib/procurement-share-client';
+import {requisitesShareText} from '@/lib/procurement-requisites-share';
+import './procurement-requisites-transfer.css';
+export type TransferPlan={id:string;updatedAt?:string;supplierPartner:string;paymentMethod?:string;foreignAmount?:unknown;plannedDate?:string;status?:string;evidence?:{state?:string}};
+const active=(p:TransferPlan)=>p.status==='APPROVED'&&['CNY','USDT'].includes(p.paymentMethod||'')&&!['PAID_BY_ONE_C','ISSUED_BY_ONE_C','SMALL_REMAINDER_COMPLETED'].includes(p.evidence?.state||'');
+async function readManifest(selection:ShareSelection[],signal?:AbortSignal,stamp?:string):Promise<ShareManifest>{
+ const response=await fetch('/api/admin/procurement/requisites-share',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({selection,stamp}),signal});
+ const result=await response.json();if(!response.ok)throw Error(result.error||'Не удалось подготовить комплект.');return result;
+}
+function download(blob:Blob,name:string){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+export function ProcurementTransferPanel({selection,onBack}:{selection:ShareSelection[];onBack:()=>void}){
+ const [manifest,setManifest]=useState<ShareManifest|null>(null),[amounts,setAmounts]=useState<Record<string,string>>({}),[prepared,setPrepared]=useState<PreparedTransfer[]>([]),[busy,setBusy]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[expires,setExpires]=useState(0),[clock,setClock]=useState(Date.now());
+ const [attempt,setAttempt]=useState(0);
+ const [urls,setUrls]=useState<string[]>([]);const generation=useRef(0);const mounted=useRef(true);const signature=JSON.stringify(selection);
+ useEffect(()=>{mounted.current=true;const abort=new AbortController();setBusy(true);setError('');setPrepared([]);setManifest(null);const version=++generation.current;
+  readManifest(selection,abort.signal).then(result=>{if(version!==generation.current)return;setManifest(result);setAmounts(Object.fromEntries(result.entries.map(e=>[e.id,e.amount===null?'':String(e.amount)])));}).catch(e=>{if(!abort.signal.aborted)setError(e.message);}).finally(()=>{if(!abort.signal.aborted)setBusy(false);});
+  return()=>{mounted.current=false;generation.current++;abort.abort();};
+ // Identity + version define a request; never reuse preparation for a different selection.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[signature,attempt]);
+ useEffect(()=>{const values=prepared.map(p=>URL.createObjectURL(p.file));setUrls(values);return()=>values.forEach(URL.revokeObjectURL);},[prepared]);
+ useEffect(()=>{const tick=setInterval(()=>setClock(Date.now()),1000);const invalidate=()=>{generation.current++;setExpires(0);};window.addEventListener('procurement-receipts-changed',invalidate);return()=>{clearInterval(tick);window.removeEventListener('procurement-receipts-changed',invalidate);};},[]);
+ const valid=!!manifest&&manifest.entries.every(e=>Number.isFinite(Number(amounts[e.id]?.replace(',','.')))&&Number(amounts[e.id]?.replace(',','.'))>0);
+ const ready=prepared.length>0&&expires>clock&&!busy;
+ async function prepare(){if(!manifest||!valid||busy)return;setBusy(true);setError('');setNotice('');setPrepared([]);const version=++generation.current;
+  try{
+   const next:PreparedTransfer[]=[];
+   for(const [index,entry] of manifest.entries.entries()){next.push(await prepareTransfer(entry,Number(amounts[entry.id].replace(',','.')),index));if(next.reduce((sum,p)=>sum+p.file.size,0)>40*1024*1024)throw Error('Готовый комплект больше 40 МБ. Отправьте оплаты частями.');}
+   // Recheck exact documents + financial evidence after file preparation, before enabling external actions.
+   await readManifest(selection,undefined,manifest.stamp);
+   if(!mounted.current||version!==generation.current)return;
+   setPrepared(next);setExpires(Date.now()+60000);setClock(Date.now());
+  }catch(e){if(mounted.current)setError(e instanceof Error?e.message:'Не удалось подготовить комплект.');}
+  finally{if(mounted.current)setBusy(false);}
+ }
+ async function share(){if(!ready||Date.now()>=expires)return;setError('');const files=prepared.map(p=>p.file);const singleText=prepared.length===1&&!manifest!.entries[0].files.length;const data=singleText?{text:prepared[0].text}:{files};
+  if(!navigator.share||!singleText&&(!navigator.canShare||!navigator.canShare({files}))){setError('Отправка через меню недоступна. Скачайте комплект и прикрепите его в нужном чате.');return;}
+  try{await navigator.share(data);setNotice('Передано в меню «Поделиться»');}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))setError('Не удалось открыть отправку. Скачайте комплект.');}
+ }
+ async function save(){if(!ready||Date.now()>=expires)return;if(prepared.length===1){download(prepared[0].file,prepared[0].file.name);return;}setBusy(true);try{const entries:Record<string,Uint8Array>={};for(const p of prepared)entries[p.file.name]=new Uint8Array(await p.file.arrayBuffer());if(expires<=Date.now())throw Error('Время проверки истекло. Подготовьте комплект заново.');download(new Blob([zipSync(entries,{level:0}) as BlobPart],{type:'application/zip'}),'payments.zip');setNotice('Комплект скачан');}catch(e){setError(e instanceof Error?e.message:'Не удалось скачать комплект.');}finally{setBusy(false);}}
+ async function copy(){if(!ready||Date.now()>=expires||prepared.length!==1)return;try{const p=prepared[0];if(manifest!.entries[0].files.length)await navigator.clipboard.write([new ClipboardItem({'image/png':p.file})]);else await navigator.clipboard.writeText(p.text);setNotice('Скопировано');}catch{setError('Копирование недоступно. Используйте скачивание или «Поделиться».');}}
+ return <div className="requisites-transfer"><button className="transfer-back" type="button" onClick={onBack}><ArrowLeft size={18}/>Назад</button><h3>{selection.length===1?'Отправить реквизиты':'Комплект для отправки'}</h3>
+ {busy?<p role="status">Проверяем заявки и реквизиты…</p>:null}{error?<div role="alert" className="transfer-error"><p>{error}</p><button className="transfer-back" disabled={busy} onClick={()=>setAttempt(n=>n+1)}>Обновить данные</button></div>:null}
+ {manifest&&!prepared.length?<><ul className="transfer-review">{manifest.entries.map(e=><li key={e.id}><div><strong>{e.supplier}</strong><span>{e.files.length?'QR-код':'Реквизиты текстом'} · {e.currency}</span></div><label>Сумма, {e.currency}<input aria-label={`Сумма ${e.supplier}, ${e.currency}`} inputMode="decimal" value={amounts[e.id]||''} disabled={busy||e.amount!==null} onChange={event=>{setAmounts(prev=>({...prev,[e.id]:event.target.value}));setPrepared([]);}}/>{e.amount===null?<small>Остаток в валюте не подтверждён — укажите сумму.</small>:null}</label></li>)}</ul><button className="transfer-primary" disabled={busy||!valid} onClick={prepare}>Подготовить {selection.length===1?'отправку':'комплект'}</button></>:null}
+ {prepared.length>0?<><ul className="transfer-ready">{prepared.map((p,i)=><li key={p.id}>{urls[i]&&<a href={urls[i]} target="_blank" rel="noreferrer" aria-label={`Посмотреть файл ${p.supplier}`}><img src={urls[i]} alt={`Реквизиты ${p.supplier}: ${p.amount} ${p.currency}`}/></a>}<div><strong>{p.supplier}</strong><span>{p.amount.toLocaleString('ru-RU')} {p.currency}</span></div><Check size={19}/></li>)}</ul>{!ready&&!busy?<p className="transfer-error">Проверка устарела. Подготовьте комплект заново.</p>:null}<div className="transfer-actions"><button disabled={!ready} onClick={save}><Download size={18}/>{prepared.length===1?'Скачать для отправки':'Скачать архив'}</button><button className="transfer-primary" disabled={!ready} onClick={share}><Share2 size={18}/>Поделиться</button></div>{prepared.length===1?<button className="transfer-back" disabled={!ready} onClick={copy}><Copy size={18}/>Копировать</button>:null}<button className="transfer-back" disabled={busy} onClick={()=>{setPrepared([]);setExpires(0);}}>Проверить заново</button></>:null}
+ {notice?<p role="status">{notice}</p>:null}</div>;
+}
+export function ProcurementSingleTransfer({plan}:{plan:TransferPlan}){const [open,setOpen]=useState(false);if(!active(plan)||!plan.updatedAt)return null;return open?<ProcurementTransferPanel selection={[{id:plan.id,version:plan.updatedAt}]} onBack={()=>setOpen(false)}/>:<button className="procurement-receipt-button" onClick={()=>setOpen(true)}><Share2 size={17}/>Отправить реквизиты</button>;}
+export function ProcurementRequisitesBatch({plans,today}:{plans:TransferPlan[];today:string}){
+ const [open,setOpen]=useState(false),[day,setDay]=useState(today),[selected,setSelected]=useState<string[]>([]),[selection,setSelection]=useState<ShareSelection[]|null>(null);const ref=useRef<HTMLDialogElement>(null);const opener=useRef<HTMLButtonElement>(null);
+ useEffect(()=>{if(open){ref.current?.showModal();const previous=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{ref.current?.close();document.body.style.overflow=previous;opener.current?.focus();};}},[open]);
+ const eligible=plans.filter(p=>active(p)&&p.updatedAt&&p.plannedDate?.slice(0,10)===day);
+ const close=()=>{setOpen(false);setSelection(null);setSelected([]);};
+ return <><button ref={opener} type="button" className="pam-button" onClick={()=>setOpen(true)}><Share2 size={17}/>Отправить несколько</button>{open?<dialog ref={ref} className="transfer-dialog" onCancel={e=>{e.preventDefault();close();}}><button className="transfer-close" aria-label="Закрыть отправку" onClick={close}><X size={22}/></button>{selection?<ProcurementTransferPanel selection={selection} onBack={()=>setSelection(null)}/>:<div className="requisites-transfer"><h3>Отправить несколько</h3><label className="transfer-day">День оплаты<input type="date" value={day} onChange={e=>{setDay(e.target.value);setSelected([]);}}/></label><p className="transfer-caption">Выберите оплаты в USDT и юанях. У каждого QR будет своя сумма.</p><ul className="transfer-selection">{eligible.map(p=><li key={p.id}><label><input type="checkbox" checked={selected.includes(p.id)} disabled={!selected.includes(p.id)&&selected.length>=10} onChange={e=>setSelected(prev=>e.target.checked?[...prev,p.id]:prev.filter(id=>id!==p.id))}/><span><strong>{p.supplierPartner}</strong><small>{Number(p.foreignAmount).toLocaleString('ru-RU')} {p.paymentMethod}</small></span></label></li>)}</ul>{!eligible.length?<p>На этот день нет подходящих согласованных заявок.</p>:null}<button className="transfer-primary" disabled={!selected.length} onClick={()=>setSelection(selected.map(id=>({id,version:plans.find(p=>p.id===id)!.updatedAt!})))}>Проверить реквизиты · {selected.length}</button></div>}</dialog>:null}</>;
+}
