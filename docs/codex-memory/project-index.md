@@ -267,9 +267,9 @@ project from scratch.
 ## Devices, notifications and app versions — production 1.5.10
 
 - Manual hiding of unconfirmed ADMIN connections: `access-manual-archive-candidate-20261105.md`
-  — owner-approved local candidate for three old unconfirmed entries. One nullable
-  list-only archive timestamp; history/auth/push/names preserved, new contact returns.
-  Production migration/release approval remains pending; do not claim deployed.
+  — released/verified1.21.37 /8391e070; three approved old entries hidden via ADMIN UI.
+  One nullable list-only timestamp; history/auth/push/names preserved, new contact
+  returns. Current confirmed Codex389754da… remains; see production evidence.
 
 - Released 1.5.10 (`bf3250b`): `access-ip-diagnostics-20261018.md`.
   Verified-proxy IP diagnostics enabled and checked live; latest observed IP
