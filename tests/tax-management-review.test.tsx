@@ -7,10 +7,10 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { managementTotals, parseTaxManagementReview, type TaxManagementReview } from '../lib/tax-management-review';
+import { accountingSnapshot, managementTotals, parseTaxManagementReview, type TaxManagementReview } from '../lib/tax-management-review';
 import { loadTaxManagementReview } from '../lib/tax-management-review-source';
 import { detectTaxDocumentCoverage } from '../lib/tax-document-upload';
-import { TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments, TaxManagementAccounting } from '../components/taxes/TaxManagementReview';
+import { TaxAccountingMonths, TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments, TaxManagementAccounting } from '../components/taxes/TaxManagementReview';
 
 const fixture = (): TaxManagementReview => ({ schema: 1, cutoff: '2026-05-31', reviewedAt: '2026-06-02', q1UsnCents: 100_000_000, q1PsnCents: 1_900_000_000,
   months: [{ periodKey: '2026-04', fnsCents: 3_000_000_000, paymentsCents: 4_100_000_000 }, { periodKey: '2026-05', fnsCents: 1_100_000_000, paymentsCents: 100_000_000 }],
@@ -82,7 +82,7 @@ test('accountant confirmation closes the date task without certifying the prelim
   const valid = parseTaxManagementReview(JSON.stringify(review)); assert.ok(valid);
   const html = renderToStaticMarkup(<TaxManagementOverview review={valid} base='/admin/taxes' />);
   assert.match(html, /Дата согласована с бухгалтером/);
-  assert.match(html, /Проверить статус уведомлений/);
+  assert.match(html, /Статус отправки и принятия в портале пока не подтверждён/);
   assert.doesNotMatch(html, /С бухгалтером подтвердить месяц/);
   assert.match(html, /Не окончательная налоговая база/);
   review.accountantConfirmation.exceededOn = review.paymentsCrossing;
@@ -112,5 +112,43 @@ test('accounting income uses the same Q1 baseline once and stays independent of 
   assert.match(html, /Учётный доход 1С \+ ККТ/);
   assert.doesNotMatch(html, /Отдельный итог не подтверждён/);
   review.accountingIncome.from = '2026-01-01';
+  assert.equal(parseTaxManagementReview(JSON.stringify(review)), undefined);
+});
+
+
+test('fresh accounting report updates only its own dated comparison and counts Q1 once', () => {
+  const review = fixture();
+  const before = managementTotals(review);
+  const report = { available: true, kind: 'full', ausnIncome: 45_000_000, dataCutoff: '2026-06-04', runTimeUtc: '2026-06-05T00:00:00Z', sourceFile: 'fresh.md' };
+  const snapshot = accountingSnapshot(review, report)!;
+  assert.equal(snapshot.cents, 6_500_000_000);
+  assert.equal(snapshot.through, '2026-06-04');
+  assert.deepEqual(managementTotals(review), before);
+  assert.equal(accountingSnapshot(review, { ...report, available: false }), undefined);
+  assert.equal(accountingSnapshot(review, { ...report, kind: 'month' }), undefined);
+  assert.equal(accountingSnapshot(review, { ...report, dataCutoff: '2026-04-30' }), undefined);
+});
+
+
+test('fresh month without documentary FNS evidence stays visible and is never a zero FNS amount', () => {
+  const report = { available: true, kind: 'full', ausnIncome: 45000000, dataCutoff: '2026-06-04', runTimeUtc: '2026-06-05T00:00:00Z', sourceFile: 'fresh.md', monthlyIncome: [{ periodKey: '2026-06', amount: 4000000, partial: true }] } as never;
+  const html = renderToStaticMarkup(<TaxAccountingMonths review={fixture()} report={report} />);
+  assert.match(html, /июнь/); assert.match(html, /неполный месяц/);
+  assert.match(html, /Ещё нет выгрузки в этой сверке/);
+  assert.match(html, /65 000 000,00/);
+  const unavailable = renderToStaticMarkup(<TaxAccountingMonths review={fixture()} />);
+  assert.match(unavailable, /недоступна/); assert.doesNotMatch(unavailable, /0,00 ₽/);
+});
+
+test('FNS termination proof does not certify USN acceptance; status requires an archived source', () => {
+  const review = fixture();
+  review.regimeStatus = { checkedAt: '2026-06-03', ausnEndedOn: '2026-05-01', certificateNumber: '101551', sourceName: 'source.zip', usnStatus: 'not_confirmed' };
+  const parsed = parseTaxManagementReview(JSON.stringify(review)); assert.ok(parsed);
+  for (const html of [renderToStaticMarkup(<TaxManagementOverview review={parsed} base='/admin/taxes' />), renderToStaticMarkup(<TaxManagementDocuments review={parsed} />)]) {
+    assert.match(html, /Снятие с АУСН подтверждено ФНС/);
+    assert.match(html, /ожидает отдельного подтверждения/);
+    assert.doesNotMatch(html, /Статус отправки и принятия в портале пока не подтверждён/);
+  }
+  review.regimeStatus.sourceName = 'missing.pdf';
   assert.equal(parseTaxManagementReview(JSON.stringify(review)), undefined);
 });

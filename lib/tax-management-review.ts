@@ -12,6 +12,7 @@ export type TaxManagementReview = {
   findings: { title: string; status: 'verified' | 'open' | 'owner_reported'; detail: string; action: string; sourceName: string }[];
   sources: { title: string; originalName: string; purpose: string; documentId?: string }[];
   documentId?: string;
+  regimeStatus?: { checkedAt: string; ausnEndedOn: string; certificateNumber: string; sourceName: string; usnStatus: 'not_confirmed' };
   accountantConfirmation?: { exceededOn: string; confirmedOn: string; source: string };
   accountingIncome?: { from: string; through: string; incomeCents: number; sourceName: string };
   accounting?: { checkedAt: string; sourceName: string; rows: { posted: true; saleNumber: string; saleCents: number; bankCents: number; cashCents: number | null; finding: string; action: string }[] };
@@ -45,6 +46,10 @@ export function parseTaxManagementReview(raw: string): TaxManagementReview | und
     if (new Set(sourceNames).size !== sourceNames.length) return;
     if (!Array.isArray(value.findings) || !value.findings.length || value.findings.length > 20 || value.findings.some(f => !object(f) || !text(f.title, 160) || !['verified', 'open', 'owner_reported'].includes(String(f.status)) || !text(f.detail, 1400) || !text(f.action, 700) || !sourceNames.includes(f.sourceName))) return;
     const review = value as TaxManagementReview;
+    if (review.regimeStatus !== undefined) {
+      const r = review.regimeStatus;
+      if (!object(r) || !date(r.checkedAt) || !date(r.ausnEndedOn) || r.checkedAt < r.ausnEndedOn || !text(r.certificateNumber, 80) || !sourceNames.includes(r.sourceName) || r.usnStatus !== 'not_confirmed') return;
+    }
     if (review.accountingIncome !== undefined) {
       const a = review.accountingIncome;
       if (!object(a) || a.from !== `${year}-04-01` || a.through !== review.cutoff || !money(a.incomeCents) || a.incomeCents < 0 || !sourceNames.includes(a.sourceName) || !money(a.incomeCents + review.q1UsnCents + review.q1PsnCents)) return;
@@ -66,4 +71,14 @@ export function parseTaxManagementReview(raw: string): TaxManagementReview | und
     // Never accept supplied document IDs/URLs. The authorized archive resolves them.
     return { ...review, documentId: undefined, sources: review.sources.map(({ title, originalName, purpose }) => ({ title, originalName, purpose })) };
   } catch { return; }
+}
+
+
+// Refresh only the accounting comparison. Dated FNS/payment evidence stays intact.
+export function accountingSnapshot(review: TaxManagementReview, report?: { available: boolean; kind: string; ausnIncome?: number; dataCutoff?: string; runTimeUtc?: string; sourceFile: string }) {
+  const baseline = review.q1UsnCents + review.q1PsnCents;
+  if (report?.available && report.kind === 'full' && report.dataCutoff && report.dataCutoff.startsWith(review.cutoff.slice(0, 4)) && report.dataCutoff >= review.cutoff && report.ausnIncome !== undefined && Number.isFinite(report.ausnIncome)) {
+    return { cents: baseline + Math.round(report.ausnIncome * 100), incomeCents: Math.round(report.ausnIncome * 100), through: report.dataCutoff, runTimeUtc: report.runTimeUtc, sourceName: report.sourceFile };
+  }
+  return review.accountingIncome ? { cents: baseline + review.accountingIncome.incomeCents, incomeCents: review.accountingIncome.incomeCents, through: review.accountingIncome.through, runTimeUtc: undefined, sourceName: review.accountingIncome.sourceName } : undefined;
 }

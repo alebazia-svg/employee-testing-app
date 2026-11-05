@@ -35,11 +35,13 @@ const archive = [
 
 // Real production components with local data only: no database, no writes,
 // no production reports, no Telegram. Returns 404 outside development.
-export default async function TaxDevelopmentPreview(props: { searchParams?: Promise<{ tab?: string; scenario?: string }> }) {
+export default async function TaxDevelopmentPreview(props: { searchParams?: Promise<{ tab?: string; scenario?: string; snapshot?: string }> }) {
   if (process.env.NODE_ENV !== 'development') notFound();
   const query = (await props.searchParams) || {};
   const tab: TaxTab = taxTabs.some(([key]) => key === query.tab) ? query.tab as TaxTab : 'overview';
   const scenario = query.scenario === 'today' || query.scenario === 'broken' || query.scenario === 'audit' ? query.scenario : 'fresh';
+  const archived = query.snapshot === '20261031';
+  const reportPath = archived ? process.env.AUSN_PREVIEW_ARCHIVED_REPORT_PATH : process.env.AUSN_PREVIEW_REPORT_PATH;
   const now = scenario === 'fresh' ? new Date('2026-10-25T13:00:00+03:00') : new Date();
   // The archive's latest ENS upload (26.10) covers August, so the shown run is the one after it.
   let full = parsePortalReport(scenario === 'broken' ? ownerFullReportAfterEns.replace('полнота: да', 'полнота: нет') : ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md');
@@ -47,8 +49,8 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
   let gaps: FnsGaps | undefined;
   let incomeEvidence: IncomeEvidenceReview | undefined;
   let managementReview: TaxManagementReview | undefined;
-  if (scenario === 'audit' && process.env.AUSN_PREVIEW_REPORT_PATH) {
-    full = parsePortalReport(await readFile(process.env.AUSN_PREVIEW_REPORT_PATH, 'utf8'), path.basename(process.env.AUSN_PREVIEW_REPORT_PATH));
+  if (scenario === 'audit' && reportPath) {
+    full = parsePortalReport(await readFile(reportPath!, 'utf8'), path.basename(reportPath!));
   }
   if (scenario === 'audit' && process.env.AUSN_PREVIEW_MANAGEMENT_PATH) {
     managementReview = parseTaxManagementReview(await readFile(process.env.AUSN_PREVIEW_MANAGEMENT_PATH, 'utf8'));
@@ -64,13 +66,15 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
     const original = JSON.parse(gapText) as FnsGaps;
     gaps = bankReview ? attachFnsBankCandidates(original, bankReview) : undefined;
   }
-  const data = buildTaxWorkspace({ reports: [full], documents, now, gaps });
+  const previousFull = !archived && scenario === 'audit' && process.env.AUSN_PREVIEW_ARCHIVED_REPORT_PATH ? parsePortalReport(await readFile(process.env.AUSN_PREVIEW_ARCHIVED_REPORT_PATH, 'utf8'), path.basename(process.env.AUSN_PREVIEW_ARCHIVED_REPORT_PATH)) : undefined;
+  const data = buildTaxWorkspace({ reports: previousFull ? [full, previousFull] : [full], documents, now, gaps });
   const changes = reportChanges(parsePortalReport(ownerFullReport, 'ausn-executive-full-20261025T074847.md'), parsePortalReport(ownerFullReportAfterEns, 'ausn-executive-full-20261025T080512.md'));
   const latestDuePeriod = data.plan.at(-1)?.periodKey || '2026-09';
   const demoUpload = (documentType: string, periodKey: string, fixed = true) => <fieldset disabled><TaxDocumentUpload fixedType={fixed ? documentType as never : undefined} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} /><p className='mt-2 text-xs font-semibold text-[#866014]'>В демонстрации загрузка выключена.</p></fieldset>;
   const scenarios: Array<[string, string]> = [['fresh', 'свежие данные'], ['today', 'как сейчас'], ['broken', 'поломка']];
   const notice = managementReview ? <div className='tax-callout' data-tone='warn'>
-    <strong>Предпросмотр — без записи.</strong> Загрузка и ссылки на файлы выключены; документы показаны выборочно.
+    <strong>{archived ? 'Архивный снимок 31 октября — не текущие данные.' : 'Предпросмотр — без записи.'}</strong> Загрузка и ссылки на файлы выключены; документы показаны выборочно.
+    <div className='mt-1'><a className='tax-link' href={archived ? '/taxes-development-preview?scenario=audit' : '/taxes-development-preview?scenario=audit&snapshot=20261031'}>{archived ? 'Вернуться к свежему отчёту' : 'Архив: исходный отчёт на 31 октября'}</a></div>
     <details className='tax-details mt-1'><summary className='tax-link'>Другие состояния предпросмотра</summary><span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link'>{label}</a>)}</span></details>
   </div> : <div className='tax-callout' data-tone='warn'>
     <strong>Просмотр, ничего не записывается.</strong> {scenario === 'audit' ? 'Сохранённый расчёт и дополнительная проверка исходной выгрузки. Это не новый расчёт налога.' : 'Часть цифр — пример.'} <span className='inline-flex flex-wrap gap-x-3'>{scenarios.map(([key, label]) => <a key={key} href={`/taxes-development-preview?scenario=${key}${tab === 'overview' ? '' : `&tab=${tab}`}`} className='tax-link' style={scenario === key ? { textDecoration: 'underline' } : undefined}>{label}</a>)}</span>
@@ -79,7 +83,7 @@ export default async function TaxDevelopmentPreview(props: { searchParams?: Prom
     <TaxesWorkspace
       managementReview={managementReview}
       tab={tab}
-      base={`/taxes-development-preview?scenario=${scenario}`}
+      base={`/taxes-development-preview?scenario=${scenario}${archived ? '&snapshot=20261031' : ''}`}
       {...data}
       incomeEvidence={incomeEvidence}
       documents={documents}

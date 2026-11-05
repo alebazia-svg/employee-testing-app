@@ -200,3 +200,21 @@ a.tax-summary-row:hover{background:#faf8f5}
  .tax-manager>.tax-body{order:3}
  .tax-manager>.tax-manager-method{order:4}
 }
+
+/* Daily management: documentary conclusion first, estimates visibly secondary. */
+.tax-manager-sources{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
+.tax-manager-source:first-child{grid-column:1/-1;border-bottom:1px solid #eee7df;padding:18px 0}
+.tax-manager-source:first-child strong{font-size:30px;color:#9c3c33}
+.tax-manager-source:not(:first-child) strong{font-size:21px}
+.tax-manager-source:nth-child(2){border-left:0;padding-left:0}
+.tax-manager-task{border-top:1px solid #eee7df}
+.tax-manager-task>summary{display:flex;justify-content:space-between;gap:16px;padding:15px 18px;align-items:center;font-size:13px}
+.tax-manager-task>summary b{display:block;font-weight:650}
+.tax-manager-task>summary small{display:block;margin-top:4px;font-size:12px;color:#796e64;line-height:1.5}
+.tax-manager-task>summary>.tax-link{white-space:nowrap;font-size:12px}
+.tax-manager-task[open]>summary{background:#faf8f5}
+@media(max-width:700px){.tax-manager-sources{grid-template-columns:1fr}.tax-manager-source:first-child{border-bottom:0}.tax-manager-source:not(:first-child){padding:16px 0;border-left:0}.tax-manager-task>summary{align-items:flex-start;flex-wrap:wrap;gap:8px}}
+
+.tax-manager-income .tax-panel-head{flex-wrap:wrap;align-items:flex-start;gap:10px}
+.tax-manager-income .tax-panel-head>div{flex:1 1 250px;min-width:0}
+.tax-manager-freshness p{margin-top:5px;line-height:1.5}

@@ -13,7 +13,7 @@ import { TaxLimitEvidencePanel } from './TaxLimitEvidencePanel';
 import { IncomeEvidencePanel } from './IncomeEvidencePanel';
 import type { IncomeEvidenceReview } from '@/lib/tax-income-evidence';
 import type { TaxManagementReview } from '@/lib/tax-management-review';
-import { TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments } from './TaxManagementReview';
+import { TaxAccountingMonths, TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments } from './TaxManagementReview';
 
 export type TaxTab = 'overview' | 'income' | 'reconciliation' | 'documents';
 export const taxTabs: Array<[TaxTab, string]> = [['overview', 'Обзор'], ['income', 'Доходы'], ['reconciliation', 'Сверка с налоговой'], ['documents', 'Документы']];
@@ -54,6 +54,7 @@ export type TaxesWorkspaceProps = {
   base: string;
   full?: PortalReport;
   current?: PortalReport;
+  previousFull?: PortalReport;
   risk: PortalRisk;
   forecast?: Forecast;
   outlook?: LimitOutlook;
@@ -98,13 +99,13 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
       {taxTabs.map(([key, label]) => <Link key={key} href={tabHref(key)} aria-current={tab === key ? 'page' : undefined} className='admin-section-tab'>{label}{key === 'reconciliation' && highIssues > 0 ? <span className='needs-decision'>{highIssues}</span> : null}{key === 'documents' && missingTypes.length + errors > 0 ? <span className='needs-decision'>{missingTypes.length + errors}</span> : null}</Link>)}
     </nav>
     {props.managementReviewUnavailable && <div className='tax-callout' data-tone='error' role='status'><strong>Документальная сводка недоступна.</strong> Не удалось проверить последний архив или его источники. Прежние расчёты ниже сохранены для сравнения; их остаток не подтверждает возможность новых продаж в пределах АУСН. Проверьте последний архив в «Документах».</div>}
-    {props.managementReview && tab === 'overview' && <TaxManagementOverview review={props.managementReview} base={base} />}
-    {props.managementReview && tab === 'income' && <TaxManagementIncome review={props.managementReview} />}
+    {props.managementReview && tab === 'overview' && <TaxManagementOverview review={props.managementReview} base={base} accountingReport={props.full} previousReport={props.previousFull} />}
+    {props.managementReview && tab === 'income' && <><TaxAccountingMonths review={props.managementReview} report={props.full} /><TaxManagementIncome review={props.managementReview} /></>}
     {props.managementReview && tab === 'reconciliation' && <TaxManagementReconciliation review={props.managementReview} />}
-    {props.managementReview && tab === 'documents' && <TaxManagementDocuments review={props.managementReview} preview={base.startsWith('/taxes-development-preview')} />}
+    {props.managementReview && tab === 'documents' && <TaxManagementDocuments review={props.managementReview} preview={base.startsWith('/taxes-development-preview')} accountingReport={props.full} />}
     {health.length > 0 && (tab === 'overview' || tab === 'documents') && <HealthPanel health={health} refresh={props.refresh} archivedReport={Boolean(props.managementReview)} />}
     {props.managementReview && tab !== 'documents' ? <details className='tax-panel tax-details tax-manager-legacy'>
-      <summary className='tax-panel-head'><div><h2>Прежние расчёты — для сравнения</h2><p>Без ПСН. Сохранены все значения, прогнозы и исходные подробности; не использовать как текущий запас.{tab === 'reconciliation' && archivedHighIssues > 0 && <> Замечаний прежней сверки: {archivedHighIssues}.</>}</p></div><AdminDisclosureAction /></summary>
+      <summary className='tax-panel-head'><div><h2>Исходная модель без ПСН — для сравнения</h2><p>Здесь сохранён прежний способ расчёта, включая свежие данные источника. Это не архив по дате и не текущий запас до лимита. Значения, прогнозы и подробности сохранены.{tab === 'reconciliation' && archivedHighIssues > 0 && <> Замечаний прежней сверки: {archivedHighIssues}.</>}</p></div><AdminDisclosureAction /></summary>
       <div className='tax-manager-legacy-content'>
         {tab === 'overview' && <Overview {...props} missingTypes={missingTypes} />}
         {tab === 'income' && <Income {...props} />}
