@@ -10,7 +10,7 @@ export function needsQrCheck(plan:Plan,files:PaymentDocument[],today:string){
   const qr=files.filter(file=>file.purpose==='QR'&&!file.replacedById);
   if(files.some(file=>file.purpose==='REQUISITES'&&file.textContent&&!file.replacedById))return false;
   return plan.status==='APPROVED'&&paymentRequisites(plan.paymentMethod)?.qr===true
-    &&!state.pendingRevision&&!state.deferred&&(!qr.length||qr.some(file=>!qrIsConfirmed(file,plan,today)));
+    &&!state.pendingRevision&&(!qr.length||qr.some(file=>!qrIsConfirmed(file,plan,today)));
 }
 export function qrPaymentState(state?:string){
   if(isFinishedPaymentState(state))return 'closed' as const;

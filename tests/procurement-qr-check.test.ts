@@ -14,7 +14,9 @@ const file={id:'qr',purpose:'QR',replacedById:null,revision:0};
 test('manual requests only for approved currency payments, including missing QR and future dates',()=>{
   assert.equal(needsQrCheck(plan,[file],'2026-10-25'),true);
   assert.equal(needsQrCheck({...plan,paymentMethod:'CNY'},[file],'2026-10-25'),true);
-  for(const change of [{status:'SUBMITTED'},{status:'CANCELLED'},{paymentMethod:'ACCOUNTABLE_QR'},{paymentMethod:'CASH'},{paymentMethod:'BANK'},{oneCCashEvidence:{pendingRevision:{}}},{oneCCashEvidence:{fundingDeferral:{}}}])assert.equal(needsQrCheck({...plan,...change},[file],'2026-10-25'),false);
+  for(const change of [{status:'SUBMITTED'},{status:'CANCELLED'},{paymentMethod:'ACCOUNTABLE_QR'},{paymentMethod:'CASH'},{paymentMethod:'BANK'},{oneCCashEvidence:{pendingRevision:{}}}])assert.equal(needsQrCheck({...plan,...change},[file],'2026-10-25'),false);
+  assert.equal(needsQrCheck({...plan,oneCCashEvidence:{fundingDeferral:{}}},[],'2026-10-25'),true,'deferred approved payments can request requisites in advance');
+  assert.equal(needsQrCheck({...plan,documentState:{deferred:true,pendingRevision:false,paymentMatchFrom:null}},[],'2026-10-25'),true);
   assert.equal(needsQrCheck({...plan,plannedDate:new Date('2026-10-26')},[],'2026-10-25'),true);
   assert.equal(needsQrCheck(plan,[{...file,purpose:'RECEIPT'}],'2026-10-25'),true);
   assert.equal(needsQrCheck(plan,[{...file,replacedById:'new'}],'2026-10-25'),true);

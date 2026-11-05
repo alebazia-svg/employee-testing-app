@@ -58,3 +58,8 @@ test('text and QR coexist; text supplies the request, never satisfies receipt co
  const html=render('USDT',[text,legacy]);assert.match(html,/test-address/);assert.match(html,/TRC20/);assert.match(html,/Копировать/);assert.match(html,/QR-код для оплаты/);assert.doesNotMatch(html,/Запросить реквизиты|Проверить актуальность/);
  for(const method of ['CASH','ACCOUNTABLE_QR'])assert.doesNotMatch(render(method),/Ввести реквизиты/);
 });
+
+ test('deferred approved CNY payment retains manual requisites request',()=>{
+ const html=renderToStaticMarkup(<ProcurementDocumentSections plan={{...plan,paymentMethod:'CNY',documentState:{deferred:true,pendingRevision:false,paymentMatchFrom:null}}} files={[]} today="2026-10-25" admin={true} disabled={false} onRequestQr={async()=>true} onAdd={async()=>true} onChange={async()=>true} onOpen={()=>{}}/>);
+ assert.match(html,/Запросить реквизиты/);
+ });

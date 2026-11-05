@@ -54,7 +54,7 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
   const hasQr=requisites.some(file=>file.purpose==='QR');
   const requestLabel=hasQr?'Проверить актуальность':'Запросить реквизиты';
   const qrConfirmed=hasQr&&requisites.filter(file=>file.purpose==='QR').every(file=>!!plan.plannedDate&&qrIsConfirmed(file,{...plan,status:plan.status||'',paymentMethod:plan.paymentMethod||'',plannedDate:plan.plannedDate},today));
-  const canRequest=admin&&onRequestQr&&requisitesOptions?.qr&&!complete&&!deferred&&!qrConfirmed&&!requisites.some(f=>f.textContent)&&plan.status==='APPROVED'&&!plan.documentState?.pendingRevision;
+  const canRequest=admin&&onRequestQr&&requisitesOptions?.qr&&!complete&&!qrConfirmed&&!requisites.some(f=>f.textContent)&&plan.status==='APPROVED'&&!plan.documentState?.pendingRevision;
   const payments=[...(plan.evidence?.cashOrders||[]).map(row=>({...row,ref:'ref' in row&&row.ref?`cash:${row.ref}`:''})),...(plan.evidence?.currencyPayments||[]).map(row=>({...row,number:'number' in row?String(row.number):'',ref:'ref' in row&&row.ref?`currency:${row.ref}`:''}))].filter(row=>row.ref);
   const refsDefault=payments.length===1?[payments[0].ref]:[];
   const chooseRequisites=(file?:Receipt)=>{
