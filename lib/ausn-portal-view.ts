@@ -29,6 +29,7 @@ export type PortalReport = {
   kind: 'full' | 'month';
   periodKey?: string;
   year?: string;
+  sourceChecks?: { source: string; period: string; checkedAt: string; mode: string; changed: boolean }[];
   runTimeUtc?: string;
   dataCutoff?: string;
   codeVersion?: string;
@@ -96,7 +97,9 @@ export function parsePortalReport(text: string, sourceFile = 'report.md'): Porta
   const dataCutoff = cell('Data cutoff');
   const year = dataCutoff?.slice(0, 4) || periodKey?.slice(0, 4);
   const sourceCompleteness: Record<string, string> = Object.fromEntries(rows(section(normalized, 'Полнота источников')).filter((row) => row.length === 2 && !['Показатель', '---'].includes(row[0]) && !row[0].startsWith('-')));
+  const sourceChecks = rows(section(normalized, 'Фоновое обновление источников')).filter(row => ['bank', 'ofd'].includes(row[0])).map(row => ({ source: row[0], period: row[1], checkedAt: row[2], mode: row[3], changed: row[4] === 'да' }));
   const failures: string[] = [];
+  if (normalized.includes('## Фоновое обновление источников') && (!sourceChecks.length || sourceChecks.some(s => !/^20\d{2}-\d{2}-\d{2}–20\d{2}-\d{2}-\d{2}$/.test(s.period) || !Number.isFinite(Date.parse(s.checkedAt)) || !['fresh', 'saved'].includes(s.mode) || Date.parse(s.checkedAt) > Date.parse(runTimeUtc || '')))) failures.push('Повреждены даты проверки источников.');
   const number = (...labels: string[]) => portalNumber(cell(...labels));
   const codeVersion = cell('Версия кода отчёта');
   const agentApiUser = cell('AgentAPI пользователь');
@@ -146,7 +149,7 @@ export function parsePortalReport(text: string, sourceFile = 'report.md'): Porta
   const ausnCell = table.find(([label]) => /^АУСН с /.test(label))?.[1];
   return {
     available, reason: failures.length ? failures.join(' ') : undefined, sourceFile, canonicalText: text, kind, periodKey, year,
-    runTimeUtc, dataCutoff, codeVersion, agentApiUser, agentApiVersion, sourceCompleteness,
+    sourceChecks: sourceChecks.length ? sourceChecks : undefined, runTimeUtc, dataCutoff, codeVersion, agentApiUser, agentApiVersion, sourceCompleteness,
     // A failed required source never exposes partial totals through this adapter.
     ...(available ? {
       totalIncome, remaining, usedPercent, usnBaseline: number('УСН до 31.03.2026'), ausnIncome: portalNumber(ausnCell),
@@ -188,10 +191,10 @@ function parseMonthDetails(table: string[][]) {
   return [...result.values()].sort((a, b) => a.periodKey.localeCompare(b.periodKey));
 }
 
-export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACHE_DIR || '/app/runtime/ausn-reports'): Promise<PortalReport[]> {
+export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACHE_DIR || '/app/runtime/ausn-reports', options: { latestPerScope?: boolean; file?: string } = {}): Promise<PortalReport[]> {
   try {
-    const names = (await readdir(directory)).filter((name) => /^ausn-executive-(?:full|current|20\d{2}-\d{2})-\d{8}T\d{6}\.md$/.test(name));
-    const results = await Promise.all(names.map(async (name) => {
+    const names = (await readdir(directory)).filter((name) => /^ausn-executive-(?:full|current|20\d{2}-\d{2})-\d{8}T\d{6}\.md$/.test(name) && (!options.file || name === options.file));
+    const readOne = async (name: string): Promise<PortalReport | null> => {
       try {
         const file = path.join(directory, name);
         const metadata = await lstat(file);
@@ -208,7 +211,26 @@ export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACH
         report.modifiedAt = metadata.mtimeMs;
         return report;
       } catch { return null; }
-    }));
+    };
+    let results: Array<PortalReport | null>;
+    if (options.latestPerScope) {
+      // Opening the workspace never parses every historical daily artifact.
+      // Keep latest failures visible, and one previous valid full report for delta.
+      results = [];
+      const primary = new Map<string, PortalReport>();
+      const previous = new Set<string>();
+      const ordered = [...names].sort((a,b) => (b.match(/(\d{8}T\d{6})\.md$/)?.[1] || '').localeCompare(a.match(/(\d{8}T\d{6})\.md$/)?.[1] || '') || a.localeCompare(b));
+      for (const name of ordered) {
+        const match = /^ausn-executive-(full|current|20\d{2}-\d{2})-(20\d{2})(\d{2})/.exec(name)!;
+        const key = match[1] === 'full' ? `full:${match[2]}` : `month:${match[1] === 'current' ? `${match[2]}-${match[3]}` : match[1]}`;
+        const latest = primary.get(key);
+        if (latest && (match[1] !== 'full' || !latest.available || previous.has(key))) continue;
+        const report = await readOne(name);
+        if (!report) continue;
+        if (!latest) { primary.set(key, report); results.push(report); }
+        else if (report.available) { previous.add(key); results.push(report); }
+      }
+    } else results = await Promise.all(names.map(readOne));
     return results.filter((report): report is PortalReport => report !== null).sort((a, b) => {
       const stamp = (report: PortalReport) => report.sourceFile.match(/(\d{8}T\d{6})\.md$/)?.[1] || '';
       return stamp(b).localeCompare(stamp(a)) || a.sourceFile.localeCompare(b.sourceFile);

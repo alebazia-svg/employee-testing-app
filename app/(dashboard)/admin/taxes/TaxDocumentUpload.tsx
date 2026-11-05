@@ -78,7 +78,8 @@ export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeri
   // Excel «Доходы АУСН» and the ENS ZIP carry their own months: the server reads
   // the coverage from the file, so the user is not asked for a period.
   const autoPeriod = documentType === 'AUSN_INCOME' || documentType === 'ENS_OPERATIONS';
-  const periodOptions = monthsUpTo(latestDuePeriod > defaultPeriod ? latestDuePeriod : defaultPeriod);
+  const archivalMonth = documentType === 'CORRECTION_EVIDENCE' ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date()).slice(0, 7) : '';
+  const periodOptions = monthsUpTo([latestDuePeriod, defaultPeriod, archivalMonth].sort().at(-1)!);
   function selectDocumentType(value: string) {
     setDocumentType(value as keyof typeof taxDocumentTypes);
     if (value === 'USN_DECLARATION') setPeriod('2026-03');

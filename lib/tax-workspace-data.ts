@@ -16,11 +16,12 @@ export function buildTaxWorkspace(input: { reports: PortalReport[]; documents: H
   // so an invalid fresh run is never hidden behind an older success.
   const full = reports.find((report) => report.kind === 'full' && report.year === year);
   const current = reports.find((report) => report.kind === 'month' && report.periodKey === month) || reports.find((report) => report.kind === 'month' && report.year === year);
+  const previousFull = full?.available ? reports.find(report => report !== full && report.kind === 'full' && report.available && report.year === year && report.runTimeUtc && full.runTimeUtc && Date.parse(report.runTimeUtc) < Date.parse(full.runTimeUtc)) : undefined;
   const limitSource = full?.available ? full : current;
   const plan = buildTaxDocumentPlan({ now, reports: [], documents: documents.map((document) => ({ ...document, source: 'portal' as const })) });
   const months = reviewMonths({ report: full, plan, today });
   return {
-    full, current, plan, months,
+    full, current, previousFull, plan, months,
     risk: portalRisk(limitSource, now),
     forecast: portalForecast(full),
     outlook: limitOutlook(full, today),

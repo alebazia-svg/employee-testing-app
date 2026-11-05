@@ -10,6 +10,7 @@ import { loadFnsGaps } from '@/lib/ausn-fns-gaps';
 import { TaxDocumentUpload, TaxUploadStatus } from './TaxDocumentUpload';
 import { loadIncomeEvidence } from '@/lib/tax-income-evidence-source';
 import { RefreshFigures } from '@/components/taxes/RefreshFigures';
+import { loadTaxManagementReview } from '@/lib/tax-management-review-source';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,24 +21,26 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
   const query = (await props.searchParams) || {};
   const tab: TaxTab = taxTabs.some(([key]) => key === query.tab) ? query.tab as TaxTab : 'overview';
   const [reports, documents] = await Promise.all([
-    loadPortalReports(),
+    loadPortalReports(undefined, { latestPerScope: true }),
     prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }),
   ]);
-  const incomeEvidence = await loadIncomeEvidence(documents);
+  const [incomeEvidence, managementReview] = await Promise.all([loadIncomeEvidence(documents), loadTaxManagementReview(documents)]);
   const now = new Date();
-  const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), loadLatestFnsBankReview(documents)]);
+  const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), tab === 'reconciliation' || !managementReview ? loadLatestFnsBankReview(documents) : Promise.resolve(undefined)]);
   const gaps = originalGaps && bankReview ? attachFnsBankCandidates(originalGaps, bankReview) : originalGaps;
   const data = buildTaxWorkspace({ reports, documents, now, gaps });
   const latestDuePeriod = data.plan.at(-1)?.periodKey || now.toISOString().slice(0, 7);
   return <AdminShell pageTitle='Налоги' pageDescription='Лимит дохода, налог по месяцам и сверка с налоговой.'>
     <TaxesWorkspace
+      managementReview={managementReview}
+      managementReviewUnavailable={!managementReview && documents.some(d => /^AUSN_management_review_.*\.zip$/i.test(d.originalName) && d.documentType === 'CORRECTION_EVIDENCE')}
       incomeEvidence={incomeEvidence}
       tab={tab}
       base='/admin/taxes'
       {...data}
       documents={documents.map((document) => ({ ...document, uploadedBy: document.uploadedBy?.name }))}
       upload={({ documentType, periodKey }) => <TaxDocumentUpload fixedType={documentType as never} defaultDocumentType={documentType as never} defaultPeriod={periodKey} latestDuePeriod={latestDuePeriod} />}
-      refresh={<RefreshFigures />}
+      refresh={<RefreshFigures label="Повторить обновление" />}
       afterUpload={<TaxUploadStatus placement='page' />}
       generalUpload={<TaxDocumentUpload defaultDocumentType='AUSN_KKT' defaultPeriod={latestDuePeriod} latestDuePeriod={latestDuePeriod} />}
     />

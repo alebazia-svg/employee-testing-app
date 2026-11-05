@@ -114,9 +114,9 @@ async function runBridge(requestId: string, resultPath: string, kind: 'document'
 // Re-runs the canonical full and current AUSN reports without a document, so the
 // portal and limit notifications do not keep showing stale figures. Used by the
 // «Обновить цифры» button and by the daily refresh job.
-export async function requestAusnRefresh(): Promise<AusnProcessingResult> {
+export async function requestAusnRefresh(options: { background?: boolean } = {}): Promise<AusnProcessingResult> {
   const requestId = randomBytes(16).toString('hex');
   const root = intakeRoot();
-  await atomicWrite(path.join(root, 'pending', `${requestId}.json`), JSON.stringify({ request_id: requestId, document_type: 'REFRESH' }));
+  await atomicWrite(path.join(root, 'pending', `${requestId}.json`), JSON.stringify({ request_id: requestId, document_type: options.background ? 'BACKGROUND_REFRESH' : 'REFRESH' }));
   return runBridge(requestId, path.join(root, 'results', `${requestId}.json`), 'refresh');
 }

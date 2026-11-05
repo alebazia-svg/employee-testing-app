@@ -5,10 +5,10 @@ import { taxLimitEvidence } from '@/lib/tax-limit-evidence';
 const rub = (n: number) => `${(n / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
 const day = (s: string) => s.slice(0, 10).split('-').reverse().join('.');
 const balance = (n: number) => n < 0 ? `Превышение ${rub(-n)}` : rub(n);
-export function TaxLimitEvidencePanel({ report, review, reconciliationHref }: { report?: PortalReport; review?: IncomeEvidenceReview; reconciliationHref: string }) {
+export function TaxLimitEvidencePanel({ report, review, reconciliationHref, legacy = false }: { report?: PortalReport; review?: IncomeEvidenceReview; reconciliationHref: string; legacy?: boolean }) {
   const v = taxLimitEvidence(report, review);
   return <section className='tax-panel tax-source-evidence' aria-label='ФНС, фактические оплаты и учёт 1С'>
-    <div className='tax-panel-head'><div><h2>Доход и остаток: три источника</h2><p>Рабочий остаток определяется по фактическим оплатам. Разметка ФНС и ошибки 1С показаны отдельно.</p></div><span className='tax-status' data-tone='warn'>Фактический остаток не подтверждён</span></div>
+    <div className='tax-panel-head'><div><h2>{legacy ? 'Прежняя сводка без ПСН — для сравнения' : 'Доход и остаток: три источника'}</h2><p>{legacy ? 'Сохранены прежние значения. Остаток ниже не учитывает ПСН; актуальная документальная сверка показана выше.' : 'Рабочий остаток определяется по фактическим оплатам. Разметка ФНС и ошибки 1С показаны отдельно.'}</p></div><span className='tax-status' data-tone='warn'>{legacy ? 'Не использовать для планирования' : 'Фактический остаток не подтверждён'}</span></div>
     <div className='tax-body'>
       <div className='tax-table-wrap'><table className='tax-table'><thead><tr><th>Источник</th><th>Доход за год</th><th>Остаток до 60 млн ₽</th></tr></thead><tbody>
         <tr><td><b>ФНС</b><small>Что уже учла налоговая; это не подтверждение полноты дохода</small></td><td>{v ? rub(v.knownCents) : 'Нет проверенной выгрузки'}</td><td>{v ? balance(v.knownRemainingCents) : 'Не рассчитан'}</td></tr>
