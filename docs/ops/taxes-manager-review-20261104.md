@@ -206,3 +206,39 @@ Activation still requires exact sudo approval, image/disk checks and first live
 background pair verification. Previous13GiB free is below15GiB gate; only unused
 builder cache cleanup may be proposed, not images/volumes. Existing node_modules
 symlink and unrelated owner changes retained. No version number reserved.
+
+## November5 — operational manager layer (owner: bring to9/10)
+
+Owner approved completing the remaining manager-facing gaps. Overview now adds
+explicit official accrual/payment history and an actionable finding queue. It
+uses only loaded FNS accrual cells and explicitly found bank payments, not the
+8% model. Latest available official accrual is September355634; this is not a
+current payment instruction. No invented payment deadline, current ENS balance,
+debt/overpayment, paid status, assignee or completion. Unknown and zero stay distinct.
+Missing full report cannot populate the operational amount with old/partial data.
+
+Regime evidence becomes two concise status rows, with original certificate facts
+and next step retained in a disclosure. Reconciliation date-method explanation
+is expandable; no findings or primary evidence removed. Income marks the first
+crossing month. Mobile payment history becomes labelled rows rather than forcing
+horizontal page/table scrolling. All existing source totals and old model controls
+remain accessible. New copy-for-accountant action is local only, includes USN/PSN,
+cutoff, crossing and explicit unconfirmed USN acceptance. Text can always be
+previewed/selected manually; no message-send integration. Clipboard button resolved
+successfully in IAB; browser clipboard readback API returned empty, so actual OS
+clipboard bytes are not independently claimed verified. Visible preview content
+was independently inspected via UI and matched the key factual constraints.
+
+CUA reviewed four tabs on desktop1440/mobile390; all mobile document widths375
+within390viewport. Expanded accrual history, accountant text, retained old model,
+forecast/calculator checked. Clean browser console contained no errors. Screenshots
+manager-nine-*.png saved in ownerworkspace; no production mutation.16 focused UI
+and operational tests passed,22 portal/server-policy tests passed,TypeScript passed.
+Previous44 unchanged source-snapshot tests remain valid. Production build passed;
+final repeat after minor copy/mobile refinements is recorded in the completion.
+
+Whole-system9/10 requires release, real server background pair/readback and final
+source reconciliation; subjective UI assessment must never certify those. Exact
+sudo authority is still pending. Do not confuse repeated implementation approval
+with sudo/deployment approval. Before any release recheck live/version/branch and
+storage reserves. Current plus rollback images, DB and uploads must be retained.
