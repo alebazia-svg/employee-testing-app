@@ -1,6 +1,6 @@
 # Daily FX approval — local candidate, 2026-11-05
 
-Not released. Production remains independent of this checkout. Owner approved:
+Released/verified1.21.36 /5480b55; see ../ops/procurement-daily-rate-release-20261105.md. The following records the approved candidate and its isolated checks. Owner approved:
 show recalculation, then confirm updates to existing unpaid requests for the
 selected payment-preparation day, both SUBMITTED and APPROVED. Keep their
 approval states. Saved terms do not expire or change automatically at midnight.

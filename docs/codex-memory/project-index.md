@@ -29,7 +29,7 @@ project from scratch.
 
 ## Read First By Task
 
-- Daily FX approval: `procurement-daily-rate-candidate-20261105.md` — local candidate only; immutable day rates, preview/confirm of unpaid requests, paid/partial preservation. Not deployed.
+- Daily FX approval: `../ops/procurement-daily-rate-release-20261105.md` — released/verified1.21.36 /5480b55; immutable day rates, preview/confirm of unpaid requests, paid/partial preservation.
 
 - Procurement requisites transfer: `procurement-transfer-release-20261105.md` — released/verified1.21.34 /2835d85. Single/daily bundles, exact per-plan file/hash binding, unchanged original QR plus amount footer, plain wallet/Alipay text and PNG+TXT archive fallback. Mac WhatsApp uses downloads; status/1C matching/receipt lifecycle unchanged. Earlier pending speed/notification work is excluded.
 
