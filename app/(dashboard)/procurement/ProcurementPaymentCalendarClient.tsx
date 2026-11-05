@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementRequestEquivalent,requestEquivalent} from '@/components/ProcurementRequestEquivalent';
 import {ProcurementRequestRate} from '@/components/ProcurementRequestRate';
 import {ProcurementMobilePresentation,ProcurementMobileReceiptEntry} from '@/components/ProcurementMobilePresentation';
 import {activePaymentDeferral,paymentPreparationDate,paymentScheduleLabel,paymentScheduleDetail} from '@/lib/procurement-schedule';
@@ -790,11 +791,11 @@ export default function ProcurementPaymentCalendarClient({
                               : rub.format(Number(plan.plannedAmount))
                             : rub.format(Number(plan.plannedAmount)))}
                         </p>
-                        <p className={compact ? 'mt-0.5 hidden text-xs text-slate-500 sm:block' : 'mt-0.5 text-sm font-semibold text-slate-600'}>
+                        {requestEquivalent(plan)?<ProcurementRequestEquivalent plan={plan}/>:<p className={compact ? 'mt-0.5 hidden text-xs text-slate-500 sm:block' : 'mt-0.5 text-sm font-semibold text-slate-600'}>
                           {visualPreview?.methods?.[plan.id] ?? methodLabel(plan.paymentMethod)}
-                        </p>
+                        </p>}
                         <ProcurementRequestRate method={plan.paymentMethod} rate={plan.exchangeRate} evidence={plan.evidence}/>
-                        {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
+                        {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) && !requestEquivalent(plan) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
                         {!compact && buyerPaymentComment(plan.condition) ? (
                           <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={buyerPaymentComment(plan.condition)}>
                             Комментарий: {buyerPaymentComment(plan.condition)}
