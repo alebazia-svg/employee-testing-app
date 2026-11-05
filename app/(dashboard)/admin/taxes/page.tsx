@@ -26,7 +26,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
   ]);
   const [incomeEvidence, managementReview] = await Promise.all([loadIncomeEvidence(documents), loadTaxManagementReview(documents)]);
   const now = new Date();
-  const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), tab === 'reconciliation' || !managementReview ? loadLatestFnsBankReview(documents) : Promise.resolve(undefined)]);
+  const [originalGaps, bankReview] = await Promise.all([loadFnsGaps(reports.find((report) => report.kind === 'full')?.sourceFile), loadLatestFnsBankReview(documents)]);
   const gaps = originalGaps && bankReview ? attachFnsBankCandidates(originalGaps, bankReview) : originalGaps;
   const data = buildTaxWorkspace({ reports, documents, now, gaps });
   const latestDuePeriod = data.plan.at(-1)?.periodKey || now.toISOString().slice(0, 7);

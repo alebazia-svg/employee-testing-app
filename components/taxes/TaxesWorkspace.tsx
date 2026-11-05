@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { TaxTabPanels } from './TaxTabPanels';
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Clock3, Download, FileText, Info } from 'lucide-react';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import type { PortalReport, PortalRisk } from '@/lib/ausn-portal-view';
@@ -88,17 +89,21 @@ export function groupMissing(plan: TaxPeriodPlan[]): MissingType[] {
 }
 
 export function TaxesWorkspace(props: TaxesWorkspaceProps) {
-  const { tab, base, issues, plan, health } = props;
-  const missingTypes = groupMissing(plan);
-  const archivedHighIssues = issues.filter((issue) => issue.severity === 'high').length;
-  const highIssues = props.managementReview ? props.managementReview.findings.filter(f => f.status !== 'verified').length : archivedHighIssues;
-  const errors = health.filter((item) => item.level === 'error').length;
-  const tabHref = (key: TaxTab) => key === 'overview' ? base : `${withTab(base)}${key}`;
+  const missingTypes = groupMissing(props.plan);
+  const highIssues = props.managementReview ? props.managementReview.findings.filter(f => f.status !== 'verified').length : props.issues.filter(i => i.severity === 'high').length;
+  const errors = props.health.filter(item => item.level === 'error').length;
   return <div className='tax-ws'>
     {props.notice}
-    <nav aria-label='Разделы налогов' className='admin-section-tabs'>
-      {taxTabs.map(([key, label]) => <Link key={key} href={tabHref(key)} aria-current={tab === key ? 'page' : undefined} className='admin-section-tab'>{label}{key === 'reconciliation' && highIssues > 0 ? <span className='needs-decision'>{highIssues}</span> : null}{key === 'documents' && missingTypes.length + errors > 0 ? <span className='needs-decision'>{missingTypes.length + errors}</span> : null}</Link>)}
-    </nav>
+    <TaxTabPanels initialTab={props.tab} base={props.base} tabs={taxTabs.map(([key, label]) => ({ key, label, count: key === 'reconciliation' ? highIssues : key === 'documents' ? missingTypes.length + errors : 0 }))}
+      panels={Object.fromEntries(taxTabs.map(([tab]) => [tab, <TaxPanel key={tab} {...props} tab={tab} />]))} />
+  </div>;
+}
+
+function TaxPanel(props: TaxesWorkspaceProps) {
+  const { tab, base, health } = props;
+  const missingTypes = groupMissing(props.plan);
+  const archivedHighIssues = props.issues.filter(issue => issue.severity === 'high').length;
+  return <>
     {props.managementReviewUnavailable && <div className='tax-callout' data-tone='error' role='status'><strong>Документальная сводка недоступна.</strong> Не удалось проверить последний архив или его источники. Прежние расчёты ниже сохранены для сравнения; их остаток не подтверждает возможность новых продаж в пределах АУСН. Проверьте последний архив в «Документах».</div>}
     {props.managementReview && tab === 'overview' && <><TaxManagementOverview review={props.managementReview} base={base} accountingReport={props.full} previousReport={props.previousFull} /><TaxOperations review={props.managementReview} report={props.full} base={base} /></>}
     {props.managementReview && tab === 'income' && <><TaxAccountingMonths review={props.managementReview} report={props.full} /><TaxManagementIncome review={props.managementReview} /></>}
@@ -120,7 +125,7 @@ export function TaxesWorkspace(props: TaxesWorkspaceProps) {
       {tab === 'documents' && <Documents {...props} missingTypes={missingTypes} />}
       <Footer {...props} />
     </>}
-  </div>;
+  </>;
 }
 
 function HealthPanel({ health, refresh, archivedReport }: { health: HealthIssue[]; refresh?: React.ReactNode; archivedReport?: boolean }) {
