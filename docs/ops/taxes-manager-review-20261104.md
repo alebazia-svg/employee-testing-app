@@ -101,3 +101,69 @@ Changed source files for this preview refinement:
 
 Final owner-correction validation: production build passed; 19 focused tests
 passed. Source documents and canonical report calculations were not rewritten.
+
+## November5 — fresh preview before release
+
+Owner approved refreshing the same preview, retaining an explicit separate old
+snapshot, and showing USN/PSN plus the accountant-agreed October22 crossing before
+release. No production installation or new release number assigned.
+
+Preview uses the original downloaded full runner artifact
+`ausn-executive-full-20261104T213515.md` (cutoff Nov4). Original Oct31 artifact and
+private management review remain untouched. Preview-only `snapshot=20261031`
+selects that preserved report and visibly labels it as archival; return and tab
+navigation preserve the selected scope.
+
+Management overview now reads the latest complete full report for the accounting
+comparison, adds the book-backed Q1 baseline once, and labels its own cutoff/run
+separately from the Oct31 FNS/payment review. It never adds new November data to
+that fixed documentary review, changes its crossing, or certifies provisional
+payments. USN/PSN breakdown is visible before opening method details. Existing
+four tabs, comparison disclosure, controls and findings remain.
+
+Focused nine tests and TypeScript passed. Initial build collided with running
+Next dev output; preview was paused and a clean standalone build is being checked.
+No FNS/Telegram, runtime runner, timer, production DB or production changes.
+
+Final preview verification: standalone production build succeeded, TypeScript
+succeeded, nine focused tests passed. Preserved archive visited/read back at
+snapshot=20261031 with accounting71,034,376.36; fresh view reads71,475,350.36
+throughNov4, original FNS65,283,832.64 and preliminary payments70,957,276.36
+unchanged throughOct31. USN2,404,308.76 +PSN17,636,261.40 shown explicitly.
+All four tabs inspected, archive return checked, original documents unchanged.
+Screenshot: owner workspace outputs/taxes-manager-refresh-20261104/
+preview-fresh-20261105.png. Preview remains on3258 and was shown to the owner.
+No release or production mutation performed. Existing node_modules symlink left
+untouched. Source changes this turn: app/taxes-development-preview/page.tsx,
+components/taxes/TaxManagementReview.tsx, components/taxes/TaxesWorkspace.tsx,
+lib/tax-management-review.ts, tests/tax-management-review.test.tsx.
+
+## November5 — FNS termination proof and final manager review
+
+Owner requested completing the real portal update because production still showed
+old values. Added validated optional regime evidence to the private review, with
+source-name binding to authorized documents. Original FNS certificate101551 dated
+Nov5 and notification10:33 confirm AUSN endedOct1. Separate USN Income acceptance
+was not found; never display that transition as accepted. Owner reports submission.
+No FNS submission made by agent. Updated next-action panel leads immediately after
+the overview heading and repeats in reconciliation/documents. All three dated
+income sources remain separate; old model and forecasts retained explicitly.
+
+Fresh private bundle AUSN_management_review_20261105.zip contains updated metadata,
+original new proof archive and complete original Nov4 accounting report. Prior
+Nov4 review retained unchanged. Production authorized-source archive upload and
+readback remain pending release; no financial recalculation requested.
+
+Merged current deployment branch throughb53a60a, preserving production1.21.34
+changes, including OFD repair. Production build passed after regenerating local
+Prisma client for that already-released schema. 22 focused tests passed;
+TypeScript passed. Real CUA review covered four tabs at1440px and390px, no page
+horizontal overflow. Screenshots ownerworkspace overview-regime-ready-20261105.png
+and associated income/reconciliation/documents/mobile files. Live preview3258.
+Only this task's local dev server stopped/restarted for the build. No source
+calculations, FNS, Telegram, DB schema, 1C or production changes.
+
+Read-only server gate: running checkout2835d854, public1.21.34, disk13GiB free,
+below required15GiB. New release requires exact sudo authority plus permission
+for unused builder-cache-only cleanup if needed; current/rollback images and
+volumes must remain. Do not deploy before owner sees/approves this final state.
