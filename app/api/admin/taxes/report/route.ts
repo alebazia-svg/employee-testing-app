@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   if (!file || !/^ausn-executive-(?:full|current|20\d{2}-\d{2})-\d{8}T\d{6}\.md$/.test(file)) {
     return Response.json({ error: 'Некорректный идентификатор отчёта.' }, { status: 400 });
   }
-  const report = (await loadPortalReports()).find((item) => item.sourceFile === file);
+  const report = (await loadPortalReports(undefined, { file })).find((item) => item.sourceFile === file);
   if (!report || portalFreshness(report).state === 'blocked') {
     return Response.json({ error: 'Полный подтверждённый отчёт не найден.' }, { status: 404 });
   }

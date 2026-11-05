@@ -171,3 +171,29 @@ test('data cutoff cannot be after the server run day', () => {
   assert.equal(report.available, false);
   assert.match(report.reason!, /позже даты запуска/);
 });
+
+test('workspace reads retain latest failures and previous valid full without exposing all daily history', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'tax-fast-history-'));
+  try {
+    for (const [name,text] of [
+      ['ausn-executive-full-20261026T100000.md',portalFixture()],
+      ['ausn-executive-full-20261025T100000.md','truncated\n'],
+      ['ausn-executive-full-20261024T100000.md',portalFixture()],
+      ['ausn-executive-full-20261023T100000.md',portalFixture()],
+      ['ausn-executive-current-20261026T100000.md','truncated\n'],
+      ['ausn-executive-current-20261025T100000.md',portalFixture()],
+    ]) await writeFile(path.join(root,name),text);
+    const fast = await loadPortalReports(root,{latestPerScope:true});
+    assert.equal(fast.length,3);
+    assert.deepEqual(fast.filter(r=>r.kind==='full').map(r=>r.sourceFile),['ausn-executive-full-20261026T100000.md','ausn-executive-full-20261024T100000.md']);
+    assert.equal(fast.find(r=>r.kind==='month')?.available,false);
+    assert.equal((await loadPortalReports(root,{file:'ausn-executive-full-20261023T100000.md'})).length,1);
+    assert.equal((await loadPortalReports(root,{file:'../other.md'})).length,0);
+    // The archive/download path keeps its complete history.
+    assert.equal((await loadPortalReports(root)).length,6);
+    await writeFile(path.join(root,'ausn-executive-full-20261027T100000.md'),'truncated\n');
+    const broken = await loadPortalReports(root,{latestPerScope:true});
+    assert.equal(broken.find(r=>r.kind==='full')?.available,false);
+    assert.equal(broken.filter(r=>r.kind==='full').length,1);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
