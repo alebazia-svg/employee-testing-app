@@ -29,6 +29,7 @@ export type PortalReport = {
   kind: 'full' | 'month';
   periodKey?: string;
   year?: string;
+  sourceChecks?: { source: string; period: string; checkedAt: string; mode: string; changed: boolean }[];
   runTimeUtc?: string;
   dataCutoff?: string;
   codeVersion?: string;
@@ -96,7 +97,9 @@ export function parsePortalReport(text: string, sourceFile = 'report.md'): Porta
   const dataCutoff = cell('Data cutoff');
   const year = dataCutoff?.slice(0, 4) || periodKey?.slice(0, 4);
   const sourceCompleteness: Record<string, string> = Object.fromEntries(rows(section(normalized, 'Полнота источников')).filter((row) => row.length === 2 && !['Показатель', '---'].includes(row[0]) && !row[0].startsWith('-')));
+  const sourceChecks = rows(section(normalized, 'Фоновое обновление источников')).filter(row => ['bank', 'ofd'].includes(row[0])).map(row => ({ source: row[0], period: row[1], checkedAt: row[2], mode: row[3], changed: row[4] === 'да' }));
   const failures: string[] = [];
+  if (normalized.includes('## Фоновое обновление источников') && (!sourceChecks.length || sourceChecks.some(s => !/^20\d{2}-\d{2}-\d{2}–20\d{2}-\d{2}-\d{2}$/.test(s.period) || !Number.isFinite(Date.parse(s.checkedAt)) || !['fresh', 'saved'].includes(s.mode) || Date.parse(s.checkedAt) > Date.parse(runTimeUtc || '')))) failures.push('Повреждены даты проверки источников.');
   const number = (...labels: string[]) => portalNumber(cell(...labels));
   const codeVersion = cell('Версия кода отчёта');
   const agentApiUser = cell('AgentAPI пользователь');
@@ -146,7 +149,7 @@ export function parsePortalReport(text: string, sourceFile = 'report.md'): Porta
   const ausnCell = table.find(([label]) => /^АУСН с /.test(label))?.[1];
   return {
     available, reason: failures.length ? failures.join(' ') : undefined, sourceFile, canonicalText: text, kind, periodKey, year,
-    runTimeUtc, dataCutoff, codeVersion, agentApiUser, agentApiVersion, sourceCompleteness,
+    sourceChecks: sourceChecks.length ? sourceChecks : undefined, runTimeUtc, dataCutoff, codeVersion, agentApiUser, agentApiVersion, sourceCompleteness,
     // A failed required source never exposes partial totals through this adapter.
     ...(available ? {
       totalIncome, remaining, usedPercent, usnBaseline: number('УСН до 31.03.2026'), ausnIncome: portalNumber(ausnCell),

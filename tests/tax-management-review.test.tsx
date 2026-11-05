@@ -82,7 +82,7 @@ test('accountant confirmation closes the date task without certifying the prelim
   const valid = parseTaxManagementReview(JSON.stringify(review)); assert.ok(valid);
   const html = renderToStaticMarkup(<TaxManagementOverview review={valid} base='/admin/taxes' />);
   assert.match(html, /Дата согласована с бухгалтером/);
-  assert.match(html, /Статус отправки и принятия в портале пока не подтверждён/);
+  assert.match(html, /Проверить с бухгалтером отправку и принятие уведомлений/);
   assert.doesNotMatch(html, /С бухгалтером подтвердить месяц/);
   assert.match(html, /Не окончательная налоговая база/);
   review.accountantConfirmation.exceededOn = review.paymentsCrossing;
@@ -109,7 +109,7 @@ test('accounting income uses the same Q1 baseline once and stays independent of 
   assert.equal(totals.fns, 6_100_000_000);
   assert.equal(totals.payments, 6_200_000_000);
   const html = renderToStaticMarkup(<TaxManagementOverview review={result} base='/admin/taxes' />);
-  assert.match(html, /Учётный доход 1С \+ ККТ/);
+  assert.match(html, /учётный доход 1С \+ ККТ/);
   assert.doesNotMatch(html, /Отдельный итог не подтверждён/);
   review.accountingIncome.from = '2026-01-01';
   assert.equal(parseTaxManagementReview(JSON.stringify(review)), undefined);
@@ -147,7 +147,7 @@ test('FNS termination proof does not certify USN acceptance; status requires an 
   for (const html of [renderToStaticMarkup(<TaxManagementOverview review={parsed} base='/admin/taxes' />), renderToStaticMarkup(<TaxManagementDocuments review={parsed} />)]) {
     assert.match(html, /Снятие с АУСН подтверждено ФНС/);
     assert.match(html, /ожидает отдельного подтверждения/);
-    assert.doesNotMatch(html, /Статус отправки и принятия в портале пока не подтверждён/);
+    assert.doesNotMatch(html, /Проверить с бухгалтером отправку и принятие уведомлений/);
   }
   review.regimeStatus.sourceName = 'missing.pdf';
   assert.equal(parseTaxManagementReview(JSON.stringify(review)), undefined);

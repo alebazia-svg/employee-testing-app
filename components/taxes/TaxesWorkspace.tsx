@@ -297,7 +297,7 @@ function Documents({ missingTypes, documents, upload, generalUpload, plan, after
       <header><h2>{missingTypes.length ? 'Что загрузить' : managementReview ? 'Плановые документы загружены' : 'Все документы загружены'}</h2>{missingTypes.length > 0 && <span>{missingTypes.length}</span>}</header>
       {missingTypes.map((item) => <div key={item.type} className='tax-item'>
         <b>{item.title} — за {item.periods.map(monthName).join(', ')}</b>
-        <p className='tax-muted inline-flex items-center gap-1.5'>{item.source}<More><p>{item.instruction}</p></More></p>
+        <div className='tax-muted inline-flex items-center gap-1.5'>{item.source}<More><p>{item.instruction}</p></More></div>
         <details className='tax-details group mt-2'><summary className='inline-flex'><span className='admin-material-primary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-semibold text-white'>Загрузить файл</span></summary><div className='tax-upload'>{upload({ documentType: item.type, periodKey: item.periods.at(-1)! })}</div></details>
       </div>)}
       {!missingTypes.length && <div className='tax-item'><p className='tax-muted'>{managementReview ? 'Плановый список выполнен. Это не подтверждение полноты дохода или завершения сверки. Следующие плановые выгрузки — после 16 числа.' : 'Следующие — после 16 числа'}</p></div>}
