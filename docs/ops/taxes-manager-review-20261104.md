@@ -255,3 +255,25 @@ Exact source files in this operational UX step:
 - lib/tax-manager-brief.ts
 - tests/tax-operations.test.tsx
 Documentation: this file only. Unrelated node_modules symlink left untouched.
+
+## Final scalability audit (owner requested no progress replies)
+
+Workspace now parses only latest per-month artifacts and latest/previous valid
+full artifacts; newest broken results still fail closed. Historical download
+remains available for every original file and reads only the requested file.
+The hourly freshness script uses the same bounded workspace selection; unrelated
+reminder/export defaults remain unchanged. No data is deleted or silently dropped
+from archive/download access. Regression covers newest failure, broken previous
+artifact, older valid comparison, complete archive access and invalid paths.
+
+Synthetic local test with360 saved full artifacts: original path parsed360 in58ms;
+workspace path parsed2 in1ms, with identical latest source and income. These are
+fixture timings, not production benchmarks.26 report/processing/download/policy
+tests pass,16 UI/operation tests pass and TypeScript passes. Companion background
+history audit now45tests, with obsolete-cutoff starvation corrected.
+
+Owner still has not granted the exact requested sudo scope. Approval question
+was sent through the async input tool; no ordinary progress messages sent after
+the owner's request for silence. Production remains1.21.34, server2835d854,
+runner52ea807; free space13942468608bytes (below15GiB build gate). No sudo, build
+cache removal, production installation, database or FNS/Telegram mutation.
