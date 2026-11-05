@@ -167,3 +167,42 @@ Read-only server gate: running checkout2835d854, public1.21.34, disk13GiB free,
 below required15GiB. New release requires exact sudo authority plus permission
 for unused builder-cache-only cleanup if needed; current/rollback images and
 volumes must remain. Do not deploy before owner sees/approves this final state.
+
+## November5 — approved compact workspace and incremental background mode
+
+Owner approved the recommended compact manager screen, then explicitly approved
+period-scoped background refresh. Overview now leads with documentary income,
+excess and regime status; one next action; three source rows with detail on demand;
+source freshness and open-question links. Preliminary amounts are retained inside
+their disclosures, not presented as certified totals. Documents become a compact
+expandable source index; all source purposes/downloads remain. Prior model and
+forecast disclosure, all four tabs, current data and findings retained. No new
+role/tax formula/source-price behavior. No production release yet.
+
+Page loading now has a tax-specific saved-data skeleton. The expensive FNS XLSX
+bank-candidate expansion only runs for reconciliation when the new review is
+available; the old no-review flow is unchanged. Fixed invalid p/details nesting
+in Documents which caused hydration recovery. CUA clean-session four-tab check
+reported zero browser errors. Desktop1440/mobile390 reviewed, no horizontal
+overflow; mobile money kept on one line. Final screenshots command-overview and
+command-overview-mobile-20261105.png in owner workspace. Warm local dev HTTP:
+overview0.109s,documents0.197s; not a production performance claim.
+
+Companion server source worktree ausn-incremental-refresh-20261105 from installed
+52ea807 implements private complete raw-source snapshots, recent2month refresh,
+one historical month rotation, atomic version history and targeted conflict
+reread. Manual/strict reports and document imports stay uncached. Only the existing
+daily background job queues BACKGROUND_REFRESH. No new timer or permissions.
+Portal parses and exposes per-period source-check dates and fresh/saved/change
+states in the refresh disclosure. Existing20h freshness gate now checks both
+full/current scopes. No FNS/1C/Telegram writes or formula changes. See companion
+INCREMENTAL-REFRESH-20261105.md for limits, tests, exact rollout and rollback.
+
+Local production build and TypeScript pass;13 UI/source-separation tests and22
+report/processing/background-policy tests pass.44 server tests pass, including
+calculator parity, closed-history reuse/rotation, late correction/deletion,
+no fallback on failure, cross-window bank conflicts and stable document hashing.
+Activation still requires exact sudo approval, image/disk checks and first live
+background pair verification. Previous13GiB free is below15GiB gate; only unused
+builder cache cleanup may be proposed, not images/volumes. Existing node_modules
+symlink and unrelated owner changes retained. No version number reserved.
