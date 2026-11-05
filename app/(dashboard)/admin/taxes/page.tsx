@@ -21,7 +21,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
   const query = (await props.searchParams) || {};
   const tab: TaxTab = taxTabs.some(([key]) => key === query.tab) ? query.tab as TaxTab : 'overview';
   const [reports, documents] = await Promise.all([
-    loadPortalReports(),
+    loadPortalReports(undefined, { latestPerScope: true }),
     prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }),
   ]);
   const [incomeEvidence, managementReview] = await Promise.all([loadIncomeEvidence(documents), loadTaxManagementReview(documents)]);

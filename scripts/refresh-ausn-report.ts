@@ -8,7 +8,7 @@ import { ausnRefreshState } from '../lib/ausn-refresh-policy';
 // No top-level await: production scripts run through tsx in CommonJS mode.
 async function main() {
   const force = process.argv.includes('--force');
-  const reports = await loadPortalReports();
+  const reports = await loadPortalReports(undefined, { latestPerScope: true });
   const { fresh, ageHours } = ausnRefreshState(reports);
   if (!force && fresh) {
     console.log(JSON.stringify({ at: new Date().toISOString(), status: 'fresh', ageHours: Math.round(ageHours * 10) / 10 }));

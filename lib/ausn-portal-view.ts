@@ -191,10 +191,10 @@ function parseMonthDetails(table: string[][]) {
   return [...result.values()].sort((a, b) => a.periodKey.localeCompare(b.periodKey));
 }
 
-export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACHE_DIR || '/app/runtime/ausn-reports'): Promise<PortalReport[]> {
+export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACHE_DIR || '/app/runtime/ausn-reports', options: { latestPerScope?: boolean; file?: string } = {}): Promise<PortalReport[]> {
   try {
-    const names = (await readdir(directory)).filter((name) => /^ausn-executive-(?:full|current|20\d{2}-\d{2})-\d{8}T\d{6}\.md$/.test(name));
-    const results = await Promise.all(names.map(async (name) => {
+    const names = (await readdir(directory)).filter((name) => /^ausn-executive-(?:full|current|20\d{2}-\d{2})-\d{8}T\d{6}\.md$/.test(name) && (!options.file || name === options.file));
+    const readOne = async (name: string): Promise<PortalReport | null> => {
       try {
         const file = path.join(directory, name);
         const metadata = await lstat(file);
@@ -211,7 +211,26 @@ export async function loadPortalReports(directory = process.env.AUSN_REPORT_CACH
         report.modifiedAt = metadata.mtimeMs;
         return report;
       } catch { return null; }
-    }));
+    };
+    let results: Array<PortalReport | null>;
+    if (options.latestPerScope) {
+      // Opening the workspace never parses every historical daily artifact.
+      // Keep latest failures visible, and one previous valid full report for delta.
+      results = [];
+      const primary = new Map<string, PortalReport>();
+      const previous = new Set<string>();
+      const ordered = [...names].sort((a,b) => (b.match(/(\d{8}T\d{6})\.md$/)?.[1] || '').localeCompare(a.match(/(\d{8}T\d{6})\.md$/)?.[1] || '') || a.localeCompare(b));
+      for (const name of ordered) {
+        const match = /^ausn-executive-(full|current|20\d{2}-\d{2})-(20\d{2})(\d{2})/.exec(name)!;
+        const key = match[1] === 'full' ? `full:${match[2]}` : `month:${match[1] === 'current' ? `${match[2]}-${match[3]}` : match[1]}`;
+        const latest = primary.get(key);
+        if (latest && (match[1] !== 'full' || !latest.available || previous.has(key))) continue;
+        const report = await readOne(name);
+        if (!report) continue;
+        if (!latest) { primary.set(key, report); results.push(report); }
+        else if (report.available) { previous.add(key); results.push(report); }
+      }
+    } else results = await Promise.all(names.map(readOne));
     return results.filter((report): report is PortalReport => report !== null).sort((a, b) => {
       const stamp = (report: PortalReport) => report.sourceFile.match(/(\d{8}T\d{6})\.md$/)?.[1] || '';
       return stamp(b).localeCompare(stamp(a)) || a.sourceFile.localeCompare(b.sourceFile);
