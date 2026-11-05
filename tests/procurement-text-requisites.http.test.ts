@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
+import {randomUUID} from 'node:crypto';
+if(process.env.DATABASE_URL!=='postgresql://postgres@127.0.0.1:55467/payment_documents_test')throw Error('ISOLATED_DATABASE_REQUIRED');
+const db=new PrismaClient();test.after(()=>db.$disconnect());const base='http://127.0.0.1:3167';
+test('HTTP text save and readback, browser auth, CSRF, network, duplicate retry, replacement and method guards',async()=>{
+ const login=async(name:string)=>{const r=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:name,password:'documents-local-only'})});assert.equal(r.status,200);return r.headers.getSetCookie().find(c=>c.startsWith('offonika_session='))!.split(';')[0];};
+ const admin=await login('documents-admin'),buyer=await login('documents-buyer');
+ const plan=await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:'documents-open-usdt'}});
+ const endpoint=base+`/api/procurement/payment-plans/${plan.id}/requisites`;
+ const command={text:'local-test-'+randomUUID(),network:'TRC20',planVersion:plan.updatedAt.toISOString()};
+ const post=(body:any,cookie=buyer,origin=base)=>fetch(endpoint,{method:'POST',headers:{cookie,origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await post(command,'')).status,401);assert.equal((await post(command,buyer,'https://wrong.invalid')).status,403);
+ assert.equal((await post({...command,network:''})).status,400);assert.equal((await post({...command,planVersion:'old'})).status,409);
+ const response=await post(command);assert.equal(response.status,200);const first=(await response.json()).receipt;
+ const read=await fetch(base+`/api/procurement/receipts?documents=1&plan=${plan.id}`,{headers:{cookie:admin}});assert.equal(read.status,200);
+ assert.ok((await read.json()).receipts.some((r:any)=>r.id===first.id&&r.textContent===command.text&&r.network==='TRC20'));
+ assert.equal((await(await post(command)).json()).duplicate,true);
+ const changed=await post({...command,text:command.text+'-changed',network:'ERC20',replaceId:first.id,replaceRevision:0},admin);assert.equal(changed.status,200);
+ assert.ok((await db.supplierPaymentReceipt.findUniqueOrThrow({where:{id:first.id}})).replacedById);
+ assert.deepEqual(await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:plan.id}}),plan);
+ const cash=await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:'documents-open-cash'}});
+ const reject=await fetch(base+`/api/procurement/payment-plans/${cash.id}/requisites`,{method:'POST',headers:{cookie:buyer,origin:base,'Content-Type':'application/json'},body:JSON.stringify({...command,planVersion:cash.updatedAt.toISOString()})});assert.equal(reject.status,409);
+});

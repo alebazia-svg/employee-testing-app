@@ -30,6 +30,28 @@ export function accessModeLabel(mode?: string | null) {
   return mode === 'app' ? 'Приложение' : mode === 'browser' ? 'Вкладка браузера' : 'Не определён';
 }
 
+export const ACCESS_RECENT_DAYS = 7;
+/** Visibility only: expiry, subscription, ownership and history never change. */
+export function accessHasRecentContact(row: Pick<AccessJournalRow, 'lastSeenAt'>, now: Date) {
+  const at = Date.parse(row.lastSeenAt);
+  return Number.isFinite(at) && at >= now.getTime() - ACCESS_RECENT_DAYS * 86400000 && at <= now.getTime() + 300000;
+}
+
+export function accessMatchesSearch(row: AccessJournalRow, query: string) {
+  const needle = query.trim().toLocaleLowerCase('ru-RU');
+  return [row.name, row.login, row.device, accessSystemLabel(row.device), row.browser, row.connectionLabel,
+    row.browserInstanceId, row.observedBrowserId].filter(Boolean).join(' ').toLocaleLowerCase('ru-RU').includes(needle);
+}
+
+export function accessNotificationLabel(row: AccessJournalRow, now: Date) {
+  const { label } = accessNotificationDetail(row, now);
+  if (label === 'Подключены') return 'Уведомления подключены';
+  if (label === 'Не подключены') return 'Уведомления не подключены';
+  if (label === 'Запрещены') return 'Уведомления запрещены';
+  if (label === 'Нет свежих данных') return 'Уведомления: нет свежих данных';
+  return label;
+}
+
 export function accessLastPushForUser(sub: { userId: number; lastPushUserId: number | null; lastPushAttemptAt: Date | null; lastPushResultAt: Date | null; lastPushOutcome: string | null; lastPushErrorCode: string | null } | null, userId: number): AccessJournalRow['lastPush'] {
   if (!sub || sub.userId !== userId || sub.lastPushUserId !== userId || !sub.lastPushAttemptAt || !sub.lastPushResultAt || !sub.lastPushOutcome) return null;
   return { attemptedAt: sub.lastPushAttemptAt.toISOString(), resultAt: sub.lastPushResultAt.toISOString(), outcome: sub.lastPushOutcome, errorCode: sub.lastPushErrorCode };
@@ -68,8 +90,7 @@ export function accessPushView(row: AccessJournalRow, now: Date) {
   return { label: row.pushLabel, tone: row.pushLabel === 'Подключены' ? 'ok' as const : 'warning' as const };
 }
 export function filterAccessRows(rows: AccessJournalRow[], query: string, attention: boolean, now: Date) {
-  const needle = query.trim().toLocaleLowerCase('ru-RU');
-  return rows.filter(row => `${row.name} ${row.login} ${row.device} ${row.browser}`.toLocaleLowerCase('ru-RU').includes(needle)
+  return rows.filter(row => accessMatchesSearch(row, query)
     && (!attention || accessPushView(row, now).tone !== 'ok'));
 }
 export function groupAccessRows(rows: AccessJournalRow[]) {

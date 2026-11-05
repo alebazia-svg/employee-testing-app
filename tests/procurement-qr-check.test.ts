@@ -14,7 +14,9 @@ const file={id:'qr',purpose:'QR',replacedById:null,revision:0};
 test('manual requests only for approved currency payments, including missing QR and future dates',()=>{
   assert.equal(needsQrCheck(plan,[file],'2026-10-25'),true);
   assert.equal(needsQrCheck({...plan,paymentMethod:'CNY'},[file],'2026-10-25'),true);
-  for(const change of [{status:'SUBMITTED'},{status:'CANCELLED'},{paymentMethod:'ACCOUNTABLE_QR'},{paymentMethod:'CASH'},{paymentMethod:'BANK'},{oneCCashEvidence:{pendingRevision:{}}},{oneCCashEvidence:{fundingDeferral:{}}}])assert.equal(needsQrCheck({...plan,...change},[file],'2026-10-25'),false);
+  for(const change of [{status:'SUBMITTED'},{status:'CANCELLED'},{paymentMethod:'ACCOUNTABLE_QR'},{paymentMethod:'CASH'},{paymentMethod:'BANK'},{oneCCashEvidence:{pendingRevision:{}}}])assert.equal(needsQrCheck({...plan,...change},[file],'2026-10-25'),false);
+  assert.equal(needsQrCheck({...plan,oneCCashEvidence:{fundingDeferral:{}}},[],'2026-10-25'),true,'deferred approved payments can request requisites in advance');
+  assert.equal(needsQrCheck({...plan,documentState:{deferred:true,pendingRevision:false,paymentMatchFrom:null}},[],'2026-10-25'),true);
   assert.equal(needsQrCheck({...plan,plannedDate:new Date('2026-10-26')},[],'2026-10-25'),true);
   assert.equal(needsQrCheck(plan,[{...file,purpose:'RECEIPT'}],'2026-10-25'),true);
   assert.equal(needsQrCheck(plan,[{...file,replacedById:'new'}],'2026-10-25'),true);
@@ -32,7 +34,7 @@ test('manual requests only for approved currency payments, including missing QR 
 test('manual producer and send guard: deduplication, quiet hours, replacement, source failures and changed versions',async()=>{
   let files:any[]=[file],state='NO_EVIDENCE',offline=false,version=plan.updatedAt.toISOString(),method='USDT';
   const rows=new Map<string,any>();let sourceReads=0;
-  const db:any={user:{findUnique:async()=>({role:'ADMIN',isActive:true})},$queryRaw:async()=>[],supplierPaymentPlan:{findUnique:async()=>({...plan,paymentMethod:method,receipts:files,manager:{isActive:true}})},workdayNotification:{findUnique:async({where}:any)=>rows.get(where.fingerprint),create:async({data}:any)=>{rows.set(data.fingerprint,data);return data;}}};
+  const db:any={user:{findUnique:async()=>({role:'ADMIN',isActive:true,name:'Администратор',payrollName:'Кештова Бэла'})},$queryRaw:async()=>[],supplierPaymentPlan:{findUnique:async()=>({...plan,paymentMethod:method,receipts:files,manager:{isActive:true}})},workdayNotification:{findUnique:async({where}:any)=>rows.get(where.fingerprint),create:async({data}:any)=>{rows.set(data.fingerprint,data);return data;}}};
   db.$transaction=async(fn:any)=>fn(db);
   const mocks:any={'server-only':{},'./prisma':{prisma:db},'./procurement-notification-evidence':{procurementNotificationEvidence:async()=>{sourceReads++;return offline?null:Object.assign(new Map([['p',{state}]]),{versions:new Map([['p',version]])});}}};
   const bundle=await build({entryPoints:['lib/procurement-qr-check-notifications.ts'],bundle:true,write:false,format:'cjs',platform:'node',packages:'external',plugins:[{name:'isolated',setup(b){b.onResolve({filter:/.*/},a=>a.path in mocks?{path:a.path,external:true}:undefined);}}]});
@@ -50,6 +52,7 @@ test('manual producer and send guard: deduplication, quiet hours, replacement, s
   await api.requestQrCheck(actor,'p',command(),night);
   assert.equal((await api.requestQrCheck(actor,'p',command(),night)).alreadyRequested,true);
   assert.equal(rows.size,1);const notice=[...rows.values()][0];
+  assert.match(notice.body,/Кештова Бэла/);assert.equal((await api.qrCheckPushDecision(notice,now)).body,notice.body);
   assert.equal(notice.scheduledAt.toISOString(),'2026-10-25T05:30:00.000Z');
   assert.equal((await api.qrCheckPushDecision(notice,night)).state,'defer');
   assert.equal((await api.qrCheckPushDecision(notice,now)).state,'send');
@@ -64,7 +67,7 @@ test('manual producer and send guard: deduplication, quiet hours, replacement, s
   version='changed';assert.equal((await api.qrCheckPushDecision(notice,now)).state,'defer');version=plan.updatedAt.toISOString();
   assert.equal(rows.size,1,'send guard never produces repeated notices');
   files=[];await api.requestQrCheck(actor,'p',command(),now);assert.equal(rows.size,2);
-  const missing=[...rows.values()].find(r=>r.title==='Добавьте QR-код для оплаты');assert.ok(missing);
+  const missing=[...rows.values()].find(r=>r.title==='Нужны реквизиты для оплаты');assert.ok(missing);
   files=[file];assert.equal((await api.qrCheckPushDecision(missing,now)).state,'cancel');
   assert.equal((await api.qrCheckPushDecision({userId:42,fingerprint:'procurement-qr-check:p:2026-10-25'},now)).state,'cancel','old automatic notice cannot send');
 });

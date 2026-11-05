@@ -170,6 +170,7 @@ export type OfdReceipt = {
   fiscalDriveNumber: string;
   fiscalDocumentNumber: string;
   fiscalSign: string;
+  fiscalShiftNumber?: string;
   operationType: number;
   receiptAt: string;
   kktRegistrationNumber: string;

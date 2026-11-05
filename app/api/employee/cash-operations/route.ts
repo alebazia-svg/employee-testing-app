@@ -1,6 +1,8 @@
+import { cashPhotoProgress, attachCashPhotoChunk } from '@/lib/cash-operation-photo';
+import { CASH_PHOTO_CHUNK_BYTES, validCashPhotoIdentity } from '@/lib/cash-photo-protocol';
 import { claimCashOperationSubmission } from '@/lib/cash-operation-submission';
 import { CASH_DUPLICATE_CODE } from '@/lib/cash-operation-duplicate';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { createCashOperationFailureAlert } from '@/lib/cash-operation-admin-alert';
@@ -9,7 +11,8 @@ import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { createOneCCashExpenseOrder, getCashStatementDimensions } from '@/lib/one-c';
-import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
+import { validateCashPhoto } from '@/lib/cash-photo-validation';
+import { CASH_PHOTO_MAX_BYTES } from '@/lib/cash-photo-protocol';
 
 function normalizeSearchText(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
@@ -60,7 +63,7 @@ function canUseDirection(user: { department: string; name?: string | null; login
 }
 
 async function savePhoto(file: File, workDayId: number, direction: string) {
-  const { extension } = await validateEmployeeImage(file);
+  const { extension } = await validateCashPhoto(file);
   const directory = path.join(process.cwd(), 'uploads', 'cash-operations', String(workDayId));
   await mkdir(directory, { recursive: true });
 
@@ -72,14 +75,32 @@ async function savePhoto(file: File, workDayId: number, direction: string) {
   return path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
 }
 
+async function readCashRequestBytes(req: Request, maximum: number) {
+  if (Number(req.headers.get('content-length')) > maximum) throw new Error('REQUEST_TOO_LARGE');
+  const reader = req.body?.getReader();
+  if (!reader) throw new Error('EMPTY_REQUEST');
+  const chunks: Uint8Array[] = []; let size = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      size += value.length;
+      if (size > maximum) { await reader.cancel(); throw new Error('REQUEST_TOO_LARGE'); }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  } finally { reader.releaseLock(); }
+}
+
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const idempotencyKey = new URL(req.url).searchParams.get('idempotencyKey') ?? '';
   if (!/^[a-f0-9-]{36}$/i.test(idempotencyKey)) return Response.json({ error: 'Некорректная операция' }, { status: 400 });
   const operation = await prisma.cashOperation.findFirst({ where: { idempotencyKey, userId: user.id } });
+  const v2 = new URL(req.url).searchParams.get('protocol') === '2';
+  if (operation?.photoExpectedSha256 && !operation.photoPath && !v2) return Response.json({ error: 'Фото ещё загружается. Обновите приложение.' }, { status: 409 });
   return operation
-    ? Response.json({ operation }, { headers: { 'Cache-Control': 'private, no-store' } })
+    ? Response.json({ operation, ...(v2 ? { photo: await cashPhotoProgress(operation) } : {}) }, { headers: { 'Cache-Control': 'private, no-store' } })
     : Response.json({ error: 'Операция не найдена' }, { status: 404, headers: { 'Cache-Control': 'private, no-store' } });
 }
 
@@ -88,8 +109,26 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
-  const formData = await req.formData().catch(() => null);
+  if (Number(req.headers.get('content-length')) > CASH_PHOTO_MAX_BYTES + 1024 * 1024) return Response.json({ error: 'Файл слишком большой для фото инкассации.' }, { status: 413 });
+  const jsonProtocol = req.headers.get('content-type')?.includes('application/json');
+  let intent: { baselineId: number | null; photoSha256: string; photoBytes: number } | undefined;
+  let formData: FormData | null;
+  if (jsonProtocol) {
+    // Bounded JSON metadata: the actual photo has its own resumable transport.
+    let text: string;
+    try { text = (await readCashRequestBytes(req, 16_384)).toString('utf8'); }
+    catch { return Response.json({ error: 'Не удалось прочитать данные инкассации. Максимум — 16 КБ.' }, { status: 413 }); }
+    const data = (() => { try { return JSON.parse(text); } catch { return null; } })();
+    if (!data || data.protocol !== 2 || !validCashPhotoIdentity(data.photoSha256, data.photoBytes)
+      || !(data.baselineId === null || Number.isSafeInteger(data.baselineId) && data.baselineId > 0)) {
+      return Response.json({ error: 'Не удалось подтвердить фото и исходную операцию.' }, { status: 400 });
+    }
+    intent = { baselineId: data.baselineId, photoSha256: data.photoSha256, photoBytes: data.photoBytes };
+    formData = new FormData();
+    for (const key of ['direction', 'amount', 'comment', 'idempotencyKey', 'workDayEntryId', 'workDayDate', 'clientCreatedAt', 'distinctFromOperationId']) {
+      if (data[key] !== undefined) formData.append(key, String(data[key]));
+    }
+  } else formData = await req.formData().catch(() => null);
   if (!formData) return Response.json({ error: 'Invalid form data' }, { status: 400 });
 
   const direction = readString(formData.get('direction'));
@@ -106,15 +145,30 @@ export async function POST(req: Request) {
   }
 
   const photo = formData.get('photo');
-  if (!isPhoto(photo)) return Response.json({ error: 'Сделайте фото' }, { status: 400 });
+  if (!jsonProtocol && formData.get('protocol') === '2') {
+    const hash = readString(formData.get('photoSha256'));
+    const size = Number(formData.get('photoBytes'));
+    const baselineText = readString(formData.get('baselineId'));
+    const baselineId = baselineText ? readPositiveInteger(baselineText) : null;
+    if (!validCashPhotoIdentity(hash, size) || baselineText && baselineId === null || !isPhoto(photo) || photo.size !== size) {
+      return Response.json({ error: 'Не удалось подтвердить исходное фото.' }, { status: 400 });
+    }
+    try { await validateCashPhoto(photo); } catch { return Response.json({ error: 'Не удалось прочитать фото.' }, { status: 400 }); }
+    if (createHash('sha256').update(Buffer.from(await photo.arrayBuffer())).digest('hex') !== hash) return Response.json({ error: 'Фото изменилось при отправке.' }, { status: 400 });
+    intent = { baselineId, photoSha256: hash, photoBytes: size };
+  }
+  if (!intent && !isPhoto(photo)) return Response.json({ error: 'Сделайте фото' }, { status: 400 });
 
   try {
     const existing = await prisma.cashOperation.findUnique({ where: { idempotencyKey } });
     if (existing && existing.userId !== user.id) return Response.json({ error: 'Конфликт ключа операции' }, { status: 409 });
     if (existing) {
-      if (existing.amount !== amount || existing.direction !== direction) {
+      if (existing.amount !== amount || existing.direction !== direction
+        || intent && (existing.photoExpectedSha256 !== intent.photoSha256 || existing.photoExpectedBytes !== intent.photoBytes
+          || existing.workDayEntryId !== readPositiveInteger(formData.get('workDayEntryId')) || existing.date !== readDateKey(formData.get('workDayDate')))) {
         return Response.json({ error: 'Параметры повторной операции не совпадают с первоначальными' }, { status: 409 });
       }
+      if (!intent && existing.photoExpectedSha256 && !existing.photoPath) return Response.json({ error: 'Фото ещё загружается. Обновите приложение.' }, { status: 409 });
       // A device retry acknowledges the original durable record, even tomorrow.
       // Only the server retry/control workflow may reprocess it in 1C: that
       // workflow owns the lease and respects administrator manual takeover.
@@ -159,8 +213,8 @@ export async function POST(req: Request) {
     const claimed = await claimCashOperationSubmission(prisma, {
       userId: user.id, workDayEntryId: workDay.id, date, department: user.department,
       direction, amount, comment: readString(formData.get('comment')), idempotencyKey,
-      distinctFromOperationId: readPositiveInteger(formData.get('distinctFromOperationId')),
-    }, () => savePhoto(photo, workDay.id, direction));
+      distinctFromOperationId: readPositiveInteger(formData.get('distinctFromOperationId')), intent,
+    }, () => isPhoto(photo) ? savePhoto(photo, workDay.id, direction) : Promise.resolve(''));
     if (claimed.kind === 'conflict') return Response.json({ error: 'Параметры операции изменились. Обновите экран.' }, { status: 409 });
     const operation = claimed.operation;
     if (claimed.kind === 'duplicate') {
@@ -174,12 +228,13 @@ export async function POST(req: Request) {
         status: operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual' ? 200 : 202,
       });
     }
-    console.info('CASH_OPERATION_TIMING', JSON.stringify({ operationId: operation.id, phase: 'saved', elapsedMs: Date.now() - requestStartedAt, photoBytes: photo.size }));
+    console.info('CASH_OPERATION_TIMING', JSON.stringify({ operationId: operation.id, phase: 'saved', elapsedMs: Date.now() - requestStartedAt, photoBytes: intent?.photoBytes ?? (photo as File).size }));
 
     const deferToAdmin = async (message: string) => {
       const failedOperation = await prisma.$transaction(async (tx) => {
-        const saved = await tx.cashOperation.update({ where: { id: operation.id }, data: { status: 'one_c_error', oneCError: message } });
-        await createCashOperationFailureAlert({ db: tx, operation: saved, employeeName: user.name, error: message, occurredAt: new Date() });
+        await tx.cashOperation.updateMany({ where: { id: operation.id, status: operation.status, oneCProcessingStartedAt: operation.oneCProcessingStartedAt }, data: { status: 'one_c_error', oneCError: message } });
+        const saved = await tx.cashOperation.findUniqueOrThrow({ where: { id: operation.id } });
+        if (saved.status === 'one_c_error') await createCashOperationFailureAlert({ db: tx, operation: saved, employeeName: user.name, error: message, occurredAt: new Date() });
         return saved;
       });
       return Response.json({
@@ -237,8 +292,8 @@ export async function POST(req: Request) {
         const message = result.error || '1С не создала и не провела связанную пару РКО и ПКО.';
         return deferToAdmin(message);
       }
-      await prisma.cashOperation.update({
-        where: { id: operation.id },
+      await prisma.cashOperation.updateMany({
+        where: { id: operation.id, status: operation.status, oneCProcessingStartedAt: operation.oneCProcessingStartedAt },
         data: {
           status: 'posted_1c_pair',
           oneCDocumentRef: result.document.ref,
@@ -254,7 +309,7 @@ export async function POST(req: Request) {
 
     console.info('CASH_OPERATION_TIMING', JSON.stringify({ operationId: operation.id, phase: 'finished', elapsedMs: Date.now() - requestStartedAt }));
     const savedOperation = await prisma.cashOperation.findUniqueOrThrow({ where: { id: operation.id } });
-    await resolveCarriedCashEncashmentExceptions(prisma, {
+    if (savedOperation.status === 'posted_1c_pair' && savedOperation.oneCDocumentRef && savedOperation.oneCReceiptDocumentRef) await resolveCarriedCashEncashmentExceptions(prisma, {
       employeeId: user.id,
       operationId: savedOperation.id,
       operationDate: savedOperation.date,
@@ -271,5 +326,27 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить операцию' }, { status: 400 });
+  }
+}
+
+/** Photo attachment is independent of the financial transaction and stays usable
+ * after the originating shift closes. It can never create or retry 1C documents. */
+export async function PATCH(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const url = new URL(req.url);
+  const idempotencyKey = url.searchParams.get('idempotencyKey') ?? '';
+  const hash = req.headers.get('x-photo-sha256') ?? '';
+  const index = Number(url.searchParams.get('chunk'));
+  if (!/^[a-f0-9-]{36}$/i.test(idempotencyKey) || !/^[a-f0-9]{64}$/.test(hash) || !url.searchParams.has('chunk') || !Number.isSafeInteger(index) || index < 0) {
+    return Response.json({ error: 'Некорректный фрагмент фото' }, { status: 400 });
+  }
+  if (Number(req.headers.get('content-length')) > CASH_PHOTO_CHUNK_BYTES) return Response.json({ error: 'Слишком большой фрагмент' }, { status: 413 });
+  try {
+    const bytes = await readCashRequestBytes(req, CASH_PHOTO_CHUNK_BYTES);
+    const result = await attachCashPhotoChunk(prisma, { userId: user.id, idempotencyKey, hash, index, bytes });
+    return Response.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : 'Фото пока не сохранено' }, { status: 400 });
   }
 }

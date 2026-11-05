@@ -17,7 +17,7 @@ export function documentPurpose(value: unknown): DocumentPurpose {
   return value as DocumentPurpose;
 }
 export type PaymentDocument = {
-  id: string; purpose?: string; replacedById?: string | null; revision?: number;
+  id: string; textContent?:string|null; purpose?: string; replacedById?: string | null; revision?: number;
   qrConfirmedAt?: string | Date | null; qrConfirmationContext?: string | null;
   paymentRefs?: unknown;paymentSnapshots?:unknown;receiptPlanContext?:string|null;createdAt?:string|Date;
 };

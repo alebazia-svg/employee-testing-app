@@ -58,12 +58,15 @@ export function normalizePlatformaOfdReceipt(value: unknown): OfdReceipt | null 
   const fiscalDocumentNumber = text(fiscal.documentNumber);
   const fiscalSign = text(fiscal.sign);
   const receiptAt = text(source.receiptAt);
+  const shift = text(source.shiftNumber);
+  const fiscalShiftNumber = /^[1-9]\d*$/.test(shift) && Number.isSafeInteger(Number(shift)) ? shift : undefined;
   const kktRegistrationNumber = text(kkt.registrationNumber);
   if (!fiscalDriveNumber || !fiscalDocumentNumber || !fiscalSign || !receiptAt || !kktRegistrationNumber) return null;
   return {
     fiscalDriveNumber,
     fiscalDocumentNumber,
     fiscalSign,
+    ...(fiscalShiftNumber ? { fiscalShiftNumber } : {}),
     operationType: integer(source.operationType),
     receiptAt,
     kktRegistrationNumber,

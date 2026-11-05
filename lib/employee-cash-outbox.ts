@@ -17,6 +17,11 @@ export type EmployeeCashOutboxItem = {
   lastError: string;
   duplicateOf?: CashDuplicateSummary;
   distinctFromOperationId?: number;
+  protocol?: 2;
+  metadataFirst?: boolean;
+  baselineId?: number | null;
+  photoSha256?: string;
+  metadataSaved?: boolean;
 };
 
 const databaseName = 'offonika-workday-safety';
@@ -25,20 +30,30 @@ const databaseVersion = 1;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
+    let expired = false;
     const request = indexedDB.open(databaseName, databaseVersion);
+    const timeout = setTimeout(() => { expired = true; reject(new Error('OFFLINE_STORAGE_TIMEOUT')); }, 5000);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(storeName)) database.createObjectStore(storeName, { keyPath: 'id' });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('OFFLINE_STORAGE_UNAVAILABLE'));
+    request.onsuccess = () => {
+      clearTimeout(timeout);
+      if (expired) request.result.close(); else resolve(request.result);
+    };
+    request.onerror = () => { clearTimeout(timeout); reject(request.error ?? new Error('OFFLINE_STORAGE_UNAVAILABLE')); };
   });
 }
 
 function runRequest<T>(mode: IDBTransactionMode, callback: (store: IDBObjectStore) => IDBRequest<T>) {
   return openDatabase().then((database) => new Promise<T>((resolve, reject) => {
     let transaction: IDBTransaction | undefined;
+    const timeout = setTimeout(() => {
+      try { transaction?.abort(); } catch { /* Already finished. */ }
+      fail(new Error('OFFLINE_STORAGE_TIMEOUT'));
+    }, 8000);
     const fail = (error: unknown) => {
+      clearTimeout(timeout);
       database.close();
       reject(error ?? new Error('OFFLINE_STORAGE_FAILED'));
     };
@@ -51,6 +66,7 @@ function runRequest<T>(mode: IDBTransactionMode, callback: (store: IDBObjectStor
       request.onerror = () => fail(request.error);
       // Request success is provisional: the transaction can still abort.
       activeTransaction.oncomplete = () => {
+        clearTimeout(timeout);
         database.close();
         resolve(request.result);
       };
@@ -73,7 +89,20 @@ export function listEmployeeCashOutboxItems() {
   return runRequest<EmployeeCashOutboxItem[]>('readonly', (store) => store.getAll());
 }
 
-export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
+export function readEmployeeCashOutboxItem(id: string) {
+  return runRequest<EmployeeCashOutboxItem | undefined>('readonly', (store) => store.get(id));
+}
+
+export function probeEmployeeCashStorage() {
+  return runRequest('readwrite', store => {
+    const id = '__cash_photo_storage_probe__';
+    store.put({ id, photo: new Blob(['storage-check']) });
+    // Same transaction: the probe never appears in the outbox, even on abort.
+    return store.delete(id);
+  });
+}
+
+export function cashMetadataAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
   if (!result || typeof result !== 'object' || !('operation' in result)) return false;
   const operation = result.operation;
   if (!operation || typeof operation !== 'object') return false;
@@ -86,8 +115,16 @@ export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCa
     && row.userId === item.userId
     && row.direction === item.direction
     && row.amount === Number(item.amount.replace(',', '.'))
+    && (item.protocol !== 2 || row.photoExpectedSha256 === item.photoSha256 && row.photoExpectedBytes === item.photo.size)
     && (!Number.isSafeInteger(item.workDayEntryId) || row.workDayEntryId === item.workDayEntryId)
     && (!/^\d{4}-\d{2}-\d{2}$/.test(item.workDayDate) || row.date === item.workDayDate);
+}
+
+export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
+  if (!cashMetadataAcknowledges(result, item)) return false;
+  if (item.protocol !== 2) return true;
+  const row = (result as { operation: Record<string, unknown> }).operation;
+  return typeof row.photoPath === 'string' && row.photoPath.length > 0 && Boolean(row.photoReceivedAt);
 }
 
 export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
@@ -100,6 +137,12 @@ export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
   const photoName = item.photoName || `cash-operation-${item.id}.jpg`;
   const photo = new File([item.photo], photoName, { type: photoType, lastModified: Date.now() });
   const formData = new FormData();
+  if (item.protocol === 2) {
+    formData.append('protocol', '2');
+    formData.append('baselineId', item.baselineId === null || item.baselineId === undefined ? '' : String(item.baselineId));
+    formData.append('photoSha256', item.photoSha256 || '');
+    formData.append('photoBytes', String(item.photo.size));
+  }
   formData.append('direction', item.direction);
   formData.append('amount', item.amount);
   formData.append('comment', item.comment);

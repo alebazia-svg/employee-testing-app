@@ -9,7 +9,7 @@ import {ProcurementReceiptViewer} from './ProcurementReceiptViewer';
 import {documentPaymentRefs,documentPaymentSnapshots,receiptPlanContext,isPaymentReceipt,receiptCoverageCount,qrIsConfirmed,type PaymentDocument,type DocumentPurpose} from '@/lib/procurement-document-policy';
 import {ProcurementDocumentSections} from './ProcurementDocumentSections';
 
-export type Receipt=PaymentDocument & {planId:string;originalName:string;size:number;createdAt:string;author:{name:string};qrConfirmedBy?:{name:string}|null};
+export type Receipt=PaymentDocument & {textContent?:string|null;network?:string|null;planId:string;originalName:string;size:number;createdAt:string;author:{name:string};qrConfirmedBy?:{name:string}|null};
 export type ReceiptPlan=ReceiptPaymentPlan & {id:string;supplierPartner:string;plannedAmount:string|number;orderNumbers:string[];updatedAt?:string;oneCCashEvidence?:unknown;foreignAmount?:unknown;currency?:string;supplierCounterparty?:string;orderRefs?:unknown;documentState?:{pendingRevision:boolean;deferred:boolean;paymentMatchFrom:string|null}};
 type Plan=ReceiptPlan;
 export type ReceiptEntryView={pending:ReceiptPlan[];ready:boolean;loadError:string;open:(planId?:string)=>void};
@@ -127,6 +127,18 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     }catch(error){setError(error instanceof Error?error.message:'Изменение не сохранено.');return false;}
     finally{uploading.current=false;setBusy('');onBusyChange?.(false);}
   };
+  const saveText=async(plan:Plan,text:string,network:string,replace?:Receipt)=>{
+    if(preview){preview.blocked();return false;}
+    if(uploading.current)return false;
+    uploading.current=true;requestVersion.current++;setBusy(plan.id);onBusyChange?.(true);setError('');setNotice('');
+    try{
+      const response=await fetch(`${root}${encodeURIComponent(plan.id)}/requisites`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,network,planVersion:plan.updatedAt,replaceId:replace?.id,replaceRevision:replace?.revision})});
+      const body=await response.json();if(!response.ok)throw new Error(body.error||'Реквизиты не сохранены.');
+      setReceipts(prev=>[...prev.filter(r=>r.id!==body.receipt.id).map(r=>r.id===replace?.id?{...r,replacedById:body.receipt.id}:r),body.receipt]);
+      setNotice('Реквизиты сохранены.');window.dispatchEvent(new Event('procurement-receipts-changed'));return true;
+    }catch(error){setError(error instanceof Error?error.message:'Реквизиты не сохранены.');return false;}
+    finally{uploading.current=false;setBusy('');onBusyChange?.(false);}
+  };
   const requestQr=async(plan:Plan)=>{
     if(preview){preview.blocked();return false;}
     if(uploading.current)return false;
@@ -149,7 +161,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
         {!ready?<p>{loadError?'Список чеков недоступен. Повторите загрузку.':'Загружаем чеки…'}</p>:<>
           {!displayed.length?<p>Нет оплат, для которых нужно добавить чек.</p>:<ul className="procurement-receipts-list">{displayed.map(plan=><li key={plan.id} style={inline?{gridTemplateColumns:'minmax(0,1fr) auto'}:undefined}>
             {inline?null:<><div><h3>{plan.supplierPartner}</h3><p>{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'Оплата поставщику'}</p></div><div className="procurement-receipt-amount"><strong>{paymentAmount(plan)}</strong>{canCollectQrReceiptBeforePayment(plan)?<p>Сумма заявки</p>:null}</div></>}
-            <div className="col-span-full"><ProcurementDocumentSections key={`${plan.id}:${plan.paymentMethod}`} plan={plan} files={filesFor(plan.id)} admin={admin} disabled={!!busy||!!preview} today={today} onRequestQr={()=>requestQr(plan)} onAdd={(files,purpose,replace,refs)=>add(plan,files,purpose,replace,refs)} onChange={(file,action,purpose,refs)=>change(plan,file,action,purpose,refs)} onOpen={(file,opener)=>{fileOpener.current=opener;setViewFile({file,supplier:plan.supplierPartner});}}/></div>
+            <div className="col-span-full"><ProcurementDocumentSections key={`${plan.id}:${plan.paymentMethod}`} plan={plan} files={filesFor(plan.id)} admin={admin} disabled={!!busy||!!preview} today={today} onSaveText={(text,network,replace)=>saveText(plan,text,network,replace)} onRequestQr={()=>requestQr(plan)} onAdd={(files,purpose,replace,refs)=>add(plan,files,purpose,replace,refs)} onChange={(file,action,purpose,refs)=>change(plan,file,action,purpose,refs)} onOpen={(file,opener)=>{fileOpener.current=opener;setViewFile({file,supplier:plan.supplierPartner});}}/></div>
           </li>)}</ul>}
           {target&&!single?<button className={button} onClick={()=>setTarget('')}>К остальным оплатам</button>:null}
         </>}

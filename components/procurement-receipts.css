@@ -75,3 +75,9 @@
   .procurement-needed-now>button{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:46px;padding:11px 15px;border-radius:14px;background:#23282b;color:white;font-size:14px;font-weight:600}
   .procurement-shell .buyer-create-payment{background:white!important;color:#654c3a!important;border:1px solid #d9d0c6!important;box-shadow:none!important}
 }
+
+.payment-requisites-text{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;padding:12px;border:1px solid #e3d9ce;border-radius:10px;background:#faf8f5}.payment-requisites-text>div{min-width:0}.payment-requisites-text span,.payment-requisites-text small{font-size:13px;color:#626971}.payment-requisites-text p{font-size:15px!important;color:#303438!important;overflow-wrap:anywhere;white-space:pre-wrap;user-select:text;margin:5px 0!important}.payment-requisites-form textarea,.payment-requisites-form input,.payment-requisites-form select{display:block;width:100%;margin-top:6px;padding:10px;border:1px solid #d8cec3;border-radius:8px;background:white;color:#303438;font-size:15px}.payment-requisites-form textarea{resize:vertical}@media(max-width:460px){.payment-requisites-text{flex-direction:column}}
+
+.payment-requisites-actions{display:flex;gap:8px;flex-wrap:wrap}.payment-document-heading h3{font-weight:650}.payment-requisites-text+.payment-document-meta{margin-left:0}
+
+.payment-document-panel>.payment-network-fields{display:block}.payment-network-fields select{min-height:42px}

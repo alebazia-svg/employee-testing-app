@@ -85,3 +85,28 @@ test('handover OFD receipt outage is bounded to one request; existing callers re
   assert.equal(result.complete,false);assert.equal(calls,1);
  }finally{if(before===undefined)delete process.env.PLATFORMA_OFD_PROXY_BASE_URL;else process.env.PLATFORMA_OFD_PROXY_BASE_URL=before;}
 });
+
+test('Zukhra November3 real source shape: receipt and second close at19:55 match exact OFD shift despite delayed1C',async()=>{
+ const {normalizePlatformaOfdReceipt}=await import('../lib/terminal-fiscal-ofd-adapter');
+ const f=await fixture();try{
+  const first={...report,shiftNumber:'351',openedAt:'2026-11-04T09:05:00Z',closedAt:'2026-11-04T16:51:00Z'};
+  const second={...report,shiftNumber:'352',openedAt:'2026-11-04T16:55:00Z',closedAt:'2026-11-04T16:55:00Z'};
+  f.shift.fiscalShiftNumber='351';f.shift.fiscalShiftDate=first.closedAt;f.setReports([first,second]);
+  const raw={kkt:{registrationNumber:'kkt'},fiscal:{driveNumber:'fn',documentNumber:3336,sign:1907052946},shiftNumber:352,receiptAt:second.closedAt,operationType:1,money:{totalKopecks:100,electronicKopecks:100},items:[]};
+  f.setReceipts([normalizePlatformaOfdReceipt(raw)]);
+  const e=await f.verify();assert.equal(e.status,'confirmed');assert.equal(e.fiscalShiftNumber,'352');assert.equal(e.ofdReceiptRead?.fiscalShiftNumber,'352');assert.equal(kkmShiftCloseRequiresEmployeeAction(e),false);
+  f.setReceipts([normalizePlatformaOfdReceipt({...raw,shiftNumber:353})]);assert.notEqual((await f.verify()).status,'confirmed','a different shift never matches just because the time is equal');
+  f.setReceipts([normalizePlatformaOfdReceipt({...raw,shiftNumber:null})]);assert.notEqual((await f.verify()).status,'confirmed','absent identity retains the existing fallback');
+ }finally{await f.cleanup();}
+});
+test('two reopenings within one minute select the later fiscal document regardless of source array order',async()=>{
+ const f=await fixture();try{
+  const time='2026-11-04T16:55:00Z';f.shift.fiscalShiftNumber='353';f.shift.fiscalShiftDate='2026-11-04T07:33:00Z';
+  f.setReports([{...report,closedAt:time},{...report,shiftNumber:'354',openedAt:time,closedAt:time}]);
+  const old={kktRegistrationNumber:'kkt',fiscalDriveNumber:'fn',fiscalDocumentNumber:'999',fiscalSign:'old',fiscalShiftNumber:'353',receiptAt:time};
+  const next={...old,fiscalDocumentNumber:'1000',fiscalSign:'next',fiscalShiftNumber:'354'};
+  for(const rows of [[next,old],[old,next]]){f.setReceipts(rows);const e=await f.verify();assert.equal(e.status,'confirmed');assert.equal(e.fiscalShiftNumber,'354');}
+  f.setReceipts([next,{...next,fiscalShiftNumber:'353'}]);assert.notEqual((await f.verify()).status,'confirmed','conflicting fiscal identity remains unconfirmed');
+  f.setReports([{...report,closedAt:time}]);f.setReceipts([{...next,fiscalDocumentNumber:'1001',fiscalShiftNumber:'355'}]);assert.notEqual((await f.verify()).status,'confirmed','old closure cannot cover a new fiscal shift');
+ }finally{await f.cleanup();}
+});

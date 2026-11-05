@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
+import {randomUUID} from 'node:crypto';
+import {mkdtemp,readFile} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {saveTextRequisites} from '../lib/procurement-text-requisites';
+import {receiptSelect,saveProcurementReceipt,readProcurementReceipt,changeProcurementDocument} from '../lib/procurement-receipts';
+import {receiptCoverageCount} from '../lib/procurement-document-policy';
+if(process.env.DATABASE_URL!=='postgresql://postgres@127.0.0.1:55467/payment_documents_test')throw Error('ISOLATED_DATABASE_REQUIRED');
+const db=new PrismaClient();test.after(()=>db.$disconnect());
+test('PostgreSQL persistence, parallel retry, QR coexistence, exact replacement and isolation',async()=>{
+ const user=async(role:string)=>db.user.create({data:{login:randomUUID(),name:role,passwordHash:'NO_LOGIN',role,portalArea:'PROCUREMENT'}});
+ const admin=await user('ADMIN'),buyer=await user('EMPLOYEE'),other=await user('EMPLOYEE');
+ const plan=await db.supplierPaymentPlan.create({data:{planCode:randomUUID(),managerUserId:buyer.id,supplierPartner:'Isolated test',orderRefs:[],orderNumbers:[],plannedDate:new Date('2026-11-05'),plannedAmount:100,paymentMethod:'USDT',status:'APPROVED',condition:'preserve'}});
+ const cmd={text:'test-address-not-for-payment',network:'TRC20',planVersion:plan.updatedAt.toISOString()};
+ const results=await Promise.all([saveTextRequisites(db,buyer,plan.id,cmd),saveTextRequisites(db,buyer,plan.id,cmd)]);
+ assert.equal(results.filter(r=>r.duplicate).length,1);
+ const saved=await db.supplierPaymentReceipt.findUniqueOrThrow({where:{id:results[0].receipt.id},select:receiptSelect});
+ assert.equal(saved.textContent,cmd.text);assert.equal(saved.network,'TRC20');
+ const root=await mkdtemp(path.join(os.tmpdir(),'requisites-db-test-'));
+ const file=new File(['%PDF-1.7\nlocal-test\n%%EOF'],'qr-test.pdf',{type:'application/pdf'});
+ const qr=await saveProcurementReceipt(db,buyer,plan.id,file,root,{purpose:'QR'});
+ assert.equal((await readProcurementReceipt(db,buyer,plan.id,qr.receipt.id,root)).bytes.toString(),await file.text());
+ const second=await saveTextRequisites(db,admin,plan.id,{...cmd,text:'new-local-test-address',network:'ERC20',replaceId:saved.id,replaceRevision:0});
+ assert.equal((await db.supplierPaymentReceipt.findUniqueOrThrow({where:{id:saved.id}})).replacedById,second.receipt.id);
+ assert.equal((await db.supplierPaymentReceipt.findUniqueOrThrow({where:{id:qr.receipt.id}})).replacedById,null);
+ await assert.rejects(saveTextRequisites(db,other,plan.id,cmd),/не найдена/);
+ await assert.rejects(saveTextRequisites(db,buyer,plan.id,{...cmd,planVersion:'stale'}),/изменилась/);
+ await assert.rejects(changeProcurementDocument(db,admin,plan.id,second.receipt.id,{revision:0,action:'CLASSIFY',purpose:'RECEIPT'}),/Текстовые реквизиты/);
+ const rows=await db.supplierPaymentReceipt.findMany({where:{planId:plan.id}});assert.equal(receiptCoverageCount({},rows),0);
+ assert.deepEqual(await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:plan.id}}),plan);
+ assert.equal(await db.workdayNotification.count({where:{userId:buyer.id}}),0);
+});
+test('exact additive migration preserves existing records and money links',async()=>{
+ const stop=new Error('rollback isolated migration');
+ await assert.rejects(db.$transaction(async tx=>{
+  await tx.$executeRawUnsafe('CREATE SCHEMA requisites_migration_test');
+  await tx.$executeRawUnsafe('SET LOCAL search_path TO requisites_migration_test');
+  await tx.$executeRawUnsafe('CREATE TABLE "SupplierPaymentReceipt" (id text, purpose text, "paymentRefs" jsonb, "storageKey" text)');
+  await tx.$executeRawUnsafe(`INSERT INTO "SupplierPaymentReceipt" VALUES ('old','RECEIPT','["cash:existing"]','existing.pdf')`);
+  const before=await tx.$queryRawUnsafe<any[]>('SELECT * FROM "SupplierPaymentReceipt"');
+  const sql=await readFile('prisma/migrations/20261105120000_payment_requisites_text/migration.sql','utf8');await tx.$executeRawUnsafe(sql);
+  const after=await tx.$queryRawUnsafe<any[]>('SELECT r.* FROM "SupplierPaymentReceipt" AS r');const {textContent,network,...unchanged}=after[0];
+  assert.equal(textContent,null);assert.equal(network,null);assert.deepEqual([unchanged],before);throw stop;
+ }),e=>e===stop);
+});

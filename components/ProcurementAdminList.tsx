@@ -5,10 +5,10 @@ import {CalendarDays,ChevronRight,Search,X} from 'lucide-react';
 import type {ProcurementListItem} from './ProcurementSplitList';
 import './procurement-admin-list.css';
 
-type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string;amountCaption?:string};
-type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string;openItemId?:string};
+type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string;amountCaption?:string;prepareAmount?:string;amountSecondary?:string};
+type Props={groupedDates?:boolean;showPreparation?:boolean;renderAfterItem?:(id:string)=>ReactNode;renderGroupFooter?:(group:string)=>ReactNode;items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string;openItemId?:string};
 
-export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery,openItemId}:Props){
+export function ProcurementAdminList({groupedDates=false,showPreparation=false,renderAfterItem,renderGroupFooter,items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery,openItemId}:Props){
   const [localQuery,setQuery]=useState('');
   const query=searchQuery??localQuery;
   const [selected,setSelected]=useState('');
@@ -20,15 +20,17 @@ export function ProcurementAdminList({items,renderDetail,renderFooter,empty='З�
   useEffect(()=>{if(selected&&!selectedItem){setSelected('');onClose?.();}},[selected,selectedItem,onClose]);
   return <div className="pam-list-workspace">
     {searchQuery===undefined?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={query} onChange={e=>setQuery(e.target.value)}/></label>:null}
-    <section className="pam-list" aria-label="Список оплат">
-      <div className="pam-columns"><span>{history?'Оплачено':'Подготовить к'}</span><span>Поставщик / основание</span><span className="pam-amount">Сумма</span><span>Способ оплаты</span><span/></div>
+    <section className={"pam-list"+(showPreparation?" pam-with-preparation":"")+(groupedDates?" pam-grouped-dates":"")} aria-label="Список оплат">
+      <div className="pam-columns">{!groupedDates&&<span>{history?'Оплачено':'Подготовить к'}</span>}<span>Поставщик / основание</span><span className="pam-amount">Сумма</span>{showPreparation&&<span className="pam-prepare-heading">Подготовить</span>}<span>Способ оплаты</span><span/></div>
       {filtered.map((item,index)=><React.Fragment key={item.id}>
-        {item.group&&item.group!==filtered[index-1]?.group?<h3 className="pam-group" data-priority={item.priority}>{item.group}<span>{filtered.filter(row=>row.group===item.group).length}</span></h3>:null}
+        {item.group&&item.group!==filtered[index-1]?.group?<h3 className="pam-group" data-priority={item.priority} data-day-tone={groupedDates?(item.group.startsWith('Сегодня')?'today':item.group.startsWith('Завтра')?'tomorrow':'future'):undefined}>{item.group}{!groupedDates&&<span>{filtered.filter(row=>row.group===item.group).length}</span>}</h3>:null}
         <button type="button" className="pam-row" aria-label={`Подробности оплаты ${item.name}`} onClick={()=>{setSelected(item.id);onOpen?.(item.id);}}>
-          <span className="pam-date" data-priority={item.priority}><CalendarDays size={16}/>{item.dateLabel||item.meta}</span>
+          {!groupedDates&&<span className="pam-date" data-priority={item.priority}><CalendarDays size={16}/>{item.dateLabel||item.meta}</span>}
           <span className="pam-supplier"><strong>{item.name}</strong><small>{item.basis||item.search}</small>{item.warning?<small className="pam-warning" data-neutral={item.warningTone==='neutral'}>{item.warning}</small>:null}</span>
-          <strong className="pam-amount">{item.amountCaption?<span className="block text-xs font-medium text-slate-500">{item.amountCaption}</span>:null}{item.amount}</strong><span className="pam-method">{item.method||''}</span><ChevronRight className="pam-chevron" size={17}/>
+          <strong className="pam-amount">{item.amountCaption?<span className="block text-xs font-medium text-slate-500">{item.amountCaption}</span>:null}{item.amount}{item.amountSecondary?<span className="pam-amount-secondary">{item.amountSecondary}</span>:null}</strong>{showPreparation&&<span className="pam-prepare"><small>Подготовить</small><strong>{item.prepareAmount||"Уточняется"}</strong></span>}<span className="pam-method">{item.method||''}</span><ChevronRight className="pam-chevron" size={17}/>
         </button>
+        {renderAfterItem?.(item.id)}
+        {item.group&&item.group!==filtered[index+1]?.group?renderGroupFooter?.(item.group):null}
       </React.Fragment>)}
       {!filtered.length?<p className="pam-empty">{query?'Ничего не найдено. Измените поиск.':empty}</p>:null}
     </section>

@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {ProcurementPreparationList} from '../components/ProcurementPreparationList';
+import type {DayPreparation} from '../lib/procurement-day-preparation';
+const items=[{id:'a',name:'Currency A',amount:'10 USDT',group:'Сегодня',meta:''},{id:'b',name:'Bank B',amount:'400 ₽',group:'Сегодня',meta:''},{id:'c',name:'Cash C',amount:'200 ₽',group:'Сегодня',meta:''}];
+const prep=new Map<string,DayPreparation>([['a',{id:'a',day:'2026-11-04',route:'cash',amount:1000,estimated:true,reason:''}],['b',{id:'b',day:'2026-11-04',route:'bank',amount:400,estimated:false,reason:''}],['c',{id:'c',day:'2026-11-04',route:'cash',amount:200,estimated:false,reason:''}]]);
+const render=(data=prep,query='')=>renderToStaticMarkup(<ProcurementPreparationList items={items} preparation={data} searchQuery={query} renderDetail={()=>null}/>);
+test('subtotal lies after cash rows and before bank; action buttons remain',()=>{const html=render();assert.ok(html.indexOf('Cash C')<html.indexOf('Наличными за день · все заявки'));assert.ok(html.indexOf('Наличными за день · все заявки')<html.indexOf('Bank B'));assert.ok(html.includes('1 200 ₽'));assert.equal((html.match(/Подробности оплаты/g)||[]).length,3);assert.ok(!html.includes('Переводом за день · все заявки'));});
+test('unknown member prevents a misleading partial subtotal',()=>{const data=new Map(prep);data.set('a',{...data.get('a')!,amount:null});const html=render(data);assert.ok(!html.includes('1 200'));assert.match(html,/Наличными за день · все заявки<\/strong><strong>Уточняется/);});
+test('search does not leave totals for hidden requests',()=>{const html=render(prep,'Bank B');assert.ok(!html.includes('Наличными за день · все заявки'));assert.ok(html.includes('Bank B'));assert.ok(!html.includes('Cash C'));});
+
+test('day total includes requests from the other tab without repeating wallet allocation',()=>{const all=new Map(prep);all.set('approved',{id:'approved',day:'2026-11-04',route:'cash',amount:300,estimated:false,reason:''});const html=render(all);assert.ok(html.includes('1 500 ₽'));assert.ok(!html.includes('1 200 ₽'));});
+test('unknown request in the other tab blocks a falsely complete day total',()=>{const all=new Map(prep);all.set('approved',{id:'approved',day:'2026-11-04',route:'cash',amount:null,estimated:false,reason:''});assert.match(render(all),/Наличными за день · все заявки<\/strong><strong>Уточняется/);});
+test('other-tab transfer remains separate from cash day total',()=>{const all=new Map(prep);all.set('approved',{id:'approved',day:'2026-11-04',route:'bank',amount:300,estimated:false,reason:''});const html=render(all);assert.ok(html.includes('700 ₽'));assert.ok(html.includes('1 200 ₽'));assert.ok(html.includes('Переводом за день · все заявки'));});
+test('same day cash total is identical in both tabs',()=>{const other={id:'approved',name:'Approved',amount:'300 ₽',meta:'',group:'Сегодня'};const all=new Map(prep);all.set(other.id,{id:other.id,day:'2026-11-04',route:'cash',amount:300,estimated:false,reason:''});const second=renderToStaticMarkup(<ProcurementPreparationList items={[other]} preparation={all} searchQuery="" renderDetail={()=>null}/>);assert.ok(render(all).includes('1 500 ₽'));assert.ok(second.includes('1 500 ₽'));assert.ok(second.includes('400 ₽'));});
+test('a request from a different day never enters the total',()=>{const all=new Map(prep);all.set('future',{id:'future',day:'2026-11-05',route:'cash',amount:50000,estimated:false,reason:''});const html=render(all);assert.ok(html.includes('1 200 ₽'));assert.ok(!html.includes('51 200'));});

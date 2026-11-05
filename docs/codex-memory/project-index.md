@@ -29,6 +29,39 @@ project from scratch.
 
 ## Read First By Task
 
+- Procurement requisites transfer: `procurement-transfer-release-20261105.md` — released/verified1.21.34 /2835d85. Single/daily bundles, exact per-plan file/hash binding, unchanged original QR plus amount footer, plain wallet/Alipay text and PNG+TXT archive fallback. Mac WhatsApp uses downloads; status/1C matching/receipt lifecycle unchanged. Earlier pending speed/notification work is excluded.
+
+- Simple encashment/original phone photos: `cash-photo-simple-candidate-20261105.md`
+  — released/verified1.21.30 /3a6962af. Cash-only64MiB,
+  exact originals, separate short financial intent/photo worker, one quiet PWA
+  status. Retains the verified-photo/unsafe-memory guards below. Large pending
+  photos require a compatible64MiB API during recovery/rollback.
+  Deployment/preservation proof: ../ops/cash-original-photo-release-20261105.md.
+
+- First-photo retention follow-up: `cash-photo-retention-candidate-20261104.md`
+  — included in released/verified1.21.30. Verified full-file readback,
+  retained original on IndexedDB refusal, same-file retries and explicit unsafe
+  storage warning. Do not confuse this stronger fallback with deployed1.21.24.
+
+- Independent cash intent / resumable original photo: `cash-intent-photo-candidate-20261104.md`
+  — released/verified1.21.24 / f0f63e5. Same-amount transfers, request identity,
+  independent original-photo receipt and explicit ADMIN recovery; financial
+  auto-retry stays disabled. Owner-approved additive migration preserved old rows.
+  Keep v2-compatible recovery/API; see ../ops/cash-photo-release-20261104.md.
+
+- Durable OFD closure proof: `../ops/kkm-durable-close-release-20261104.md` —
+  released/verified1.21.23 / c42dd3e. Dedicated minute collector is installed,
+  enabled and verified running on schedule; exact KKT/FN/shift observations
+  persist across empty replies/restarts. Direct OFD receipts guard reopening
+  before1C catches up. Photo/not-printed fallback remains. Preserve the separate
+  collector unit and existing notification dispatcher; app-only deployment is
+  insufficient. See the candidate note for architecture/tests/rollback boundaries.
+  Follow-up equal-minute gap resolved in1.21.25 /19bb846: see
+  `../ops/kkm-shift-number-release-20261104.md`. Retained OFD receipt shift identity
+  confirms Zukhra's352 closing even at the receipt's minute; different/missing
+  identity keeps fallback. All7 employees/39 handovers audited; no false active
+  photo requests/KKM alerts. Original historical handovers remain unchanged.
+
 - Suggested shifts with free alternatives: `workday-shift-choice-candidate-20261104.md`
   — released/verified1.21.22 /5a7e8d3. Dynamic QR-time/colleague suggestion;
   every normal department shift remains selectable. Combined with Procurement
@@ -257,12 +290,25 @@ project from scratch.
   Nullable label/IP migration applied; IP collection disabled. No real device
   owners guessed or automatically named. Prior 1.5.1 workday changes preserved.
 
+- Released first stage: `access-recent-connections-candidate-20261104.md`.
+  Seven-day contact window for current device cards; older connections remain in
+  history and return on new contact. Preserve names and employee summaries.
+  Clearer statuses and search by name/code/period; ADMIN action audit deferred.
+  Approved automatic diagnostics follow-up adds per-field provenance, bounded
+  retries and sample timestamps; reduced/legacy OS versions remain unconfirmed.
+  Real local screen reviewed; owner approved release of both stages. Released and
+  independently verified as 1.21.28 / 4c49fe8 on 5 November (Moscow).
+  See `../ops/access-devices-release-20261105.md` for production evidence.
+  Includes the separately owner-approved one-line future-date prefix correction
+  from Procurement. Names/mappings, mounts and existing host unit pairs preserved.
+
 - Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
-  Retain last visits without a time cutoff; separate explicit service connections.
+  Historical baseline retained last visits without a time cutoff; the explicitly
+  approved seven-day current-card policy above now supersedes that cutoff rule.
   Owner-browser cross-account classification and both additive migrations are
   deployed. Real ownership/service marks have not been assigned automatically.
 
-- Access screen: latest connections without a time cutoff, retained history, app/browser
+- Released access screen: seven-day current connections (released above), retained full history, app/browser
   context and latest push-provider outcome (not delivery/read/sound).
 - Reported app version and ADMIN safe-update requests extend the existing
   Workday updater; other pages never forcibly reload unfinished work.

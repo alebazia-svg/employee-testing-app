@@ -25,7 +25,7 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
   if(qrRows.length){
     // DB-only projection: opening the bell never starts another 1C scan.
     const ids=qrRows.map(r=>qrCheckPlan(r.fingerprint)).filter((id):id is string=>!!id);
-    const plans=await db.supplierPaymentPlan.findMany({where:{id:{in:ids}},include:{receipts:{where:{purpose:'QR',replacedById:null}}}});
+    const plans=await db.supplierPaymentPlan.findMany({where:{id:{in:ids}},include:{receipts:{where:{OR:[{purpose:'QR'},{purpose:'REQUISITES',textContent:{not:null}}],replacedById:null}}}});
     for(const r of qrRows){
       const plan=plans.find(p=>p.id===qrCheckPlan(r.fingerprint)),day=qrCheckRequestDay(r.fingerprint);
       if(!plan||!day||!needsQrCheck(plan,plan.receipts,day)||qrCheckKey(plan,plan.receipts,day)!==r.fingerprint||isFinishedPaymentState(savedPaymentEvidence(plan)?.evidence.state))inactive.add(r.id);

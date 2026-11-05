@@ -171,6 +171,8 @@ model SupplierPaymentReceipt {
   paymentRefs  Json?
   paymentSnapshots Json?
   receiptPlanContext String?
+  textContent String?
+  network String?
   createdAt    DateTime            @default(now())
   plan         SupplierPaymentPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
   author       User                @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
@@ -868,6 +870,10 @@ model CashOperation {
   direction                 String
   amount                    Float
   photoPath                 String
+  photoExpectedSha256       String?
+  photoExpectedBytes        Int?
+  photoReceivedAt           DateTime?
+  oneCProcessingStartedAt   DateTime?
   comment                   String       @default("")
   status                    String       @default("pending_1c")
   idempotencyKey            String       @unique
