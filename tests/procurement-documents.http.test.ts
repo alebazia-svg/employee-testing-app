@@ -73,7 +73,7 @@ test('manual QR HTTP request: admin-only, CSRF, concurrency dedup, stale state a
   const results=await Promise.all(responses.map(r=>r.json()));
   assert.equal(results.filter(r=>r.alreadyRequested===false).length,1);
   const rows=await db.workdayNotification.findMany({where:{fingerprint:{startsWith:`procurement-qr-check:${plan.id}:`}}});
-  assert.equal(rows.length,1);assert.equal(rows[0].title,'Добавьте QR-код для оплаты');assert.equal(rows[0].status,'pending');
+  assert.equal(rows.length,1);assert.equal(rows[0].title,'Нужны реквизиты для оплаты');assert.equal(rows[0].status,'pending');
   assert.equal(rows[0].attemptCount,0,'test never dispatches a push');
   const changed=await db.supplierPaymentPlan.update({where:{id:plan.id},data:{paymentMethod:'CASH'}});
   assert.equal((await send(admin,base,{...body,planVersion:changed.updatedAt.toISOString()})).status,409);

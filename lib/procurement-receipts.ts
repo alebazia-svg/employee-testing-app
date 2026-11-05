@@ -12,7 +12,7 @@ export class ReceiptError extends Error {
   constructor(message:string,public status:number) {super(message);}
 }
 export type ReceiptActor=Pick<User,'id'|'role'|'portalArea'|'isActive'>;
-export const receiptSelect={id:true,planId:true,originalName:true,mimeType:true,size:true,createdAt:true,author:{select:{name:true}},purpose:true,revision:true,replacedById:true,qrConfirmedAt:true,qrConfirmationContext:true,qrConfirmedBy:{select:{name:true}},paymentRefs:true,paymentSnapshots:true,receiptPlanContext:true} as const;
+export const receiptSelect={id:true,planId:true,originalName:true,mimeType:true,size:true,createdAt:true,author:{select:{name:true}},purpose:true,revision:true,replacedById:true,qrConfirmedAt:true,qrConfirmationContext:true,qrConfirmedBy:{select:{name:true}},paymentRefs:true,paymentSnapshots:true,receiptPlanContext:true,textContent:true,network:true} as const;
 export const legacyReceiptWhere={purpose:'RECEIPT',replacedById:null} as const;
 export type ReceiptSaveOptions={purpose?:DocumentPurpose;replaceId?:string;replaceRevision?:number;paymentRefs?:string[];planVersion?:string};
 /** Recheck under the plan lock as well as at the HTTP boundary. A refresh or
@@ -107,6 +107,7 @@ export async function changeProcurementDocument(db:PrismaClient,user:ReceiptActo
     if(!plan||!actor||!canAccessProcurementReceipts(actor,plan.managerUserId))throw new ReceiptError('Нет доступа к заявке.',403);
     const before=await tx.supplierPaymentReceipt.findFirst({where:{id,planId}});
     if(!before)throw new ReceiptError('Файл не найден.',404);
+    if(before.textContent)throw new ReceiptError('Текстовые реквизиты можно только заменить.',409);
     if(before.replacedById||before.revision!==command.revision)throw new ReceiptError('Файл изменился. Обновите список.',409);
     let data:Prisma.SupplierPaymentReceiptUpdateInput;
     if(command.action==='CONFIRM_QR'){

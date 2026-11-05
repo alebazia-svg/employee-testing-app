@@ -171,6 +171,8 @@ model SupplierPaymentReceipt {
   paymentRefs  Json?
   paymentSnapshots Json?
   receiptPlanContext String?
+  textContent String?
+  network String?
   createdAt    DateTime            @default(now())
   plan         SupplierPaymentPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
   author       User                @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
