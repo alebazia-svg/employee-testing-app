@@ -97,3 +97,42 @@
 .requisites-editor-dialog .requisites-editor-save{background:#8b5e3c;border-color:#8b5e3c;color:#fff}
 .requisites-editor-dialog .requisites-editor-save:hover:not(:disabled){background:#754b2e}
 .requisites-editor-dialog .requisites-editor-save:disabled{background:#eee9e3;border-color:#e2dcd5;color:#77716b;opacity:1;cursor:default}
+
+/* Requisites use the same form and actions, with a phone-native bottom sheet. */
+@media(max-width:767px){
+ .requisites-editor-dialog{inset:auto 0 0!important;margin:0!important;width:100%;max-width:none;max-height:92dvh;border-radius:22px 22px 0 0;border-bottom:0;padding:0 0 env(safe-area-inset-bottom);box-shadow:0 -10px 40px #30282020}
+ .requisites-editor-dialog::before{content:"";display:block;width:36px;height:4px;border-radius:3px;background:#d6d0c9;margin:10px auto 0}
+ .requisites-editor-dialog header{position:sticky;top:0;z-index:2;background:#fff;padding:14px 20px;border-bottom:1px solid #eee8e1}
+ .requisites-editor-form{padding:18px 20px 12px;gap:18px}
+ .requisites-editor-footer{position:sticky;bottom:0;z-index:2;background:#fff;padding-top:12px;padding-bottom:8px;display:grid;grid-template-columns:1fr 1.4fr}
+ .requisites-editor-dialog .procurement-receipt-button{font-size:14px}
+}
+.payment-request-amounts{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.payment-request-amounts>p{margin:0;white-space:nowrap}
+.payment-request-amounts .payment-request-equivalent{font-size:13px;color:#6b655f}
+.payment-request-rate{font-size:14px;line-height:20px}
+@container(min-width:681px){
+ .compact-payment-calendar .compact-payment-row{grid-template-columns:minmax(160px,1fr) minmax(210px,1.05fr) 140px 112px}
+}
+@container(min-width:461px) and (max-width:680px){
+ .compact-payment-calendar .compact-payment-row{grid-template-columns:minmax(140px,1fr) 210px 112px}
+}
+@media(max-width:767px){
+ .payment-request-amounts{display:grid;justify-items:end;gap:2px}
+ .payment-request-money{text-align:right;min-width:0}
+ .payment-request-rate{font-size:14px;line-height:20px}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts{display:grid;gap:0;margin:0;text-align:left}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid #eee8e1}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts dt{font-size:13px;line-height:19px;font-weight:400;color:#777167}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts dd{margin:0;text-align:right;font-size:14px;line-height:20px;font-weight:500;color:#303438;overflow-wrap:anywhere}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts small{display:block;margin-top:3px;font-size:12px;line-height:17px;font-weight:400;color:#777167}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-comment{grid-template-columns:minmax(0,1fr);gap:4px;border-bottom:0;padding-top:12px}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-comment dd{text-align:left}
+}
+
+@media(max-width:767px){
+ .payment-request-rate-unit{display:none}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-date{border-bottom:0;padding-bottom:2px}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-timing{grid-template-columns:minmax(0,1fr);padding-top:0}
+ .procurement-responsive-shell .compact-payment-calendar .mobile-payment-facts>.mobile-payment-timing dd{font-size:12px;line-height:18px;font-weight:400;color:#777167}
+}

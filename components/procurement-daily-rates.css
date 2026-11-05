@@ -1,0 +1,57 @@
+.procurement-day-rates{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;margin-left:auto;font-weight:500;font-size:13px}
+.procurement-rate-quote{display:inline-flex;align-items:center;gap:7px;min-height:44px;background:transparent;border:0;padding:3px 0;cursor:pointer;color:#334155;font-variant-numeric:tabular-nums}
+.procurement-rate-quote strong{margin-left:5px;font-size:14px;color:#17232b}
+.procurement-currency-logo{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#e5e7eb;color:#667085;font-size:17px;font-weight:700;transition:background-color .16s,color .16s}
+.procurement-rate-quote[data-confirmed=true][data-currency=USDT] .procurement-currency-logo{background:#219c79;color:white}
+.procurement-rate-quote[data-confirmed=true][data-currency=CNY] .procurement-currency-logo{background:#b73e48;color:white}
+.procurement-rate-quote:focus-visible{outline:2px solid #926540;outline-offset:4px;border-radius:5px}
+.procurement-rate-load-error{font-size:12px;color:#8a4b26}
+.procurement-rate-dialog{width:min(550px,calc(100% - 32px));max-height:calc(100dvh - 40px);padding:0;border:1px solid #e2ded8;border-radius:18px;background:#fff;color:#26323a;box-shadow:0 24px 90px #17232b30;font-size:15px}
+.procurement-rate-dialog::backdrop{background:#15212f66}
+.procurement-rate-dialog[open]{display:flex;flex-direction:column}
+.procurement-rate-dialog header{display:flex;justify-content:space-between;gap:16px;padding:20px 22px 16px;border-bottom:1px solid #ece9e5}
+.procurement-rate-dialog h2{font-size:19px;font-weight:700;line-height:1.3}
+.procurement-rate-dialog header p{font-size:14px;color:#647078;margin-top:3px}
+.procurement-rate-dialog header button{width:44px;height:44px;display:grid;place-items:center;border-radius:10px}
+.procurement-rate-dialog-body{overflow:auto;overscroll-behavior:contain;padding:18px 22px;display:grid;gap:16px}
+.procurement-rate-input{display:grid;gap:7px;font-weight:600}
+.procurement-rate-input input{border:1px solid #bcb6ae;border-radius:10px;padding:11px 12px;font-size:18px;min-height:46px;font-variant-numeric:tabular-nums}
+.procurement-rate-confirmation{color:#276a50}.procurement-rate-confirmation span{font-size:13px;color:#647078}
+.procurement-rate-preview{border-top:1px solid #ece9e5}
+.procurement-rate-preview>div{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid #ece9e5}
+.procurement-rate-preview>div>div{display:grid;gap:3px;min-width:0}
+.procurement-rate-preview>div>div:last-child{text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
+.procurement-rate-preview small,.procurement-rate-preview span{font-size:13px;color:#647078}
+.procurement-rate-preview strong{overflow-wrap:anywhere}.procurement-rate-dialog h3{font-weight:700}
+.procurement-rate-preview-note{font-size:13px;color:#647078;line-height:1.5}
+.procurement-rate-dialog details{font-size:13px;color:#596772}.procurement-rate-dialog summary{cursor:pointer;min-height:36px}.procurement-rate-dialog details p{padding:5px 0}
+.procurement-rate-error{color:#a12f2f}
+.procurement-rate-dialog footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px max(16px,env(safe-area-inset-bottom));border-top:1px solid #ece9e5}
+.procurement-rate-dialog footer button{min-height:44px;padding:10px 14px;border-radius:10px;font-weight:600;line-height:1.3}
+.procurement-rate-primary{background:#90633e;color:white}.procurement-rate-secondary{background:#fff;border:1px solid #d9d3cc;color:#4c5358}
+.procurement-rate-dialog button:disabled{opacity:.55;cursor:wait}
+@media(max-width:639px){.procurement-day-rates{margin-left:0;width:100%;gap:14px}.procurement-rate-dialog{margin:auto 0 0;max-height:90dvh;width:100%;max-width:none;border-radius:20px 20px 0 0}.procurement-rate-dialog header{padding:17px 18px 12px}.procurement-rate-dialog-body{padding:16px 18px}.procurement-rate-dialog footer{padding-left:18px;padding-right:18px}.procurement-rate-dialog footer button{flex:1}}
+@media(prefers-reduced-motion:reduce){.procurement-currency-logo{transition:none}}
+
+.procurement-money-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:14px;align-items:baseline;min-width:0;font-variant-numeric:tabular-nums}
+.procurement-money-columns>span{min-width:0;text-align:right;white-space:nowrap}
+.procurement-money-original{font-size:15px;font-weight:650;line-height:22px;color:#302b26}
+.procurement-money-equivalent{font-size:14px;line-height:22px;font-weight:500;color:#655c52}
+.procurement-money-method{font-size:13px;line-height:22px;font-weight:500;color:#655c52}
+@container(min-width:681px){.compact-payment-calendar .procurement-aligned-money{grid-template-columns:minmax(140px,1fr) 240px 140px 112px}}
+@container(min-width:461px) and (max-width:680px){.compact-payment-calendar .procurement-aligned-money{grid-template-columns:minmax(140px,1fr) 240px 112px}}
+@media(max-width:767px){
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money{grid-template-columns:minmax(0,1fr) 32px!important;row-gap:5px!important;padding:12px 0!important}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money>div:first-child{grid-column:1!important;grid-row:1!important}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money>div:first-child h4{font-size:14px;line-height:20px}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money>.payment-request-money{grid-column:1!important;grid-row:2!important}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money>.compact-payment-status{grid-column:1!important;grid-row:3!important}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money>.compact-payment-actions{grid-column:2!important;grid-row:1/4!important}
+ .procurement-responsive-shell .compact-payment-calendar .procurement-aligned-money[data-expanded='true']>.compact-payment-actions{grid-column:2!important;grid-row:1/4!important}
+ .procurement-money-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;width:100%}
+ .procurement-money-columns>span:first-child{text-align:left}
+ .procurement-money-original{font-size:15px;line-height:22px}
+ .procurement-money-method,.procurement-money-equivalent{font-size:14px;line-height:22px}
+}
+
+.pam-group:has(.procurement-day-rates){align-items:center;flex-wrap:wrap}

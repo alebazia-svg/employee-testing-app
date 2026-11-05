@@ -7,7 +7,7 @@ import {useReceiptPdf} from './useReceiptPdf';
 import {receiptPreviewMime,receiptFittedWidth} from '@/lib/procurement-receipt-viewer';
 
 /** Uses the existing authenticated attachment route; does not modify documents. */
-export function ProcurementReceiptViewer({url,name,onBack}:{url:string;name:string;onBack:()=>void}) {
+export function ProcurementReceiptViewer({url,name,onBack,request}:{url:string;name:string;onBack:()=>void;request?:typeof fetch}) {
  const [source,setSource]=useState('');
  const [mime,setMime]=useState('');
  const [error,setError]=useState('');
@@ -25,7 +25,7 @@ export function ProcurementReceiptViewer({url,name,onBack}:{url:string;name:stri
   const timeout=setTimeout(()=>{timedOut=true;abort.abort();},15000);
   (async()=>{
    try {
-    const response=await fetch(url,{signal:abort.signal,cache:'no-store',credentials:'same-origin'});
+    const response=await (request??fetch)(url,{signal:abort.signal,cache:'no-store',credentials:'same-origin'});
     if(!response.ok)throw new Error('Не удалось загрузить чек. Повторите попытку.');
     const blob=await response.blob();
     const type=receiptPreviewMime(blob.type);
@@ -38,7 +38,7 @@ export function ProcurementReceiptViewer({url,name,onBack}:{url:string;name:stri
    } finally {clearTimeout(timeout);}
   })();
   return()=>{disposed=true;clearTimeout(timeout);abort.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
- },[url,attempt]);
+ },[url,attempt,request]);
 
  useEffect(()=>{
   const element=viewport.current;if(!element)return;

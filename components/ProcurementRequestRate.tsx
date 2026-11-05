@@ -22,8 +22,8 @@ export function ProcurementRequestRate({method, rate, evidence}: Props) {
     && ['PARTIALLY_PAID_BY_ONE_C', 'PAID_BY_ONE_C'].includes(evidence.state)
     && evidence.paidForeignAmount > 0 && !evidence.paymentAmountNeedsConfirmation
     && Number.isFinite(actual) && actual > 0;
-  return <div className="mt-1 text-sm leading-5 text-slate-600 tabular-nums">
-    <p>Курс заявки: <span className="whitespace-nowrap">{Number.isFinite(planned) && planned > 0 ? `${format(planned)} ₽ / ${method}` : 'не указан'}</span></p>
-    {confirmed ? <p>Курс оплаты: <span className="whitespace-nowrap">{format(actual)} ₽ / {method}</span></p> : null}
+  return <div className="payment-request-rate mt-1 text-sm leading-5 text-slate-600 tabular-nums">
+    <p>Курс заявки: <span className="whitespace-nowrap">{Number.isFinite(planned) && planned > 0 ? <>{format(planned)} ₽<span className="payment-request-rate-unit"> / {method}</span></> : 'не указан'}</span></p>
+    {confirmed ? <p>Курс оплаты: <span className="whitespace-nowrap">{format(actual)} ₽<span className="payment-request-rate-unit"> / {method}</span></span></p> : null}
   </div>;
 }

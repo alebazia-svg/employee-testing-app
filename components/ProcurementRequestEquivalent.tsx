@@ -24,5 +24,5 @@ export function requestEquivalent(plan:Plan):{amount:number;currency:string}|nul
 export function ProcurementRequestEquivalent({plan}:{plan:Plan}){
   const value=requestEquivalent(plan);
   if(!value)return null;
-  return <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-600">≈ {value.amount.toLocaleString('ru-RU',{maximumFractionDigits:value.currency==='RUB'?2:4})} {value.currency==='RUB'?'₽':value.currency}</p>;
+  return <p className="payment-request-equivalent text-sm font-medium tabular-nums text-slate-600">≈ {value.amount.toLocaleString('ru-RU',{maximumFractionDigits:value.currency==='RUB'?2:4})} {value.currency==='RUB'?'₽':value.currency}</p>;
 }

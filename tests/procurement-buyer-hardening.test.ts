@@ -302,16 +302,19 @@ test('planning suggestions show supplier debt and action without order document 
 });
 
 
-test('current buyer requests show their saved rate before and after approval without a market-rate fallback', async()=>{
+test('collapsed buyer requests show both currencies without repeating the rate; saved rate stays in details', async()=>{
   const props=buyerReviewScenario('basis-edit-approved','2026-11-05')!;
   const base=props.initialPlans[0];
   for(const status of ['SUBMITTED','APPROVED']) for(const method of ['USDT','CNY']) {
     const html=await render({...props,initialPlans:[{...base,status,paymentMethod:method,exchangeRate:'13.6',foreignAmount:'100',plannedAmount:'1360'}]});
-    assert.match(html.replace(/<[^>]+>/g,''),new RegExp(`Курс заявки: 13,6 ₽ / ${method}`));
+    assert.match(html.replace(/<[^>]+>/g,''),new RegExp(`100 ${method}`));
+    assert.match(html.replace(/<[^>]+>/g,''),/1[\s\u00a0]360 ₽/);
+    assert.doesNotMatch(html,/Курс заявки:/);
     assert.doesNotMatch(html,/Курс оплаты:/);
   }
   const missing=await render({...props,initialPlans:[{...base,paymentMethod:'USDT',exchangeRate:null}]});
-  assert.match(missing.replace(/<[^>]+>/g,''),/Курс заявки: не указан/);
+  assert.doesNotMatch(missing,/Курс заявки:|Курс оплаты:/);
+  assert.match(await readFile('components/ProcurementSavedRate.tsx','utf8'),/ProcurementRequestRate method=\{plan.paymentMethod\} rate=\{plan.exchangeRate\}/);
   const cash=await render({...props,initialPlans:[{...base,paymentMethod:'CASH',exchangeRate:'99'}]});
   assert.doesNotMatch(cash,/Курс заявки:/);
 });
@@ -319,7 +322,7 @@ test('current buyer requests show their saved rate before and after approval wit
 test('expanded buyer request exposes requisites and receipts directly instead of the ambiguous document entry', async()=>{
   const props=buyerReviewScenario('basis-edit-approved','2026-11-05')!;
   const source=await readFile('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');
-  assert.match(source,/<ProcurementReceipts plans=\{\[plan\]\} single inline\/>/);
+  assert.match(source,/<ProcurementReceipts\b[^>]*plans=\{\[plan\]\}[^>]*\bsingle\b[^>]*\binline\b/);
   const html=await render(props,'current',props.initialPlans[0].id);
   assert.doesNotMatch(html,/>Документы оплаты</);
 });

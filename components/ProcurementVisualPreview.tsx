@@ -7,6 +7,7 @@ import type {AdminForecastSources} from '@/lib/procurement-admin-forecast';
 export const ProcurementVisualPreview = createContext<{
   /** Isolated authenticated DB review: use the real receipt UI and API. */
   persistedReceipts?: boolean;
+  receiptRequest?: typeof fetch;
   toolbar?: ReactNode;
   receiptControl?: ReactNode;
   fundingPlan?: ReactNode;
@@ -20,6 +21,11 @@ export const ProcurementVisualPreview = createContext<{
   historyDetail?: (id: string) => ReactNode;
   detail?: (id: string) => ReactNode;
   badge?: (id: string) => ReactNode;
+  rate?: (id: string) => ReactNode;
+  rateSummary?: ReactNode;
+  compactDays?: boolean;
+  dayRates?: (day: string) => ReactNode;
+  money?: (id: string) => ReactNode;
   add?: () => void;
   edit?: (id: string) => void;
   decide?: (id: string, action: 'APPROVE' | 'RETURN' | 'CANCEL', reason: string) => void;

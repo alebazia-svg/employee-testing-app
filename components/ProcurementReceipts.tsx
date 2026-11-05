@@ -17,12 +17,13 @@ const root='/api/procurement/payment-plans/';
 const button='procurement-receipt-button';
 const paymentAmount=receiptPaymentAmount;
 
-export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false,inline=false,admin=false,onBusyChange,onPreviewChange,onCounts,onLoadState,actionSummary=false,renderEntry}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean;inline?:boolean;admin?:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void;onLoadState?:(state:'loading'|'ready'|'error')=>void;actionSummary?:boolean;renderEntry?:(state:ReceiptEntryView)=>React.ReactNode}) {
+export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false,inline=false,admin=false,onBusyChange,onPreviewChange,onCounts,onLoadState,actionSummary=false,renderEntry,request}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean;inline?:boolean;admin?:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void;onLoadState?:(state:'loading'|'ready'|'error')=>void;actionSummary?:boolean;renderEntry?:(state:ReceiptEntryView)=>React.ReactNode;request?:typeof fetch}) {
   if(process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED!=='1')return null;
-  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment} inline={inline} admin={admin} onBusyChange={onBusyChange} onPreviewChange={onPreviewChange} onCounts={onCounts} onLoadState={onLoadState} actionSummary={actionSummary} renderEntry={renderEntry}/>;
+  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment} inline={inline} admin={admin} onBusyChange={onBusyChange} onPreviewChange={onPreviewChange} onCounts={onCounts} onLoadState={onLoadState} actionSummary={actionSummary} renderEntry={renderEntry} request={request}/>;
 }
-function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,admin,onBusyChange,onPreviewChange,onCounts,onLoadState,actionSummary=false,renderEntry}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean;inline:boolean;admin:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void;onLoadState?:(state:'loading'|'ready'|'error')=>void;actionSummary?:boolean;renderEntry?:(state:ReceiptEntryView)=>React.ReactNode}) {
+function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,admin,onBusyChange,onPreviewChange,onCounts,onLoadState,actionSummary=false,renderEntry,request}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean;inline:boolean;admin:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void;onLoadState?:(state:'loading'|'ready'|'error')=>void;actionSummary?:boolean;renderEntry?:(state:ReceiptEntryView)=>React.ReactNode;request?:typeof fetch}) {
   const preview = useEmployeePreview();
+  const documentFetch=request??fetch;
   const mobile=!!useProcurementMobilePresentation();
   const [viewFile,setViewFile]=useState<{file:Receipt;supplier:string}|null>(null);
   useEffect(()=>{onPreviewChange?.(!!viewFile);},[viewFile,onPreviewChange]);
@@ -56,7 +57,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     for(let i=0;i<ids.length;i+=100){
       const query=new URLSearchParams(ids.slice(i,i+100).map(id=>['plan',id]));
       query.set('documents','1');
-      const response=await (preview?.request ?? fetch)(`/api/procurement/receipts?${query}`,{cache:'no-store',signal});
+      const response=await (preview?.request ?? documentFetch)(`/api/procurement/receipts?${query}`,{cache:'no-store',signal});
       if(!response.ok)throw new Error('Не удалось загрузить чеки. Повторите позже.');
       result.push(...(await response.json()).receipts);
     }
@@ -100,7 +101,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
           const refs=documentPaymentRefs(plan);
           data.set('paymentRefs',JSON.stringify(selectedRefs??(refs.length===1?refs:canCollectQrReceiptBeforePayment(plan)?['pending-qr']:[])));
         }
-        const response=await fetch(`${root}${encodeURIComponent(plan.id)}/receipts`,{method:'POST',body:data});
+        const response=await documentFetch(`${root}${encodeURIComponent(plan.id)}/receipts`,{method:'POST',body:data});
         const body=await response.json();if(!response.ok)throw new Error(body.error||(mobile?'Отправка чека не подтверждена. Повторите попытку.':'Чек не сохранён. Повторите попытку.'));
         setReceipts(prev=>[...prev.filter(r=>r.id!==body.receipt.id).map(r=>r.id===replace?.id?{...r,replacedById:body.receipt.id,revision:(r.revision??0)+1}:r),body.receipt]);
       }
@@ -118,7 +119,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     if(uploading.current)return false;
     uploading.current=true;requestVersion.current++;setBusy(plan.id);onBusyChange?.(true);setError('');setNotice('');
     try{
-      const response=await fetch(`${root}${encodeURIComponent(plan.id)}/documents/${encodeURIComponent(file.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,purpose,paymentRefs,revision:file.revision??0,planVersion:plan.updatedAt})});
+      const response=await documentFetch(`${root}${encodeURIComponent(plan.id)}/documents/${encodeURIComponent(file.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,purpose,paymentRefs,revision:file.revision??0,planVersion:plan.updatedAt})});
       const body=await response.json();if(!response.ok)throw new Error(body.error||'Изменение не сохранено.');
       setReceipts(prev=>prev.map(row=>row.id===body.receipt.id?body.receipt:row));
       setNotice(action==='CONFIRM_QR'?'Подтверждение QR сохранено на сегодня.':action==='LINK_PAYMENT'?'Чек связан с выбранной оплатой.':'Назначение файла изменено.');
@@ -132,7 +133,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     if(uploading.current)return false;
     uploading.current=true;requestVersion.current++;setBusy(plan.id);onBusyChange?.(true);setError('');setNotice('');
     try{
-      const response=await fetch(`${root}${encodeURIComponent(plan.id)}/requisites`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,network,planVersion:plan.updatedAt,replaceId:replace?.id,replaceRevision:replace?.revision})});
+      const response=await documentFetch(`${root}${encodeURIComponent(plan.id)}/requisites`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,network,planVersion:plan.updatedAt,replaceId:replace?.id,replaceRevision:replace?.revision})});
       const body=await response.json();if(!response.ok)throw new Error(body.error||'Реквизиты не сохранены.');
       setReceipts(prev=>[...prev.filter(r=>r.id!==body.receipt.id).map(r=>r.id===replace?.id?{...r,replacedById:body.receipt.id}:r),body.receipt]);
       setNotice('Реквизиты сохранены.');window.dispatchEvent(new Event('procurement-receipts-changed'));return true;
@@ -144,7 +145,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     if(uploading.current)return false;
     uploading.current=true;setBusy(plan.id);onBusyChange?.(true);setError('');setNotice('');
     try{
-      const response=await fetch(`${root}${encodeURIComponent(plan.id)}/qr-request`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planVersion:plan.updatedAt,qrFiles:filesFor(plan.id).filter(f=>f.purpose==='QR'&&!f.replacedById).map(f=>({id:f.id,revision:f.revision??0}))})});
+      const response=await documentFetch(`${root}${encodeURIComponent(plan.id)}/qr-request`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planVersion:plan.updatedAt,qrFiles:filesFor(plan.id).filter(f=>f.purpose==='QR'&&!f.replacedById).map(f=>({id:f.id,revision:f.revision??0}))})});
       const body=await response.json();if(!response.ok)throw new Error(body.error||'Запрос не сохранён.');
       setNotice(body.alreadyRequested?'Этот запрос уже создан. Повторное уведомление не отправлено.':'Запрос создан. Уведомление придёт в разрешённое время.');
       return true;
@@ -154,7 +155,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
   const viewedPlan=viewFile?allPlans.find(plan=>plan.id===viewFile.file.planId):undefined;
   const viewedQrConfirmed=!!(viewFile&&viewedPlan?.status&&viewedPlan.paymentMethod&&viewedPlan.plannedDate&&qrIsConfirmed(viewFile.file,{...viewedPlan,status:viewedPlan.status,paymentMethod:viewedPlan.paymentMethod,plannedDate:viewedPlan.plannedDate},today));
   // Requisites are available before payment too; never hide their entry point.
-  const content=viewFile?<><p className="payment-document-view-status" role="status">{viewFile.file.replacedById?'Прежние реквизиты · файл заменён':viewFile.file.purpose==='QR'?(viewedQrConfirmed?'QR подтверждён сегодня':'QR · перед оплатой уточните актуальность у поставщика'):isPaymentReceipt(viewFile.file)?'Чек оплаты':'Реквизиты для оплаты'}</p><ProcurementReceiptViewer key={viewFile.file.id} url={(preview?.readUrl ?? (url => url))(`${root}${encodeURIComponent(viewFile.file.planId)}/receipts/${encodeURIComponent(viewFile.file.id)}`)} name={viewFile.file.originalName} onBack={closeFile}/></>:<div className={`procurement-receipts-body${inline?' payment-documents-inline':''}`}>
+  const content=viewFile?<><p className="payment-document-view-status" role="status">{viewFile.file.replacedById?'Прежние реквизиты · файл заменён':viewFile.file.purpose==='QR'?(viewedQrConfirmed?'QR подтверждён сегодня':'QR · перед оплатой уточните актуальность у поставщика'):isPaymentReceipt(viewFile.file)?'Чек оплаты':'Реквизиты для оплаты'}</p><ProcurementReceiptViewer request={request} key={viewFile.file.id} url={(preview?.readUrl ?? (url => url))(`${root}${encodeURIComponent(viewFile.file.planId)}/receipts/${encodeURIComponent(viewFile.file.id)}`)} name={viewFile.file.originalName} onBack={closeFile}/></>:<div className={`procurement-receipts-body${inline?' payment-documents-inline':''}`}>
         {busy?<p role="status" className="mb-3 text-sm text-slate-700">Сохраняем документ…</p>:null}
         {notice?<p role="status" className="mb-3 rounded-lg bg-[#f8f2eb] p-3 text-sm text-[#754725]">{notice}</p>:null}
         {error||loadError?<div role="alert"><p>{error||loadError}</p><button type="button" className={button} disabled={!!busy} onClick={()=>load().catch(error=>setError(error.message))}>{mobile?'Обновить список документов':'Повторить загрузку'}</button></div>:null}
