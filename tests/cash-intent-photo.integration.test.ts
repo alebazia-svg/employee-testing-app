@@ -83,3 +83,26 @@ test('durable intents and original photo resume are independent and preserve req
     assert.equal(await db.cashOperation.count({ where: { userId: user.id } }), 2);
   } finally { await db.user.deleteMany({ where: { id: { in: users } } }); await db.$disconnect(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('a12MiB original resumes from committed chunks and preserves completed money independently',
+ {skip:process.env.CASH_PHOTO_INTEGRATION!=='1'},async()=>{
+ assert.equal(process.env.DATABASE_URL,'postgresql://preview:schedule-source-local-only@127.0.0.1:55481/cash_photo_test_20261104');
+ const db=new PrismaClient();const root=await mkdtemp(path.join(os.tmpdir(),'cash-large-photo-'));let userId:number|undefined;
+ try{
+  const user=await db.user.create({data:{login:`large-${randomUUID()}`,name:'Large photo isolated test',role:'EMPLOYEE',department:'wholesale',passwordHash:'unused'}});userId=user.id;
+  const day=await db.workDayEntry.create({data:{userId,date:'2026-11-04',department:'wholesale',shiftCode:'09_19',shiftLabel:'09:00–19:00'}});
+  const bytes=Buffer.alloc(12*1024*1024+77,7);bytes.set([255,216,255]);const hash=createHash('sha256').update(bytes).digest('hex');
+  const operation=await db.cashOperation.create({data:{userId,workDayEntryId:day.id,date:day.date,department:'wholesale',direction:'deposit_safe',amount:40000,comment:'isolated',idempotencyKey:randomUUID(),photoPath:'',status:'posted_1c_pair',oneCDocumentRef:'test-large-rko',oneCReceiptDocumentRef:'test-large-pko',photoExpectedSha256:hash,photoExpectedBytes:bytes.length}});
+  const send=(index:number)=>attachCashPhotoChunk(db,{userId:user.id,idempotencyKey:operation.idempotencyKey,hash,index,bytes:bytes.subarray(index*CASH_PHOTO_CHUNK_BYTES,(index+1)*CASH_PHOTO_CHUNK_BYTES)},root);
+  for(let index=0;index<10;index++)await send(index);
+  assert.equal((await cashPhotoProgress(operation,root)).receivedChunks.length,10);
+  assert.equal((await db.cashOperation.findUniqueOrThrow({where:{id:operation.id}})).photoPath,'');
+  await send(9); // A lost response must not change acknowledged bytes.
+  let result;
+  for(let index=10;index<Math.ceil(bytes.length/CASH_PHOTO_CHUNK_BYTES);index++)result=await send(index);
+  assert.ok(result?.complete);assert.equal(result.operation.status,'posted_1c_pair');
+  assert.equal(result.operation.oneCDocumentRef,'test-large-rko');assert.equal(result.operation.oneCReceiptDocumentRef,'test-large-pko');
+  assert.deepEqual(await readFile(path.join(root,result.operation.photoPath)),bytes);
+  assert.ok(result.operation.photoReceivedAt);
+ }finally{if(userId)await db.user.delete({where:{id:userId}});await db.$disconnect();await rm(root,{recursive:true,force:true});}
+});

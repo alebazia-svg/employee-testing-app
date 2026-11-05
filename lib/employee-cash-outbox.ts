@@ -30,20 +30,30 @@ const databaseVersion = 1;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
+    let expired = false;
     const request = indexedDB.open(databaseName, databaseVersion);
+    const timeout = setTimeout(() => { expired = true; reject(new Error('OFFLINE_STORAGE_TIMEOUT')); }, 5000);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(storeName)) database.createObjectStore(storeName, { keyPath: 'id' });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('OFFLINE_STORAGE_UNAVAILABLE'));
+    request.onsuccess = () => {
+      clearTimeout(timeout);
+      if (expired) request.result.close(); else resolve(request.result);
+    };
+    request.onerror = () => { clearTimeout(timeout); reject(request.error ?? new Error('OFFLINE_STORAGE_UNAVAILABLE')); };
   });
 }
 
 function runRequest<T>(mode: IDBTransactionMode, callback: (store: IDBObjectStore) => IDBRequest<T>) {
   return openDatabase().then((database) => new Promise<T>((resolve, reject) => {
     let transaction: IDBTransaction | undefined;
+    const timeout = setTimeout(() => {
+      try { transaction?.abort(); } catch { /* Already finished. */ }
+      fail(new Error('OFFLINE_STORAGE_TIMEOUT'));
+    }, 8000);
     const fail = (error: unknown) => {
+      clearTimeout(timeout);
       database.close();
       reject(error ?? new Error('OFFLINE_STORAGE_FAILED'));
     };
@@ -56,6 +66,7 @@ function runRequest<T>(mode: IDBTransactionMode, callback: (store: IDBObjectStor
       request.onerror = () => fail(request.error);
       // Request success is provisional: the transaction can still abort.
       activeTransaction.oncomplete = () => {
+        clearTimeout(timeout);
         database.close();
         resolve(request.result);
       };
@@ -76,6 +87,19 @@ export function removeEmployeeCashOutboxItem(id: string) {
 
 export function listEmployeeCashOutboxItems() {
   return runRequest<EmployeeCashOutboxItem[]>('readonly', (store) => store.getAll());
+}
+
+export function readEmployeeCashOutboxItem(id: string) {
+  return runRequest<EmployeeCashOutboxItem | undefined>('readonly', (store) => store.get(id));
+}
+
+export function probeEmployeeCashStorage() {
+  return runRequest('readwrite', store => {
+    const id = '__cash_photo_storage_probe__';
+    store.put({ id, photo: new Blob(['storage-check']) });
+    // Same transaction: the probe never appears in the outbox, even on abort.
+    return store.delete(id);
+  });
 }
 
 export function cashMetadataAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {

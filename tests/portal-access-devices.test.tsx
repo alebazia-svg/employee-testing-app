@@ -60,7 +60,7 @@ test('an account with one connected and one disconnected browser is not labelled
 
 test('current screen keeps notification status concise and setup instructions in details', () => {
   const html = render([row, { ...row, id: 'phone', device: 'iPhone', browser: 'Safari', pushLabel: 'Не подключены' }]);
-  assert.match(html, /Не подключены/);
+  assert.match(html, /Уведомления не подключены/);
   assert.doesNotMatch(html, /Подключить в этом кабинете/);
   assert.match(accessNotificationDetail({ ...row, pushLabel: 'Не подключены' }, now).explanation, /Откройте нужный кабинет на устройстве/);
   assert.match(html, /в том числе автоматическое/);
@@ -151,7 +151,7 @@ test('last visits remain visible across old dates, logout and expiry; history is
   assert.equal(accessCurrentConnections(records).length, 5);
   assert.match(render(records), /OldPhone/);
   assert.match(render(records, true), /OldPhone/);
-  assert.match(render([records[2]]), /Был в портале/);
+  assert.match(render([records[2]]), /Последняя связь/);
   assert.equal(records.length, 5);
   assert.equal(records[2].pushLabel, 'Подключены');
 });
@@ -164,7 +164,7 @@ test('employees and their devices are newest first, including recent devices wit
   const before = JSON.stringify(records);
   const groups = groupAccessRows(accessCurrentConnections(records));
   assert.deepEqual(groups.map(g => g.map(r => r.id)), [['newest', 'older'], ['alphabetical']]);
-  assert.match(render(records), /Не подключены/);
+  assert.match(render(records), /Уведомления не подключены/);
   assert.equal(JSON.stringify(records), before);
   assert.deepEqual(groupAccessRows([...records].reverse()), groups);
 });
