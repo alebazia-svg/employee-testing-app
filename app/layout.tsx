@@ -1,3 +1,4 @@
+import '@/components/admin-page-journal.css';
 import './globals.css';
 import './mobo-brand.css';
 import './desktop-copper.css';

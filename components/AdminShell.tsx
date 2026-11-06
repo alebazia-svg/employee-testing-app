@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useAdminIdentity } from './AdminIdentityProvider';
 import { portalPersonInitials } from '@/lib/portal-person';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { AdminPageVisitTracker } from './AdminPageVisitTracker';
 import { Banknote, BriefcaseBusiness, Building2, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Landmark, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
@@ -92,6 +93,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
 
   return (
     <main className='portal-neutral-design mobo-master-admin admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
+      <Suspense fallback={null}><AdminPageVisitTracker /></Suspense>
       <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
         <PortalIdentityBlock variant='mobo-master' className='admin-mobile-identity w-[154px]' />
         <div className='flex items-center gap-2'>

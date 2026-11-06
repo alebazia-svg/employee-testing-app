@@ -1,4 +1,5 @@
 'use client';
+import { AdminPageJournal } from './AdminPageJournal';
 import React, { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,6 +22,7 @@ export type AccessDevicesProps = { compactOverview?: boolean; renderDetailPages?
 
 export function PortalAccessDevices(props: AccessDevicesProps) {
   const router = useRouter();
+  const [journalOpen,setJournalOpen]=useState(false);
   const [refreshing, startRefresh] = useTransition();
   useEffect(() => {
     if (props.history) return;
@@ -63,7 +65,7 @@ export function PortalAccessDevices(props: AccessDevicesProps) {
       router.refresh();
     } finally { window.clearTimeout(timer); }
   }
-  return <PortalAccessDevicesView {...props} onRefresh={() => startRefresh(() => router.refresh())} refreshing={refreshing} onRequestUpdate={requestUpdate} onSetService={setService} onSetOwner={setOwner} onSetListArchive={setListArchive} />;
+  return <><PortalAccessDevicesView {...props} compactOverview toolbarAction={<button className='access-secondary journal-overview-action' onClick={()=>setJournalOpen(true)}>Посещения страниц</button>} renderDetailPages={row=>row.browserInstanceId?<AdminPageJournal key={row.id} embedded target={{id:row.browserInstanceId,name:row.connectionLabel||`${row.device} · ${row.browser}`,browser:row.browser,group:row.deviceGroupId}}/>:<p className='journal-note'>Код этого подключения не сохранён. Связать посещения с браузером достоверно нельзя.</p>} onRefresh={() => startRefresh(() => router.refresh())} refreshing={refreshing} onRequestUpdate={requestUpdate} onSetService={setService} onSetOwner={setOwner} onSetListArchive={setListArchive} />{journalOpen&&<AdminPageJournal target={null} onClose={()=>setJournalOpen(false)}/>}</>;
 }
 
 function ListArchiveControl({ row, onSave, onDone }: { row: AccessJournalRow; onSave: NonNullable<AccessDevicesProps['onSetListArchive']>; onDone: (archived: boolean) => void }) {
