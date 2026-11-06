@@ -29,9 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
-- ADMIN page journal: `admin-page-journal-preview-20261106.md` — local interface
-  preview requested; owner visual approval pending. No production collection or
-  migration. Separate working/service views, individual browser codes retained.
+- ADMIN page journal: `admin-page-journal-preview-20261106.md` — final interface approved;
+  real ADMIN visit collection/release approved7November. Released/verified1.21.43 /42f3152;
+  real collection began7November01:10MSK, image registered and storage finalized. No migration; names/groups preserved, working
+  and service views separated with individual codes retained.
 
 - CNY small-remainder completion: `../ops/procurement-cny-remainder-release-20261106.md`
   — installed/verified1.21.42 /13533a6, authenticated closing of both current CNY

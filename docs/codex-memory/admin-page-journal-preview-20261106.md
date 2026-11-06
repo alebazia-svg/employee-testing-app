@@ -1,9 +1,13 @@
-# ADMIN page journal — interface preview, 6 November 2026
+# ADMIN page journal — approved collection and release, 7 November 2026
 
 Owner requested a page journal per browser with opening times, separating service
 Codex/Claude browsers, and explicitly requested seeing the interface first.
-Current phase: approved local interface preview; visual approval pending.
-No production collection, API, schema migration or deployment in this phase.
+Current phase (7 November): owner approved the final interface and explicitly
+approved real ADMIN visit collection and portal deployment. Release1.21.43 /
+42f31523c656360833ebbfebf399f4d3a5ebc81e is installed, independently verified
+and registered. Public build2026-11-06T22:03:40.443Z (7November01:03MSK).
+No schema migration is needed. The earlier preview-only restrictions below are
+historical; the approved final UI and preservation requirements remain binding.
 
 The existing employee journal is restricted to EMPLOYEE and employee/procurement
 paths. It is not an ADMIN page audit. Preserve that boundary until a reviewed
@@ -141,3 +145,91 @@ Visits likewise326px and exactly1open dialog. Temporary viewport reset. Physical
 phones not tested. Latest local screenshot paths /tmp/access-visits-quiet-page.jpg,
 /tmp/access-visits-in-details.jpg, /tmp/access-visits-in-details-mobile.jpg.
 Current local deliverable left open on Visits. No deployment/real capture enabled.
+
+## Approved production collection — 7 November 2026
+
+- Reuses PortalActivityEvent with kind=admin_page and independent coverage id=2.
+  Employee collection/coverage id=1 stays unchanged. No schema/migration changes.
+- AdminShell observes visible route transitions after350ms. Same-page reloads
+  within30seconds are suppressed per session; A→B→A remains visible. Background
+  refreshes/polls never emit visits. A visible return after30seconds may emit one.
+- Closed catalogue of ADMIN sections and recognized access/tax query tab enums;
+  detail identifiers normalize to [id]. No arbitrary URL/query/form/search data.
+  Preview/dev/employee routes are excluded.
+- Same-origin authenticated ADMIN API, small input, active user/session, exact
+  signed-session hash and immutable UUID cookie/binding; reject observed-ID
+  mismatches, expired/logged-out sessions. Bounded retries after identity setup.
+  No identity cookie creation, owner rename/grouping, auth or push writes.
+- Server timestamp (Moscow display), exact browser code, normalized page, optional
+  prior page, cabinet. Not an action/change audit, person identification or duration
+  evidence. Browser/client telemetry is best effort; no retrospective reconstruction.
+- Retention90days,600events/session/day cap, idempotency and bounded cleanup.
+  General journal: work/service separated, Codex/Claude labels read from existing
+  saved owners, existing confirmed group IDs retained with separate exact codes.
+- Summary covers the entire selected range/browser scope, independently of text
+  search. Keyset pages of50, explicit load-more error, request cancellation and
+  distinct loading/not-started/empty/failure states. No demo fixtures in production.
+
+Verification before release: build, tsc,41 UI/policy tests,44 server regression
+tests (3 existing DB-dependent tests skipped), new isolated PostgreSQL integration
+test, real localhost HTTP authorization/binding test,5 release-info tests passed.
+Live isolated UI: real transitions/readback, search1of3 with summary3, preserved
+Info tab, embedded Visits, mobile375px single dialog/no horizontal overflow,
+network failure shown explicitly. Full-site regression and actual employee devices
+are not exhaustively tested; production preservation proof is required below.
+
+## Verified production result
+
+- Server/runtime commit42f31523c656360833ebbfebf399f4d3a5ebc81e, both public
+  hosts(team.mobo-opt.ru and portal.alebazia.xyz) report1.21.43 and identical
+  build2026-11-06T22:03:40.443Z. Authenticated footer and Info tab show1.21.43.
+  Metadata revision=null/source=unknown is existing behavior; commit checked by SSH.
+- Healthy image sha256:41262568aef851dddaee9dd77555110889382f411917753c589e4e3d8b0087e5
+  registered, plus two verified reserves7b3c567f… /deffb767…. Every image independently
+  inspected by finalization. Approved storage maintenance succeeded;18.11GiB free.
+- Release and finalization scripts exited0. Root proof/logs:
+  /root/admin-pages-20261107/facts.before.json, facts.after.json, facts.final.json;
+  /home/bela/admin-pages-release-20261107.log and admin-pages-finish-20261107.log.
+  All9 owner/label/group rows unchanged; all127 preexisting sessions retained
+  with identity/classification intact;10 account authorization hashes and35
+  existing subscription identities/keys unchanged. Schema/migrations, server.env,
+  normalized mounts and workday notification units unchanged. No migration run.
+- Real collection began7November01:10MSK. Authenticated service journal showed
+ 5 real openings across3 sections after our visible navigation through Employees
+  and Access. Exact current Codex code534630d9-b7c5-4d4e-8960-e096c41bc51b
+  selected as connection2; grouped code389754da-8a0b-4b9b-b2ff-06a4962f658e
+  remained separately selectable as connection1. Claude0de10d6c… is a separate
+  service filter option; saved labels unchanged. No fabricated Aslan/other-user visits.
+- Production desktop and375px UI verified, including expanded real UUID selector: one
+  dialog,334px content/scroll widths(no overflow), original Info data retained,
+  embedded Visits, existing three main tabs, one compact top button. General work
+  empty/service populated states correctly separated. New module performs only
+  page telemetry; all other module business flows were not exhaustively replayed.
+- Screenshot /tmp/portal-visits-1.21.43.jpg; live journal left open in visible IAB.
+  Earlier page visits cannot be reconstructed. Existing clients record only after
+  loading the new code; telemetry remains best effort, not proof of a human identity.
+
+Exact runtime/test files in release42f3152:
+
+- app/api/admin/employees/access/pages/route.ts
+- app/layout.tsx
+- components/AdminPageJournal.tsx
+- components/AdminPageVisitTracker.tsx
+- components/AdminShell.tsx
+- components/PortalAccessDevices.tsx
+- components/admin-page-journal.css
+- lib/admin-page-journal.ts
+- lib/admin-page-policy.ts
+- package.json
+- package-lock.json
+- tests/admin-page-journal-http.test.ts
+- tests/admin-page-journal.integration.test.ts
+- tests/admin-page-policy.test.ts
+
+The same branch also preserves the earlier approved preview commitd72651c:
+app/(dashboard)/admin/employees/access/pages-preview/page.tsx,
+AdminPageJournalPreview.tsx, admin-page-journal-preview.css and shared device
+component hooks. The route requires both isolated-demo and preview flags.
+Documentation-only changes are separate from runtime; unrelated Projects checkout
+files were not changed. Existing upstream Procurement/tax changes were merged
+from c887cef and preserved. No payroll/OFD/attendance/1C/business logic changed.
