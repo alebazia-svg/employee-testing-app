@@ -1541,3 +1541,29 @@ unchanged saved-finance/configuration hashes and successful image registration.
 No new month allocations, 1C-total authority policy or production salary/shift
 mutation was included. Exact files/checks/evidence:
 `../ops/payroll-rounded-final-release-20261103.md`.
+
+## 2026-11-06 — Taxes entry and documentary Telegram views
+
+Released portal 1.21.40 / 72106d3339e4815ebd375c9fb555f182ea4ca97f.
+Owner requires quick entry without an empty tax loading screen: preserve the
+current admin content until an uncached transition is ready; do not restore the
+removed tax-specific skeleton. Taxes navigation uses full prefetch; the four
+internal views still share one authorized snapshot. Parsed document reuse is
+bounded and checks path, checksum and fresh file metadata; new/changed/missing
+sources do not fall back to an old success. Archive and calculation data stay
+unchanged.
+
+The existing refresh CLI publishes the verified latest management review to
+private intake telegram-management-review.json, without changing document
+status or running another calculation. Invalid latest review publishes schema 0.
+The Telegram server presentation uses this context; the bot itself calculates
+nothing. Main documentary income is FNS plus Q1 USN/PSN, with accounting-model
+differences only over matching periods. A shorter replacement for the full bot
+report was proposed but not approved; the full numbered default is preserved.
+
+Production verification: fresh entry without a loading placeholder; four tabs,
+Back/Forward and 67 archived documents retained. All 34 Telegram view routes
+passed through the live broker without message sends. Broker/bot are active;
+primary core runner and snapshot identity are unchanged. No migrations or FNS/1C
+writes. Owner authorized this release, narrow service restarts and unused build
+cache cleanup. Native release/follow-up exit 0; current and two reserves verified.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-import {previewDailyRate,confirmDailyRate,readDailyRates} from '../lib/procurement-daily-rate-server';
+import {previewDailyRate,confirmDailyRate,readDailyRates,readDailyRateOverview} from '../lib/procurement-daily-rate-server';
 import type {freshEvidence} from '../lib/procurement-plan-revision-server';
 import {expenseRequestMoscowCalendarDate} from '../lib/expense-request-source';
 if(process.env.DATABASE_URL!=='postgresql://postgres@127.0.0.1:55467/daily_rates_test')throw Error('ISOLATED_DATABASE_REQUIRED');
@@ -74,6 +74,25 @@ test('exact additive migration preserves existing money and relations; constrain
    await assert.rejects(tx.$executeRawUnsafe(`INSERT INTO "ProcurementDailyRate" (id,day,currency,rate,revision,"actorUserId",snapshot) VALUES ($1,'2026-11-05',$2,$3,$4,$5,'{}')`,id,currency,rate,revision,actor));
    await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT invalid_quote');
   }
+  throw stop;
+ }),e=>e===stop);
+});
+
+
+test('overview reads the latest revision per currency even without requests, excludes future days and does not rewrite exact-day lookup',async()=>{
+ const stop=Error('ROLLBACK_OVERVIEW');
+ await assert.rejects(db.$transaction(async tx=>{
+  const actor=await tx.user.create({data:{login:randomUUID(),name:'Overview test',passwordHash:'NO_LOGIN',role:'ADMIN',portalArea:'PROCUREMENT'}});
+  const make=(day:string,currency:string,rate:number,revision=1)=>tx.procurementDailyRate.create({data:{day:new Date(day),currency,rate,revision,actorUserId:actor.id,snapshot:{}}});
+  await make('1899-01-01','USDT',80);await make('1899-01-02','USDT',81);await make('1899-01-02','USDT',82,2);
+  await make('1899-01-01','CNY',12);await make('1899-01-04','CNY',14);
+  const before=await tx.supplierPaymentPlan.count();
+  const rows=await readDailyRateOverview('1899-01-03',tx);
+  assert.deepEqual(rows.map(q=>[q.currency,q.rate,q.day]),[['USDT',82,'1899-01-02'],['CNY',12,'1899-01-01']]);
+  assert.deepEqual(await readDailyRates('1899-01-03',tx),[]);
+  assert.deepEqual(await readDailyRateOverview('1898-12-31',tx),[]);
+  await assert.rejects(readDailyRateOverview('invalid',tx));
+  assert.equal(await tx.supplierPaymentPlan.count(),before);
   throw stop;
  }),e=>e===stop);
 });

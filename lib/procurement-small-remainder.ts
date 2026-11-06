@@ -39,8 +39,9 @@ export function smallRubleRemainder(plan: Plan, paid: number): number | null {
 }
 
 /** Owner-approved cash-to-exchanger flow. Only call after exact RUB RKO proof;
- * this closes the RUB funding budget, never invents a USDT transfer amount. */
-export function smallUsdtRubleFundingRemainder(plan: Plan, paid: number): number | null {
-  if (plan.paymentMethod !== 'USDT' || (plan.currency && plan.currency !== 'USDT')) return null;
+ * this closes the RUB funding budget, never invents a foreign transfer amount. */
+export function smallForeignRubleFundingRemainder(plan: Plan, paid: number): number | null {
+  if (!['USDT', 'CNY'].includes(plan.paymentMethod) ||
+    (plan.currency && plan.currency !== plan.paymentMethod)) return null;
   return smallRubleRemainder({...plan, paymentMethod:'CASH', currency:'RUB', foreignAmount:null}, paid);
 }

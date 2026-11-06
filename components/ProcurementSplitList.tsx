@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState, type ReactNode } from "react";
 
-export type ProcurementListItem = { id: string; name: string; amount: string; meta: string; search?: string; warning?: string; group?: string; warningTone?: "neutral" };
+export type ProcurementListItem = { id: string; name: string; amount: string; amountSecondary?:string; meta: string; search?: string; warning?: string; group?: string; warningTone?: "neutral" };
 export function ProcurementSplitList({ items, renderDetail, empty = "Записей нет.", initialSelectedId = "" }: { items: ProcurementListItem[]; renderDetail: (id: string) => ReactNode; empty?: string; initialSelectedId?: string }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(initialSelectedId);
@@ -33,6 +33,7 @@ export function ProcurementSplitList({ items, renderDetail, empty = "Запис�
           {item.warning ? <span className={`mb-1 inline-block rounded px-2 py-1 text-[11px] font-bold ${item.warningTone === "neutral" ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-900"}`}>{item.warning}</span> : null}
           <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><strong className="text-sm text-slate-950">{item.name}</strong><span className="whitespace-nowrap text-base font-extrabold tabular-nums text-[#263b5c]">{item.amount}</span></span>
           <span className="mt-1 block text-xs text-slate-500">{item.meta}</span>
+          {item.amountSecondary?<span className="mt-1 block text-[13px] font-normal leading-5 text-slate-600 tabular-nums">{item.amountSecondary}</span>:null}
         </button></React.Fragment>)}
         {!filtered.length ? <p className="p-4 text-sm text-slate-500">Ничего не найдено. Измените поиск.</p> : null}
       </div>

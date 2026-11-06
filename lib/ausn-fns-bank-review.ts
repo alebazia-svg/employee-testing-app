@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { loadVerifiedTaxFile } from './tax-verified-file-cache';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
 import type { FnsGaps } from './ausn-fns-gaps';
@@ -73,8 +73,6 @@ export async function loadLatestFnsBankReview(documents: ArchivedDocument[], roo
   const file = path.resolve(root, document.storageKey);
   if (!file.startsWith(path.resolve(root) + path.sep)) return undefined;
   try {
-    const stat = await lstat(file);
-    if (!stat.isFile() || stat.size > 12 * 1024 * 1024) return undefined;
-    return parseFnsBankReview(await readFile(file), { documentId: document.id, sourceName: document.originalName, sha256: document.sha256 });
+    return await loadVerifiedTaxFile(`fns-bank:${document.id}:${document.originalName}`, file, document.sha256, bytes => parseFnsBankReview(bytes, { documentId: document.id, sourceName: document.originalName, sha256: document.sha256 }));
   } catch { return undefined; }
 }

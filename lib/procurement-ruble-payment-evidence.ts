@@ -3,7 +3,7 @@ import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
-import { smallRubleRemainder, smallUsdtRubleFundingRemainder, rublePaymentFitsRemaining } from './procurement-small-remainder';
+import { smallRubleRemainder, smallForeignRubleFundingRemainder, rublePaymentFitsRemaining } from './procurement-small-remainder';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -93,7 +93,7 @@ export function applyRublePaymentEvidence(
     return covered >= minor(plan.plannedAmount) || (includeSmall && allowSmallRemainder &&
       !current.rubleAllocationNeedsReview && current.state !== 'NEEDS_REVIEW' &&
       (smallRubleRemainder(plan, covered / 100) !== null ||
-        (!current.currencyPayments.length && smallUsdtRubleFundingRemainder(plan, covered / 100) !== null)) &&
+        (!current.currencyPayments.length && smallForeignRubleFundingRemainder(plan, covered / 100) !== null)) &&
       confirmedRubleRemainderPayments(plan, orders.filter(row => paymentTimestamp(row.date) < at), uniquePayments));
   };
   const orderedPayments = uniquePayments

@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { loadVerifiedTaxFile } from './tax-verified-file-cache';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { parseTaxManagementReview } from './tax-management-review';
@@ -12,16 +11,14 @@ export async function loadTaxManagementReview(documents: Document[], root = path
   try {
     const file = path.resolve(root, doc.storageKey);
     if (!file.startsWith(path.resolve(root) + path.sep)) return;
-    const stat = await lstat(file);
-    if (!stat.isFile() || stat.size > 12 * 1024 * 1024) return;
-    const bytes = await readFile(file);
-    if (createHash('sha256').update(bytes).digest('hex') !== doc.sha256) return;
-    const zip = await JSZip.loadAsync(bytes);
-    if (Object.keys(zip.files).length > 100) return;
-    const member = zip.file('tax-management-review.json');
-    const size = (member as unknown as { _data?: { uncompressedSize?: number } })?._data?.uncompressedSize;
-    if (!member || !Number.isSafeInteger(size) || Number(size) > 256 * 1024) return;
-    const review = parseTaxManagementReview(await member.async('string'));
+    const review = await loadVerifiedTaxFile('management-review', file, doc.sha256, async bytes => {
+      const zip = await JSZip.loadAsync(bytes);
+      if (Object.keys(zip.files).length > 100) return;
+      const member = zip.file('tax-management-review.json');
+      const size = (member as unknown as { _data?: { uncompressedSize?: number } })?._data?.uncompressedSize;
+      if (!member || !Number.isSafeInteger(size) || Number(size) > 256 * 1024) return;
+      return parseTaxManagementReview(await member.async('string')) || undefined;
+    });
     if (!review) return;
     const sources = review.sources.map(source => {
       const match = sorted.find(d => d.originalName === source.originalName && ['UPLOADED', 'PROCESSED'].includes(d.status));

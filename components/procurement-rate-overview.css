@@ -1,0 +1,38 @@
+.procurement-rate-overview{display:flex;align-items:center;gap:24px;padding:9px 16px;border:1px solid #ded9d2;border-radius:14px;background:#fcfaf7;color:#302d29;min-width:0}
+.procurement-rate-overview header{display:flex;align-items:center;gap:18px;flex:1;min-width:0}
+.procurement-rate-overview h2{font-size:14px;font-weight:650;white-space:nowrap}
+.rate-overview-date{display:flex;align-items:center;gap:0;min-width:0;font-size:13px;color:#626461}
+.rate-overview-date>button{min-height:44px;min-width:36px;display:flex;align-items:center;justify-content:center;background:none;border:0;border-radius:8px}
+.rate-overview-date .rate-overview-day{white-space:nowrap;padding:0 6px;font-size:13px;gap:3px;min-width:0;color:#4e504c}
+.rate-overview-values{display:grid;grid-template-columns:1fr 1fr;gap:24px;min-width:310px}
+.rate-overview-value{display:flex;align-items:center;gap:9px;min-height:44px;text-align:left;background:none;border:0;border-radius:8px;padding:1px 0;min-width:0;color:inherit;cursor:pointer}
+.rate-overview-logo{display:grid;place-items:center;flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#e3e5e5;color:#626d72;font-size:18px;font-weight:700}
+.rate-overview-value[data-confirmed=true][data-currency=USDT] .rate-overview-logo{background:#219b76;color:white}
+.rate-overview-value[data-confirmed=true][data-currency=CNY] .rate-overview-logo{background:#b73f4a;color:white}
+.rate-overview-amount{display:grid;gap:1px;min-width:0}
+.rate-overview-amount>span{display:flex;align-items:baseline;gap:9px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rate-overview-amount b{font-size:12px;font-weight:600;color:#565b5b}
+.rate-overview-amount strong{font-size:17px;font-weight:650;line-height:22px}
+.rate-overview-amount small{font-size:12px;line-height:17px;color:#6b7375}
+.rate-overview-value[data-confirmed=true] small{color:#2b7056}
+.procurement-rate-overview button:focus-visible{outline:2px solid #966a41;outline-offset:3px}
+@media(max-width:900px){.procurement-rate-overview{display:block;padding:4px 13px 9px}.procurement-rate-overview header{justify-content:space-between;gap:8px}.rate-overview-values{min-width:0;gap:18px}.rate-overview-value{padding:1px 0}.rate-overview-amount>span{gap:7px}}
+@media(max-width:380px){.rate-overview-date .rate-overview-day{font-size:12px;padding:0 2px}.rate-overview-date>button{min-width:30px}.rate-overview-logo{width:27px;height:27px}.rate-overview-value{gap:6px}.rate-overview-amount strong{font-size:16px}}
+
+@media(max-width:767px){.procurement-rate-overview[data-compact-mobile=true]{padding:8px 13px}.procurement-rate-overview[data-compact-mobile=true]>header{display:none}.procurement-rate-overview[data-compact-mobile=true] .rate-overview-values{gap:20px}.procurement-rate-overview[data-compact-mobile=true] .rate-overview-value{min-height:44px}}
+
+/* Desktop: a compact utility row within the calendar, with the same controls. */
+@media(min-width:901px){
+ .procurement-rate-overview{flex-wrap:wrap;gap:4px 20px;min-height:44px;padding:0 4px;border:0;border-radius:0;background:transparent}
+ .procurement-rate-overview header{flex:0 0 auto;gap:12px}
+ .procurement-rate-overview .rate-overview-date{display:none}
+ .procurement-rate-overview h2{font-size:13px;color:#565b5b}
+ .rate-overview-values{display:flex;align-items:center;gap:24px;min-width:0;border-left:1px solid #ded9d2;padding-left:20px}
+ .rate-overview-value{gap:7px;padding:0 3px}
+ .rate-overview-logo{width:24px;height:24px;font-size:15px}
+ .rate-overview-amount{display:flex;align-items:baseline;gap:9px}
+ .rate-overview-amount>span{gap:7px}
+ .rate-overview-amount strong{font-size:16px;line-height:22px}
+ .rate-overview-amount small{white-space:nowrap}
+ .rate-overview-value:hover{background:#ebe5dc80}
+}

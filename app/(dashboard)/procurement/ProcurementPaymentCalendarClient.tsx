@@ -1,4 +1,7 @@
 "use client";
+import {ProcurementCalendarRates} from '@/components/ProcurementCalendarRates';
+import {ProcurementCalendarReceiptEntry} from '@/components/ProcurementCalendarReceiptEntry';
+import {procurementListRate} from '@/lib/procurement-history-rate';
 import {ProcurementRequestMoney} from '@/components/ProcurementRequestMoney';
 import {ProcurementSavedRate} from '@/components/ProcurementSavedRate';
 import {ProcurementDailyRates} from '@/components/ProcurementDailyRates';
@@ -287,7 +290,10 @@ export default function ProcurementPaymentCalendarClient({
   otherUsdtReserve?: number | null;
 }) {
   const preview = useEmployeePreview();
-  const [paymentView, setPaymentView] = useState<'current' | 'accountable' | 'history'>('current');
+  const visualPreview = useProcurementVisualPreview();
+  const [rateReceiptTarget,setRateReceiptTarget]=useState<HTMLDivElement|null>(null);
+  const [refreshTarget,setRefreshTarget]=useState<HTMLDivElement|null>(null);
+  const [paymentView, setPaymentView] = useState<'current' | 'accountable' | 'history'>(visualPreview?.initialBuyerTab??'current');
   const [mobile,setMobile]=useState(false);
   const [actionTarget,setActionTarget]=useState<HTMLDivElement|null>(null);
   const openAccountable=useCallback(()=>{setPaymentView('accountable');requestAnimationFrame(()=>document.getElementById('delivery')?.scrollIntoView({block:'nearest'}));},[]);
@@ -301,9 +307,9 @@ export default function ProcurementPaymentCalendarClient({
     return()=>{query.removeEventListener('change',update);window.removeEventListener('hashchange',navigate);window.removeEventListener('popstate',navigate);window.removeEventListener('mobo:procurement-accountable',showAccountable);};
   },[openAccountable]);
   const mobilePresentation=useMemo(()=>mobile?{target:actionTarget,openAccountable}:null,[mobile,actionTarget,openAccountable]);
-  const visualPreview = useProcurementVisualPreview();
   const compact = readOnlyPreview?.compact ?? true;
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [planDocumentsBusy,setPlanDocumentsBusy]=useState(false);
   const [plans, setPlans] = useState(initialPlans);
   const [receiptCounts,setReceiptCounts]=useState<Record<string,number>>({});
   const [receiptLoadState,setReceiptLoadState]=useState<'loading'|'ready'|'error'>('loading');
@@ -670,10 +676,10 @@ export default function ProcurementPaymentCalendarClient({
           onClick={()=>setPaymentView('history')}
           className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-2 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}><span className="md:hidden">История</span><span className="hidden md:inline">История оплат</span></button>
       </nav>
-        {!mobile && <div className="buyer-calendar-freshness pb-1"><ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" mobileSummary unavailable={!!sourceError} refreshing={sourceRefreshing} pauseWhileDialogOpen /></div>}
+        {!mobile && <div className="buyer-calendar-freshness pb-1"><ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" mobileSummary unavailable={!!sourceError} refreshing={sourceRefreshing} pauseWhileDialogOpen desktopTarget={refreshTarget}/></div>}
       </div>
       {visualPreview?.toolbar}
-      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts request={visualPreview?.receiptRequest} plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts} onLoadState={setReceiptLoadState} renderEntry={mobile?state=><ProcurementMobileReceiptEntry {...state}/>:undefined}/> : null}
+      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={receiptPlans} allPlans={plans} request={visualPreview?.receiptRequest} onCounts={setReceiptCounts} onLoadState={setReceiptLoadState} renderEntry={state=>mobile?<ProcurementMobileReceiptEntry {...state}/>:<ProcurementCalendarReceiptEntry {...state} target={rateReceiptTarget}/>}/> : null}
       {mobile && <div className='procurement-mobile-accountable'>{deliveryCashPanel ?? (deliveryCash ? <ProcurementDeliveryCash snapshot={deliveryCash}/> : null)}{fundsSummary}</div>}
       {sourceRefreshing ? <p role="status" className="text-sm text-slate-600"><span className="sm:hidden">Обновляем 1С. Показаны сохранённые данные.</span><span className="hidden sm:inline">Обновляем данные 1С. Сохранённые заявки доступны; изменения проверяются при сохранении.</span></p> : null}
       {mobile ? (() => {
@@ -716,8 +722,9 @@ export default function ProcurementPaymentCalendarClient({
         />
       ) : null}
 
+      {<div className="procurement-calendar-tools">{visualPreview?.rateSummary??<ProcurementCalendarRates today={todayKey} plans={plans} references={{USDT:usdtRateReference,CNY:cnyRateReference}}/>}<div className="procurement-calendar-refresh-target" ref={setRefreshTarget}/><div className="procurement-calendar-receipt-target" ref={setRateReceiptTarget}/></div>}
       <div className={compact ? 'compact-payment-calendar grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_280px] min-[1180px]:grid-cols-[minmax(0,1fr)_360px] min-[1280px]:grid-cols-[minmax(0,1fr)_380px] items-start' : 'grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start'}>
-        {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} compactBuyer splitView={mobile} /> :
+        {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} receiptCounts={receiptCounts} receiptLoadState={receiptLoadState} compactBuyer splitView={mobile} /> :
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
             <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--portal-border)] bg-white px-4 py-3 text-sm">
@@ -726,13 +733,12 @@ export default function ProcurementPaymentCalendarClient({
             </div>
           ) : null}
 
-      {visualPreview?.rateSummary}
       <section
         className={compact ? 'buyer-payment-list-section rounded-2xl border border-slate-200 bg-white p-3 sm:p-4' : 'rounded-2xl border border-slate-200 bg-white p-4 sm:p-5'}
         aria-hidden={formOpen || undefined}
         inert={formOpen || undefined}
       >
-        <div style={visualPreview?.compactDays?{display:'none'}:undefined} className={`flex flex-col gap-2 border-b border-slate-200 sm:flex-row sm:items-end sm:justify-between ${compact ? 'pb-3' : 'pb-4'}`}>
+        <div style={{display:'none'}} className={`flex flex-col gap-2 border-b border-slate-200 sm:flex-row sm:items-end sm:justify-between ${compact ? 'pb-3' : 'pb-4'}`}>
           <div>
             <h2 className="text-lg font-black">Мои заявки</h2>
           </div>
@@ -746,7 +752,7 @@ export default function ProcurementPaymentCalendarClient({
           {groupedPlans.length ? (
             groupedPlans.map(([key, datePlans]) => (
               <div key={key}>
-                <div data-payment-day={key === todayKey ? 'today' : key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? 'past' : 'future'} className={`${visualPreview?.compactDays?'review-day-heading ':''}${compact ? 'mb-1 rounded-lg px-2.5 py-1.5' : 'mb-3 rounded-xl px-3 py-3'} flex flex-wrap items-center gap-x-3 gap-y-1 ${key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-900'}`}>
+                <div data-payment-day={key === todayKey ? 'today' : key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? 'past' : 'future'} className={`review-day-heading ${compact ? 'mb-1 rounded-lg px-2.5 py-1.5' : 'mb-3 rounded-xl px-3 py-3'} flex flex-wrap items-center gap-x-3 gap-y-1 ${key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-900'}`}>
                   <CalendarDays
                     className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 ${key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? "text-red-600" : "procurement-calendar-icon"}`}
                   />
@@ -756,20 +762,36 @@ export default function ProcurementPaymentCalendarClient({
                     <time dateTime={key==='9999-12-31'?undefined:key} aria-current={key === todayKey ? 'date' : undefined}>{groupTitle(key)}</time>
                   </h3>
                   {key < todayKey && datePlans.some(plan=>!visibleStage(plan)) ? <span className="text-xs font-semibold">Плановая дата прошла</span> : null}
-                  {visualPreview?.dayRates?.(key) ?? (key!=='9999-12-31' ? <ProcurementDailyRates day={key} currencies={[...new Set(datePlans.map(p=>p.paymentMethod))]}/> : null)}
-                  {!visualPreview?.compactDays && <span aria-label={`Заявок: ${datePlans.length}`} className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
-                    {datePlans.length}
-                  </span>}
+
+
                 </div>
                 <div className={compact ? 'divide-y divide-slate-100' : 'space-y-2'}>
-                  {datePlans.map((plan) => (
-                    <article
+                  {datePlans.map((plan) => {
+                    const planStatus=<>
+                        {visualPreview?.badge?.(plan.id)}
+                        <span
+                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${receiptStageUnknown(plan) ? "bg-amber-100 text-amber-900" : paymentScheduleLabel(plan)==='Оплата отложена' ? "bg-stone-100 text-stone-700" : plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
+                        >
+                          {visibleStage(plan) || paymentScheduleLabel(plan) || (plan.status === "APPROVED"
+                            ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
+                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "Ждёт решения")}
+                        </span>
+                        {plan.status==='SUBMITTED'&&activePaymentDeferral(plan)?<p className="text-xs text-amber-800">Ждёт решения</p>:null}
+                        {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
+                        {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
+                        {!compact && <ProcurementChangeHistory events={plan.events} buyerView />}
+                        {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="text-xs text-slate-600">{fundingSourceLabel(plan.fundingSource)}</p>:null}
+                        {plan.evidence?.state === 'PARTIALLY_ISSUED' ? <p className="text-xs font-bold text-blue-800">Оплачено {rub.format(plan.evidence.issuedAmount)} · осталось по заявке {rub.format(Math.max(0, Number(plan.plannedAmount) - plan.evidence.issuedAmount))}</p> : null}
+                        {plan.evidence?.paymentAmountNeedsConfirmation ? <p className="text-xs font-bold text-amber-800">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Выполнение заявки ещё не подтверждено.</p> : null}
+                        {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
+                      </>;
+                    return (<article
                       key={plan.id}
                       data-expanded={expandedPlan === plan.id}
                       onClick={compact ? event => {
                         if (!window.matchMedia('(max-width: 767px)').matches) return;
                         const target = event.target as HTMLElement;
-                        if (target.closest('button,a,input,select,textarea,label,summary,[data-payment-details]') || window.getSelection()?.toString()) return;
+                        if (target.closest('dialog,button,a,input,select,textarea,label,summary,[data-payment-details]') || window.getSelection()?.toString()) return;
                         setExpandedPlan(current => current === plan.id ? null : plan.id);
                       } : undefined}
                       className={compact ? `compact-payment-row procurement-aligned-money grid items-center gap-x-3 gap-y-1 px-2.5 py-2 ${expandedPlan === plan.id ? 'rounded-lg bg-slate-50/70' : ''} ${key < todayKey && !visibleStage(plan) ? 'bg-red-50/40' : ''}` : `grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(170px,.72fr)] sm:items-center sm:p-4 min-[960px]:grid-cols-[minmax(190px,1fr)_minmax(165px,.85fr)_minmax(145px,.72fr)_104px] ${key < todayKey && !visibleStage(plan) ? "border-red-200 bg-red-50/40" : "border-slate-200"}`}
@@ -789,7 +811,7 @@ export default function ProcurementPaymentCalendarClient({
                       </div>
                       <div className="payment-request-money">
                         {paymentListRemainder(plan)?<p className="text-xs font-medium text-slate-500">Доплатить</p>:null}
-                        {visualPreview?.money ? visualPreview.money(plan.id) : <ProcurementRequestMoney plan={plan}/>}
+                        {visualPreview?.money ? visualPreview.money(plan.id) : <ProcurementRequestMoney plan={plan} showRate={compact}/>}
                         {!compact ? <ProcurementSavedRate plan={plan}/> : null}
                         {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) && !requestEquivalent(plan) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
                         {!compact && buyerPaymentComment(plan.condition) ? (
@@ -798,24 +820,7 @@ export default function ProcurementPaymentCalendarClient({
                           </p>
                         ) : null}
                       </div>
-                      <div className="compact-payment-status space-y-1">
-                        {visualPreview?.badge?.(plan.id)}
-                        <span
-                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${receiptStageUnknown(plan) ? "bg-amber-100 text-amber-900" : paymentScheduleLabel(plan)==='Оплата отложена' ? "bg-stone-100 text-stone-700" : plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
-                        >
-                          {visibleStage(plan) || paymentScheduleLabel(plan) || (plan.status === "APPROVED"
-                            ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
-                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "Ждёт решения")}
-                        </span>
-                        {plan.status==='SUBMITTED'&&activePaymentDeferral(plan)?<p className="text-xs text-amber-800">Ждёт решения</p>:null}
-                        {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
-                        {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
-                        {!compact && <ProcurementChangeHistory events={plan.events} buyerView />}
-                        {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="text-xs text-slate-600">{fundingSourceLabel(plan.fundingSource)}</p>:null}
-                        {plan.evidence?.state === 'PARTIALLY_ISSUED' ? <p className="text-xs font-bold text-blue-800">Оплачено {rub.format(plan.evidence.issuedAmount)} · осталось по заявке {rub.format(Math.max(0, Number(plan.plannedAmount) - plan.evidence.issuedAmount))}</p> : null}
-                        {plan.evidence?.paymentAmountNeedsConfirmation ? <p className="text-xs font-bold text-amber-800">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Выполнение заявки ещё не подтверждено.</p> : null}
-                        {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
-                      </div>
+                      <div className="compact-payment-status space-y-1">{planStatus}</div>
                       {compact ? <div className="compact-payment-actions flex items-center justify-end gap-1">
                         {!mobile && ['SUBMITTED','NEEDS_CHANGES','APPROVED'].includes(plan.status) ? <button type="button" disabled={editingBlocked||!!plan.revision} title={plan.revision?'Изменения уже на согласовании':editingBlocked?'Не удалось загрузить заявку или подтвердить доступ.':undefined} onClick={() => editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`} className="procurement-secondary-action inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 disabled:opacity-50">Изменить</button> : null}
                         <button type="button" aria-expanded={expandedPlan === plan.id} aria-controls={`plan-details-${plan.id}`}
@@ -836,7 +841,8 @@ export default function ProcurementPaymentCalendarClient({
                         <span />
                       )}
                       <ProcurementCollectionNotice collection={plan.evidence?.collection} today={todayKey} />
-                      {compact && expandedPlan === plan.id ? <div id={`plan-details-${plan.id}`} data-payment-details className="col-span-full flex flex-wrap items-start justify-between gap-3 border-t border-slate-200 pt-3 pb-1">
+                      {compact && expandedPlan === plan.id && (!mobile||!formOpen) ? <BuyerPlanDetailSurface id={`plan-details-${plan.id}`} mobile={mobile} busy={planDocumentsBusy} onClose={()=>setExpandedPlan(null)} edit={['SUBMITTED','NEEDS_CHANGES','APPROVED'].includes(plan.status)?<button type="button" disabled={editingBlocked||!!plan.revision||planDocumentsBusy} title={plan.revision?'Изменения уже на согласовании':editingBlocked?'Не удалось загрузить заявку или подтвердить доступ.':undefined} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`} className="procurement-receipt-button">Изменить оплату</button>:null}>
+                        {mobile?<div className="buyer-plan-detail-identity"><div><h3>{plan.supplierPartner}</h3><div className="buyer-plan-detail-state">{planStatus}</div></div><div className="buyer-plan-detail-money">{paymentListRemainder(plan)?<p>Доплатить</p>:null}<ProcurementRequestMoney plan={plan} showRate={false}/>{plan.paymentMethod==='USDT'&&!Number(plan.foreignAmount||0)&&!requestEquivalent(plan)?<ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt}/>:null}</div><ProcurementCollectionNotice collection={plan.evidence?.collection} today={todayKey}/></div>:null}
                         <div className="min-w-0 flex-1 space-y-2 text-sm text-slate-600">
                           {mobile ? <dl className="mobile-payment-facts">
                             <div><dt>Способ оплаты</dt><dd>{methodLabel(plan.paymentMethod)}</dd></div>
@@ -851,16 +857,13 @@ export default function ProcurementPaymentCalendarClient({
                           {activePaymentDeferral(plan)?<p>{paymentScheduleDetail(plan)}{activePaymentDeferral(plan)?.comment?` · ${activePaymentDeferral(plan)?.comment}`:''}</p>:null}
                           {plan.evidence?.qrFunding?.lastConfirmed?<p className="text-xs text-slate-500">Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
                           {!mobile && <p className="text-xs text-slate-500">Подготовить к: {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(plan.plannedDate))} · {leadTimeLabel(plan)}</p>}
+                          {visualPreview?.detail?.(plan.id) ?? <ProcurementSavedRate plan={plan} showRequestRate={mobile||!procurementListRate(plan)}/>}
+                          {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts request={visualPreview?.receiptRequest} plans={[plan]} single inline onBusyChange={setPlanDocumentsBusy}/> : null}
                           <ProcurementChangeHistory events={plan.events} buyerView />
-                          {visualPreview?.detail?.(plan.id) ?? <ProcurementSavedRate plan={plan}/>}
-                          {mobile ? <div className='mobile-payment-detail-actions'>
-                            {['SUBMITTED','NEEDS_CHANGES','APPROVED'].includes(plan.status) ? <button type="button" disabled={editingBlocked||!!plan.revision} title={plan.revision?'Изменения уже на согласовании':editingBlocked?'Не удалось загрузить заявку или подтвердить доступ.':undefined} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`} className="procurement-secondary-action procurement-receipt-button">Изменить оплату</button> : null}
-                          </div> : null}
-                          {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts request={visualPreview?.receiptRequest} plans={[plan]} single inline/> : null}
                         </div>
-                      </div> : null}
-                    </article>
-                  ))}
+                      </BuyerPlanDetailSurface> : null}
+                    </article>);
+                  })}
                 </div>
               </div>
             ))
@@ -946,7 +949,7 @@ export default function ProcurementPaymentCalendarClient({
       {formOpen ? <ProcurementPaymentDialog editing={Boolean(editingId)} busy={saving || batchDraftState.saving} onClose={requestClosePaymentForm} returnFocus={paymentFormOpener.current}>
         {editingId ? (
           <form
-            className="space-y-3 p-4 sm:px-5"
+            className="procurement-edit-form space-y-3 p-4 sm:px-5"
             onSubmit={submit}
           >
             <div><p className="text-xs font-bold text-slate-500">{editingPlan?.paymentPurpose==='DELIVERY'?'Перевозчик':'Поставщик'}</p><p className="mt-1 font-semibold">{draft.supplier}</p></div>
@@ -1008,7 +1011,7 @@ export default function ProcurementPaymentCalendarClient({
               })}
             />:null}
             {editingPlan&&activePaymentDeferral(editingPlan)?<p className="text-sm text-slate-600">Оплата отложена. {paymentScheduleDetail(editingPlan)}. Перенос даты не отменяет отсрочку.</p>:null}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="procurement-edit-schedule grid gap-3 sm:grid-cols-2">
               <label className="text-sm font-bold">
                 Подготовить к
                 <input
@@ -1218,4 +1221,13 @@ function SmallBalanceValue({ label, value, critical = false }: { label: string; 
     <p className="text-[10px] font-bold text-slate-500">{label}</p>
     <p className={`mt-0.5 break-words text-xs font-black tabular-nums ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
   </div>;
+}
+
+
+/** Same request facts/actions; the existing mobile dialog supplies focus, scroll and bottom-sheet behavior. */
+function BuyerPlanDetailSurface({id,mobile,busy,onClose,edit,children}:{id:string;mobile:boolean;busy:boolean;onClose:()=>void;edit:React.ReactNode;children:React.ReactNode}){
+  if(!mobile)return <div id={id} data-payment-details className="buyer-plan-detail-inline col-span-full border-t border-slate-200 pt-3 pb-1">{children}</div>;
+  return <ProcurementPaymentDialog editing={false} title="Заявка на оплату" busy={busy} onClose={onClose} className="buyer-plan-detail-dialog" footer={<div className="buyer-plan-detail-footer"><button type="button" disabled={busy} onClick={onClose} className="procurement-receipt-button">Закрыть</button>{edit}</div>}>
+    <div id={id} data-payment-details className="buyer-plan-detail-content">{children}</div>
+  </ProcurementPaymentDialog>;
 }

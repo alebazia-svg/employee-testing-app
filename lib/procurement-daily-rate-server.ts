@@ -18,6 +18,13 @@ export async function readDailyRates(day:string,db:Pick<Prisma.TransactionClient
  const rows=await db.procurementDailyRate.findMany({where:{day:new Date(day+'T00:00:00Z')},orderBy:{revision:'desc'},include:{actor:{select:{name:true}}}});
  return ['USDT','CNY'].flatMap(currency=>{const p=rows.find(p=>p.currency===currency);return p?[quote(p)]:[];});
 }
+/** Latest revision per currency at or before the requested day; no request dependency. */
+export async function readDailyRateOverview(day:string,db:Pick<Prisma.TransactionClient,'procurementDailyRate'>=prisma){
+ dailyRateCommand({day,currency:'USDT',rate:1});
+ const rows=await Promise.all((['USDT','CNY'] as const).map(currency=>db.procurementDailyRate.findFirst({where:{currency,day:{lte:new Date(day+'T00:00:00Z')}},orderBy:[{day:'desc'},{revision:'desc'}],include:{actor:{select:{name:true}}}})));
+ return rows.flatMap(row=>row?[quote(row)]:[]);
+}
+
 function previewFor(plans:DailyRatePlan[],evidence:Awaited<ReturnType<typeof freshEvidence>>,command:DailyRateCommand,previous:DailyQuote|null){
  const result=dailyRateRows(plans,evidence,command);
  for(const row of [...result.rows,...result.excluded])if(evidence.versions.get(row.id)!==row.version)throw Error('Заявки изменились. Повторите просмотр пересчёта.');

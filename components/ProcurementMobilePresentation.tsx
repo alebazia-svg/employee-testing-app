@@ -15,7 +15,7 @@ export function ProcurementMobileAction({title,caption,kind='money',count,onOpen
  return createPortal(<button type='button' className='employee-attention-row' data-action-kind={kind} onClick={onOpen}>
   <EmployeeNoticeIcon kind={kind} animated/>
   <span className='min-w-0 flex-1'><strong>{title}</strong>{caption?<small className='employee-attention-caption'>{caption}</small>:null}</span>
-  {count!==undefined?<span className='shrink-0 text-xs font-bold tabular-nums text-stone-500'>{count}</span>:null}
+  {count!==undefined?<span className={'shrink-0 text-xs font-bold tabular-nums text-stone-500'+(kind==='receipt'?' procurement-mobile-receipt-count':'')}>{count}</span>:null}
   <ChevronRight size={18} aria-hidden='true'/>
  </button>,presentation.target);
 }

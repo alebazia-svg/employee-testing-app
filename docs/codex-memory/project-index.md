@@ -33,6 +33,18 @@ project from scratch.
   preview requested; owner visual approval pending. No production collection or
   migration. Separate working/service views, individual browser codes retained.
 
+- CNY small-remainder completion: `../ops/procurement-cny-remainder-release-20261106.md`
+  — installed/verified1.21.42 /13533a6, authenticated closing of both current CNY
+  requests confirmed.51 requests' business fields/links,29 original files,
+  rates/events, exact payments, env and mounts preserved; one later audited
+  receipt upload is legitimate. Verified image registered; no release action pending.
+
+- Payment-calendar interface: `../ops/procurement-calendar-ui-release-20261106.md`
+  — released/verified1.21.41 /61f2ecf. Shared persistent rates/1C/receipt row,
+  latest dated quote without request dependency, per-request saved rate, compact
+  history/receipt marks and phone detail/receipt sheets.49 requests/25 documents,
+  rate/event hashes, source evidence and upload mounts preserved; no migration.
+
 - Daily FX approval: `../ops/procurement-daily-rate-release-20261105.md` — released/verified1.21.36 /5480b55; immutable day rates, preview/confirm of unpaid requests, paid/partial preservation.
 
 - Procurement requisites transfer: `procurement-transfer-release-20261105.md` — released/verified1.21.34 /2835d85. Single/daily bundles, exact per-plan file/hash binding, unchanged original QR plus amount footer, plain wallet/Alipay text and PNG+TXT archive fallback. Mac WhatsApp uses downloads; status/1C matching/receipt lifecycle unchanged. Earlier pending speed/notification work is excluded.
