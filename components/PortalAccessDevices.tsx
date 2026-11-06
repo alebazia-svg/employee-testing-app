@@ -17,7 +17,7 @@ function connectionAppStatus(row: AccessJournalRow, release: AppRelease | null |
   return appUpdateStatus(row.appUpdate, release, now);
 }
 
-export type AccessDevicesProps = { historyFilters?: AccessHistoryFilters; rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetListArchive?: (id: string, archived: boolean, lastSeenAt: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string, linkSessionId?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
+export type AccessDevicesProps = { compactOverview?: boolean; renderDetailPages?: (row: AccessJournalRow) => React.ReactNode; toolbarAction?: React.ReactNode; renderGroupAction?: (rows: AccessJournalRow[]) => React.ReactNode; historyFilters?: AccessHistoryFilters; rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetListArchive?: (id: string, archived: boolean, lastSeenAt: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string, linkSessionId?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
 
 export function PortalAccessDevices(props: AccessDevicesProps) {
   const router = useRouter();
@@ -165,8 +165,9 @@ function PushBadge({ row, now }: { row: AccessJournalRow; now: Date }) {
   return <span className={`access-badge access-badge-${accessIsAdministrative(row) && push.tone !== 'ok' ? 'unknown' : push.tone}`}><Icon size={14} aria-hidden />{accessNotificationLabel(row, now)}</span>;
 }
 
-function ConnectionHelp({ row, now, onClose, extra, settings, visibilityActions, snapshot }: { row: AccessJournalRow; now: Date; onClose: () => void; extra?: React.ReactNode; settings?: React.ReactNode; visibilityActions?: React.ReactNode; snapshot?: boolean }) {
+function ConnectionHelp({ row, now, onClose, extra, settings, visibilityActions, snapshot, pages }: { row: AccessJournalRow; now: Date; onClose: () => void; extra?: React.ReactNode; settings?: React.ReactNode; visibilityActions?: React.ReactNode; snapshot?: boolean; pages?: React.ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [panel,setPanel] = useState<'info'|'pages'>('info');
   useEffect(() => {
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.current?.showModal();
@@ -174,9 +175,14 @@ function ConnectionHelp({ row, now, onClose, extra, settings, visibilityActions,
   }, []);
   const status = accessNotificationDetail(row, now);
   const lastPush = accessLastPushView(row.lastPush);
-  return <dialog ref={dialog} className='access-dialog' onClose={onClose} aria-labelledby='access-detail-title' onClick={e => { if (e.target === e.currentTarget) dialog.current?.close(); }}>
+  return <dialog ref={dialog} className={`access-dialog ${pages ? 'access-dialog-with-pages' : ''}`} onClose={onClose} aria-labelledby='access-detail-title' onClick={e => { if (e.target === e.currentTarget) dialog.current?.close(); }}>
     <div className='access-dialog-content'>
       <header><div><h2 id='access-detail-title'>{row.connectionLabel || row.device} · {row.browser}</h2><p>Кабинет: {row.name} · {row.login}</p></div><button type='button' onClick={() => dialog.current?.close()} aria-label='Закрыть подробности'><X size={20} /></button></header>
+      {pages ? <div className='access-detail-tabs' role='tablist' aria-label='Подробности подключения' onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?'info':e.key==='End'?'pages':panel==='info'?'pages':'info';setPanel(next);e.currentTarget.querySelector<HTMLButtonElement>(`[data-panel="${next}"]`)?.focus();}}>
+        <button id='access-info-tab' data-panel='info' role='tab' aria-selected={panel==='info'} aria-controls='access-info-panel' tabIndex={panel==='info'?0:-1} onClick={()=>setPanel('info')}>Сведения</button>
+        <button id='access-pages-tab' data-panel='pages' role='tab' aria-selected={panel==='pages'} aria-controls='access-pages-panel' tabIndex={panel==='pages'?0:-1} onClick={()=>setPanel('pages')}>Посещения</button>
+      </div> : null}
+      <div id={pages?'access-info-panel':undefined} role={pages?'tabpanel':undefined} aria-labelledby={pages?'access-info-tab':undefined} hidden={panel!=='info'}>
       {row.isCurrentBrowser ? <p className='access-current-marker'>Этот браузер · из него открыт экран</p> : null}
       {connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <section className='access-identity-warning' role='status'><strong>Подключение требует сверки</strong><p>Последний запрос пришёл с другим кодом браузера. Старую запись не переименовываем и не считаем доказательством устройства, с которого выполнен последний запрос. Для нового однозначного сеанса сохраните работу и войдите заново в проверяемом браузере.</p></section> : null}
       {row.unidentifiedCount ? <p className='access-note'>Показано последнее из {row.unidentifiedCount} похожих подключений. Старые записи не позволяют определить, одно это устройство или несколько. Все события сохранены в истории; служебная отметка относится только к показанному подключению.</p> : null}
@@ -221,12 +227,14 @@ function ConnectionHelp({ row, now, onClose, extra, settings, visibilityActions,
       </details>
       {settings ? <details className='access-connection-settings' open={row.isCurrentBrowser && row.canMarkOwner && !row.connectionLabel || undefined}><summary>Название и назначение</summary>{settings}</details> : null}
       {visibilityActions}
+      </div>
+      {pages ? <div id='access-pages-panel' role='tabpanel' aria-labelledby='access-pages-tab' hidden={panel!=='pages'}>{pages}</div> : null}
       <footer><button type='button' onClick={() => dialog.current?.close()}>Понятно</button></footer>
     </div>
   </dialog>;
 }
 
-export function PortalAccessDevicesView({ rows, query, history, service = false, page, hasMore, unavailable, nowIso, basePath = '/admin/employees/access', renderDeviceExtra, renderDetailExtra, currentRelease, onRequestUpdate, onSetService, onSetOwner, onSetListArchive, onRefresh, refreshing, presentation, historyFilters = { from: '', to: '', dateField: 'contact' } }: AccessDevicesProps) {
+export function PortalAccessDevicesView({ compactOverview, renderDetailPages, toolbarAction, renderGroupAction, rows, query, history, service = false, page, hasMore, unavailable, nowIso, basePath = '/admin/employees/access', renderDeviceExtra, renderDetailExtra, currentRelease, onRequestUpdate, onSetService, onSetOwner, onSetListArchive, onRefresh, refreshing, presentation, historyFilters = { from: '', to: '', dateField: 'contact' } }: AccessDevicesProps) {
   const [search, setSearch] = useState(query);
   const [filter, setFilter] = useState<'all' | 'warning' | 'unknown' | 'updates'>('all');
   const [detail, setDetail] = useState<AccessJournalRow | null>(null);
@@ -256,7 +264,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
   const unknown = groups.filter(group => group.some(needsData)).length;
   const href = (next: number) => `${basePath}?${new URLSearchParams({ view: 'history', q: query, page: String(next), from: historyFilters.from, to: historyFilters.to, dateField: historyFilters.dateField })}`;
   const employeeHistory = (login: string) => `${basePath}?${new URLSearchParams({ view: 'history', q: login })}`;
-  return <section aria-label={history ? 'История входов' : 'Устройства сотрудников'} className='access-screen mx-auto max-w-6xl'>
+  return <section aria-label={history ? 'История входов' : 'Устройства сотрудников'} className={`access-screen mx-auto max-w-6xl ${compactOverview ? 'access-screen-compact' : ''}`}>
     <nav className='admin-section-tabs access-tabs' aria-label='Устройства и история'>
       <Link className={`admin-section-tab ${!history && !service ? 'is-active' : ''}`} aria-current={!history && !service ? 'page' : undefined} href={basePath}>Сотрудники</Link>
       <Link className={`admin-section-tab ${service ? 'is-active' : ''}`} aria-current={service ? 'page' : undefined} href={`${basePath}?view=service`}>Администраторы и проверки</Link>
@@ -266,7 +274,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
       {currentConnection ? <><div><strong>Этот браузер · {currentConnection.connectionLabel || `${currentConnection.device} · ${currentConnection.browser}`}</strong>{!currentConnection.connectionLabel ? <p>Назовите его, чтобы отделить свои проверки.</p> : null}</div><button className='access-secondary' type='button' onClick={() => onSetOwner ? setNamingCurrent(true) : setDetail(currentConnection)}>{onSetOwner ? currentConnection.connectionLabel ? 'Изменить название' : 'Назвать это устройство' : 'Подробности подключения'}</button></> : <div><strong>Текущий браузер пока не сопоставлен</strong></div>}
     </div> : null}
     {notice ? <div role='status' className='access-saved'><Check size={17} aria-hidden /><span>{notice}</span><button type='button' aria-label='Скрыть подтверждение' onClick={() => setNotice('')}><X size={17} /></button></div> : null}
-    {!history && service ? <p className='access-period'>Подтверждённые устройства и отдельные подключения. Внутри — браузеры и кабинеты, которые из них открывали.</p> : null}
+    {!history && service ? <p className='access-period'>{compactOverview ? 'Браузеры и кабинеты администратора.' : 'Подтверждённые устройства и отдельные подключения. Внутри — браузеры и кабинеты, которые из них открывали.'}</p> : null}
     <div className='access-toolbar'><form key={`${historyFilters.from}:${historyFilters.to}:${historyFilters.dateField}`} className={history ? 'access-history-search' : undefined} method='get' action={basePath} onSubmit={history ? undefined : e => e.preventDefault()}>
       {history ? <input type='hidden' name='view' value='history' /> : null}
       <label><Search size={17} aria-hidden /><span className='sr-only'>Поиск сотрудника или устройства</span><input name='q' value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder='Имя, устройство или код подключения' /></label>
@@ -277,9 +285,9 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
         <button type='submit' className='access-secondary'>Найти</button>
         {query || historyFilters.from || historyFilters.to || historyFilters.error ? <Link className='access-secondary' href={`${basePath}?view=history`}>Сбросить поиск</Link> : null}
       </> : null}
-    </form>{!history && !unavailable ? <span className='access-note'>{service ? 'Подключений' : 'Сотрудников'}: {groups.length}</span> : null}{onRefresh ? <button className='access-secondary' title={`Сведения: ${accessWhen(nowIso, now)}. Обновляются автоматически.`} disabled={refreshing} onClick={onRefresh}>{refreshing ? 'Обновляем…' : 'Обновить'}</button> : null}</div>
+    </form>{toolbarAction}{!history && !unavailable ? <span className='access-note'>{service ? 'Подключений' : 'Сотрудников'}: {groups.length}</span> : null}{onRefresh ? <button className='access-secondary' title={`Сведения: ${accessWhen(nowIso, now)}. Обновляются автоматически.`} disabled={refreshing} onClick={onRefresh}>{refreshing ? 'Обновляем…' : 'Обновить'}</button> : null}</div>
     {history && historyFilters.error ? <p role='alert' className='access-search-error'>{historyFilters.error}</p> : null}
-    {!history ? <p className='access-period'>Подключения с обращениями за последние 7 дней. Более старые записи доступны в истории и вернутся сюда при новой связи.</p> : null}
+    {!history ? <p className='access-period'>{compactOverview ? 'Связь за 7 дней; более старые подключения — в истории.' : 'Подключения с обращениями за последние 7 дней. Более старые записи доступны в истории и вернутся сюда при новой связи.'}</p> : null}
     {unavailable ? <p role='alert' className='access-unavailable'>Журнал временно недоступен. Это не означает, что сотрудники вышли из портала или отключили уведомления.</p> : <>
       {!history ? <>
         {!service ? <>
@@ -300,7 +308,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
             <div className='access-dormant-content'><p>Последняя связь: <time dateTime={group[0].lastSeenAt}>{accessWhen(group[0].lastSeenAt, now)}</time></p><Link className='access-detail-button' href={employeeHistory(group[0].login)}>Открыть историю<ChevronRight size={14} aria-hidden /></Link></div>
           </section>;
           return <section className='access-account' key={service ? group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
-            <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${[...new Set(group.map(r => r.browser))].join(', ')} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span></header>
+            <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${[...new Set(group.map(r => r.browser))].join(', ')} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span>{renderGroupAction?.(group)}</header>
             <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Последняя связь</span><span>Уведомления</span><span>Версия портала</span><span /></div>
             {group.map(row => {
               const Icon = /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
@@ -329,9 +337,9 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
       </div>}
       {history && (page > 1 || hasMore) ? <nav aria-label='Страницы истории' className='access-pagination'>{page > 1 ? <Link href={href(page - 1)}>Назад</Link> : null}<span>Страница {page}</span>{hasMore ? <Link href={href(page + 1)}>Далее</Link> : null}</nav> : null}
     </>}
-    <p className='access-footnote'>Время московское. «Последняя связь» — последнее обращение приложения или вкладки, в том числе автоматическое. Это не означает, что сотрудник сейчас онлайн.</p>
+    {compactOverview ? <><p className='access-footnote'>Время — МСК. Связь не означает присутствие человека.</p><details className='access-overview-help'><summary>Как формируется список</summary><p>Здесь подключения с обращениями за последние 7 дней. Более старые записи сохранены в истории и вернутся при новой связи. «Последняя связь» — обращение приложения или вкладки, в том числе автоматическое. Это не означает, что сотрудник сейчас онлайн.</p></details></> : <p className='access-footnote'>Время московское. «Последняя связь» — последнее обращение приложения или вкладки, в том числе автоматическое. Это не означает, что сотрудник сейчас онлайн.</p>}
     {namingCurrent && currentConnection && onSetOwner ? <CurrentConnectionNaming row={currentConnection} onSave={onSetOwner} onClose={() => setNamingCurrent(false)} onDone={() => saved('Название сохранено. Входы из этого подключения под сотрудниками отделены. Доступ и уведомления не изменены.')} /> : null}
-    {detail ? <ConnectionHelp row={detail} now={now} snapshot={snapshot}
+    {detail ? <ConnectionHelp row={detail} now={now} snapshot={snapshot} pages={renderDetailPages?.(detail)}
       extra={<>
         {currentRelease || detail.appUpdate ? <AppUpdateDetails key={detail.id} row={detail} now={now} currentRelease={currentRelease} onRequest={history || detail.loggedOutAt || connectionMismatch(detail.browserInstanceId, detail.observedBrowserId) || Date.parse(detail.expiresAt) <= now.getTime() ? undefined : onRequestUpdate} /> : null}
         {renderDetailExtra?.(detail)}
