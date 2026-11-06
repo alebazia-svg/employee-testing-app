@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- CNY small-remainder completion: `../ops/procurement-cny-remainder-release-20261106.md`
+  — installed1.21.42 /13533a6, authenticated closing of both current CNY requests
+  verified. Final independent backup comparison and verified-image registration
+  await native-Terminal sudo; do not reinstall or claim full verification yet.
+
 - Payment-calendar interface: `../ops/procurement-calendar-ui-release-20261106.md`
   — released/verified1.21.41 /61f2ecf. Shared persistent rates/1C/receipt row,
   latest dated quote without request dependency, per-request saved rate, compact
