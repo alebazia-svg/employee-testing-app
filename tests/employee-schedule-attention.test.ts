@@ -30,3 +30,37 @@ test('a due checklist stays above a future schedule question on other tabs',()=>
  const items=scheduleAttentionItems(base());const day={workDay:{date:'2026-10-23',status:'active'},shiftControl:{run:{date:'2026-10-23',status:'active'},tasks:[{id:7,title:'Пересчитать кассу',category:'cash',status:'pending',sortOrder:1,plannedTimeMinutes:9*60}]}};
  assert.equal(employeeActionReminder(day,items,new Date('2026-10-23T07:00:00Z'))?.id,'task:7');day.shiftControl.tasks[0].status='done';assert.equal(employeeActionReminder(day,items,new Date('2026-10-23T07:00:00Z'))?.id,items[0].id);
 });
+
+test('cross-tab reminder retains the exact missing-day caption as each day is filled', () => {
+ for (const department of ['retail', 'wholesale', 'procurement']) {
+  const data = { ...base(), department, dated: [], entries: [] as ReturnType<typeof base>['entries'] };
+  const check = (caption: string | null, singleDate?: string) => {
+   const items = scheduleAttentionItems(data), reminder = employeeActionReminder(null, items);
+   if (caption === null) { assert.equal(reminder, null); return; }
+   assert.equal(items.length, 1);
+   assert.equal(reminder?.title, items[0].title);
+   assert.equal(reminder?.caption, caption);
+   assert.equal(reminder?.caption, items[0].status);
+   assert.equal(reminder?.href, `/employee?tab=schedule&date=${singleDate ?? data.today}${singleDate ? '&edit=1' : ''}`);
+  };
+  const entry = (date: string, status: string) => ({ date, status, userId: data.userId, user: { name: 'Пример' } });
+  check('Сегодня и завтра не заполнены');
+  data.entries.push(entry('2026-10-23', 'working'));
+  check('Завтра не заполнен', '2026-10-24');
+  data.entries = [entry('2026-10-24', 'off')];
+  check('Сегодня не заполнен', '2026-10-23');
+  data.entries.push(entry('2026-10-23', 'working'));
+  check(null);
+ }
+});
+
+test('the new missing-day caption does not change other reminders or their priority', () => {
+ const replacement = scheduleAttentionItems(base())[0];
+ assert.equal(employeeActionReminder(null, [replacement])?.caption, undefined);
+ const data = { ...base(), dated: [], entries: [] };
+ const missing = scheduleAttentionItems(data)[0];
+ for (const kind of ['receipt', 'cash', 'encashment', 'closing', 'cash_issue'] as const) {
+  const other = { ...replacement, id: `${kind}:7`, kind, priority: 0 };
+  assert.deepEqual(employeeActionReminder(null, [missing, other]), employeeActionReminder(null, [other]));
+ }
+});

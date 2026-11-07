@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { startVisibleSync } from '@/lib/visible-sync';
 import type { EmployeeAttentionItem } from '@/lib/employee-attention';
 import { employeeActionReminder, type ReminderWorkday } from '@/lib/employee-action-reminder';
@@ -156,17 +156,20 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
       requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind: url.searchParams.get('attention'), id: url.searchParams.get('item') } })));
     }
   };
-  return <ActionReminderNotice title={action.title} icon={<EmployeeNoticeIcon kind={employeeReminderIconKind(action)} animated />} onOpen={onOpen || action.target === 'cash_issue' ? open : undefined} href={href} onDefer={state.defer} />;
+  return <ActionReminderNotice title={action.title} caption={action.caption} icon={<EmployeeNoticeIcon kind={employeeReminderIconKind(action)} animated />} onOpen={onOpen || action.target === 'cash_issue' ? open : undefined} href={href} onDefer={state.defer} />;
 }
 
 /** Shared presentation: the isolated comparison uses the actual notice UI. */
-export function ActionReminderNotice({ title, icon = <EmployeeNoticeIcon kind='notice' />, onOpen, href, onDefer }: {
-  title: string; icon?: ReactNode; onOpen?: () => void; href?: string; onDefer: () => void;
+export function ActionReminderNotice({ title, caption, icon = <EmployeeNoticeIcon kind='notice' />, onOpen, href, onDefer }: {
+  title: string; caption?: string; icon?: ReactNode; onOpen?: () => void; href?: string; onDefer: () => void;
 }) {
-  return <aside role='status' aria-label='Напоминание о задании' className={`${styles.notice} mb-2 flex min-h-12 min-w-0 items-center gap-1 rounded-xl px-2 text-slate-800`}>
+  const content = <>
     {icon}
-    <p className='min-w-0 flex-1 text-sm font-semibold leading-snug'>{title}</p>
-    {onOpen ? <button type='button' className={styles.open} onClick={onOpen}>Открыть</button> : <Link href={href!} className={styles.open}>Открыть</Link>}
+    <span className='min-w-0 flex-1 text-sm font-semibold leading-snug'>{title}{caption && <small className='mt-0.5 block text-xs font-normal leading-snug text-slate-600'>{caption}</small>}</span>
+    <ChevronRight size={18} className='shrink-0 text-stone-500' aria-hidden='true' />
+  </>;
+  return <aside role='status' aria-label='Напоминание о задании' className={`${styles.notice} mb-2 flex min-h-12 min-w-0 items-center rounded-xl pr-2 text-slate-800`}>
+    {onOpen ? <button type='button' className={styles.open} onClick={onOpen}>{content}</button> : <Link href={href!} className={styles.open}>{content}</Link>}
     <button type='button' aria-label='Напомнить позже' title='Напомнить позже' className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600' onClick={onDefer}><X size={18} aria-hidden='true' /></button>
   </aside>;
 }
