@@ -1,3 +1,5 @@
+import { EmployeeExperienceProvider } from '@/components/workday/EmployeeExperienceProvider';
+import { needsWorkdayEndReminder } from '@/lib/workday-end-policy';
 import { departmentLabel } from '@/lib/workday';
 import { PayrollDayReviewEmployee } from '@/app/(dashboard)/employee/payroll/day-reviews/PayrollDayReviewEmployee';
 import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
@@ -24,7 +26,7 @@ import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeAct
 import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 import { EmployeePreviewViewport } from '@/components/EmployeePreviewViewport';
 export const dynamic = 'force-dynamic';
-export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string; dayReview?: string }> }) {
+export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string; dayReview?: string; connection?: string }> }) {
   const admin = await getCurrentAdmin();
   if (!admin) notFound();
   const preview = await readEmployeePreview(admin.id, (await params).visitId);
@@ -32,20 +34,22 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
   const query = await searchParams;
   const procurement = preview.employee.portalArea === 'PROCUREMENT';
   const frame: 'phone' | 'desktop' | undefined = procurement && (query.frame === 'phone' || query.frame === 'desktop') ? query.frame : undefined;
-  const providerProps = { visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
+  const connection = typeof query.connection === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(query.connection) ? query.connection : undefined;
+  const experienceProps = {department:preview.employee.department,attendanceOnly:needsWorkdayEndReminder(preview.employee)};
+  const providerProps = { connection, visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
   if (procurement && !frame) return <EmployeePreviewProvider {...providerProps}><EmployeePreviewViewport visitId={preview.visit.id} employeeName={preview.employee.name}/></EmployeePreviewProvider>;
   const tab = query.tab ?? (procurement ? 'procurement' : 'day');
   if (preview.employee.portalArea === 'WORKDAY' && !employeeNavigation(payrollFeatureState().employeeEnabled).some(section => section.id === tab)) notFound();
   if (procurement && (!['day', 'schedule', 'procurement'].includes(tab) || (tab !== 'procurement' && preview.employee.department !== 'procurement'))) notFound();
-  if (procurement && frame === 'phone' && preview.employee.department === 'procurement') return <><EmployeeMobileStylePreload/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}>
+  if (procurement && frame === 'phone' && preview.employee.department === 'procurement') return <><EmployeeMobileStylePreload/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}><EmployeeExperienceProvider {...experienceProps}>
     <ProcurementShell userName={preview.employee.name} workdayEnabled workdayContent={<Suspense fallback={<p className='px-4 py-6 text-sm text-slate-500'>Загружаем рабочий день…</p>}><ProcurementWorkdayContent user={preview.employee}/></Suspense>}>
       <ProcurementHome user={preview.employee} readOnly />
     </ProcurementShell>
-  </EmployeePreviewProvider></>;
+  </EmployeeExperienceProvider></EmployeePreviewProvider></>;
   if(query.dayReview){
     if(procurement||tab!=='payroll'||!payrollDayReviewEnabled()||!validDayReviewPeriod(query.dayReview,employeePayrollMonthAt()))notFound();
-    return <><EmployeeInterfaceStyle copper/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}><CashIssueProvider><EmployeePayrollSnapshots><main className='portal-neutral-design employee-material-ui min-h-screen overflow-x-clip bg-[#151a1d] payroll-phone portal-palette-mobo portal-typography-refined'><div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'><EmployeePortalHeader name={preview.employee.name} meta={departmentLabel(preview.employee.department)}/><PayrollDayReviewEmployee month={query.dayReview}/></div></main></EmployeePayrollSnapshots></CashIssueProvider></EmployeePreviewProvider></>;
+    return <><EmployeeInterfaceStyle copper/><EmployeePreviewProvider key={preview.visit.id} {...providerProps}><EmployeeExperienceProvider {...experienceProps}><CashIssueProvider><EmployeePayrollSnapshots><main className='portal-neutral-design employee-material-ui min-h-screen overflow-x-clip bg-[#151a1d] payroll-phone portal-palette-mobo portal-typography-refined'><div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'><EmployeePortalHeader name={preview.employee.name} meta={departmentLabel(preview.employee.department)}/><PayrollDayReviewEmployee month={query.dayReview}/></div></main></EmployeePayrollSnapshots></CashIssueProvider></EmployeeExperienceProvider></EmployeePreviewProvider></>;
   }
   const calendar = procurement && tab === 'procurement';
-  return <>{!calendar && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} {...providerProps}>{calendar ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
+  return <>{!calendar && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} {...providerProps}><EmployeeExperienceProvider {...experienceProps}>{calendar ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeeExperienceProvider></EmployeePreviewProvider></>;
 }

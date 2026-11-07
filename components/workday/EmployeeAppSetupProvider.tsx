@@ -4,6 +4,7 @@ import { EmployeeAppSetupContext } from './EmployeeAppSetupContext';
 import { employeeAppSetupState } from '@/lib/employee-app-setup-state';
 import { portalDisplayMode } from '@/lib/portal-display-mode';
 import { connectEmployeePush } from '@/lib/employee-push-connection';
+import { reportEmployeeUi, clearEmployeeUi } from '@/lib/employee-ui-client';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 type Facts = { ios: boolean; isPhone: boolean; inApp: boolean; supported: boolean; online: boolean; permission: NotificationPermission | 'unsupported' };
@@ -61,5 +62,13 @@ export function EmployeeAppSetupProvider({ children, enabled = true }: { childre
     return () => { active.current = false; flight.current?.abort(); flight.current = null; display.removeEventListener('change', observe); for (const name of ['focus','pageshow','online','offline']) window.removeEventListener(name, observe); document.removeEventListener('visibilitychange', observe); };
   }, [enabled, preview, connect]);
   const state = device ? employeeAppSetupState({ ...device, connected, checking }) : 'checking';
-  return <EmployeeAppSetupContext.Provider value={!enabled || preview ? null : { state, isPhone: device?.isPhone, isIos: device?.ios, finishProposal: true, previousDayCard: true, busy, error, enable: () => void connect(true) }}>{children}</EmployeeAppSetupContext.Provider>;
+  useEffect(()=>{
+    if(!enabled||preview||!device)return;
+    reportEmployeeUi({setup:state,busy,error,online:device.online});
+  },[enabled,Boolean(preview),device,state,busy,error]);
+  useEffect(()=>()=>{if(!preview)clearEmployeeUi();},[Boolean(preview)]);
+  const observed = preview?.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+  const presentation = preview ? {state:observed?.state ?? 'checking' as const,isPhone:observed?.isPhone,isIos:observed?.isIos,busy:observed?.runtime?.busy,error:observed?.runtime?.error ?? undefined,finishProposal:true,previousDayCard:true,enable:preview.blocked}
+    : {state,isPhone:device?.isPhone,isIos:device?.ios,finishProposal:true,previousDayCard:true,busy,error,enable:()=>void connect(true)};
+  return <EmployeeAppSetupContext.Provider value={enabled ? presentation : null}>{children}</EmployeeAppSetupContext.Provider>;
 }

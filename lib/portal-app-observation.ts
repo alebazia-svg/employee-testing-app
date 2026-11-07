@@ -1,19 +1,21 @@
+import { parseEmployeeUiObservation, type EmployeeUiObservation } from './employee-ui-observation';
 import { readAppRelease, type AppRelease } from './employee-app-update';
 
 export const appStates = ['checking', 'current', 'idle_wait', 'operation', 'form', 'upload', 'saving', 'unsent', 'safe_screen', 'check_failed', 'storage_failed', 'reloading', 'retry_wait', 'reload_failed'] as const;
 export type AppState = typeof appStates[number];
-export type AppObservation = AppRelease & { clientId: string; state: AppState; commandId?: string };
+export type AppObservation = AppRelease & { clientId: string; state: AppState; commandId?: string; ui?: EmployeeUiObservation };
 export type AppUpdateCommand = { id: string; clientId: string; target: AppRelease; requestedAt: string; requestedBy: number; receivedAt?: string; completedAt?: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseAppObservation(value: unknown): AppObservation | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const p = value as Record<string, unknown>;
-  if (Object.keys(p).some(k => !['version', 'builtAt', 'clientId', 'state', 'commandId'].includes(k))) return null;
+  if (Object.keys(p).some(k => !['version', 'builtAt', 'clientId', 'state', 'commandId', 'ui'].includes(k))) return null;
   const release = readAppRelease(p);
+  if(p.ui!==undefined&&!parseEmployeeUiObservation(p.ui))return null;
   if (!release || release.version.length > 50 || release.builtAt.length > 40 || typeof p.clientId !== 'string' || !uuid.test(p.clientId)
     || typeof p.state !== 'string' || !(appStates as readonly string[]).includes(p.state)
     || (p.commandId !== undefined && (typeof p.commandId !== 'string' || !uuid.test(p.commandId)))) return null;
-  return { ...release, clientId: p.clientId, state: p.state as AppState, ...(p.commandId ? { commandId: p.commandId as string } : {}) };
+  return { ...release, clientId: p.clientId, state: p.state as AppState, ...(p.ui ? {ui:parseEmployeeUiObservation(p.ui)!}:{}), ...(p.commandId ? { commandId: p.commandId as string } : {}) };
 }
 export const sameRelease = (a: AppRelease, b: AppRelease) => a.version === b.version && a.builtAt === b.builtAt;
 export function parseUpdateCommand(value: unknown): AppUpdateCommand | null {

@@ -4,6 +4,8 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   const url = new URL(input, 'https://preview.invalid');
   if (url.origin !== 'https://preview.invalid') throw new Error('Недоступный адрес');
   const resources: Record<string, string> = {
+    '/api/employee/app-setup': 'app-setup',
+    '/api/employee/work-help': 'work-help',
     '/api/employee/payroll': 'payroll',
     '/api/employee/payroll/day-reviews': 'payroll-days',
     '/api/employee/workday/today': 'today',
@@ -20,6 +22,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   const resource = notification ? 'notification-detail' : receiptFile ? 'receipt-file' : resources[url.pathname];
   if (!resource) throw new Error('Действие недоступно в режиме проверки.');
   const params = new URLSearchParams({ resource });
+  if (resource === 'app-setup' && url.searchParams.has('connection')) params.set('connection',url.searchParams.get('connection')!);
   if (notification) params.set('notification', notification[1]);
   if (receiptFile) { params.set('plan', decodeURIComponent(receiptFile[1])); params.set('receipt', decodeURIComponent(receiptFile[2])); }
   if (resource === 'receipts') for (const id of url.searchParams.getAll('plan')) params.append('plan', id);
@@ -33,8 +36,8 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
 
 /** Match existing employee read permissions without admitting payroll for Procurement. */
 export function employeePreviewResources(user: { portalArea: string; department: string }) {
-  const workday = ['today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
+  const workday = ['work-help', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
   return user.portalArea === 'PROCUREMENT'
-    ? ['notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery', ...(user.department === 'procurement' ? workday : [])]
-    : ['notifications', ...workday, 'payroll', 'payroll-days'];
+    ? ['app-setup', 'notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery', ...(user.department === 'procurement' ? workday : [])]
+    : ['app-setup', 'notifications', ...workday, 'payroll', 'payroll-days'];
 }

@@ -13,7 +13,7 @@ export function initialEmployeeSection(tab: string | null, payrollEnabled: boole
 export function employeeNavigation(payrollEnabled: boolean) {
   return employeeSections.filter(section => section.id !== 'payroll' || payrollEnabled);
 }
-export function employeePreviewHref(visitId: string, href: string, options: { procurement?: boolean; frame?: 'phone' | 'desktop' } = {}) {
+export function employeePreviewHref(visitId: string, href: string, options: { procurement?: boolean; frame?: 'phone' | 'desktop'; connection?: string } = {}) {
   const section = employeeSections.find(section => section.href === href)
     ?? (options.procurement && href === '/procurement' ? { id: 'procurement' } : null);
   if (!section) throw new Error('Раздел недоступен в режиме проверки.');
@@ -21,5 +21,6 @@ export function employeePreviewHref(visitId: string, href: string, options: { pr
   const query = new URLSearchParams();
   if (section.id !== 'day' || options.procurement) query.set('tab', section.id);
   if (options.frame) query.set('frame', options.frame);
+  if (options.connection) query.set('connection', options.connection);
   return query.size ? `${base}?${query}` : base;
 }

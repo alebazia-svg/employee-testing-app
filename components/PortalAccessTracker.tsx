@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { portalDisplayMode } from '../lib/portal-display-mode';
 import { appClientObservation, appStateEvent, acceptAppCommand } from '../lib/portal-app-client';
+import { employeeUiEvent, employeeUiObservation } from '../lib/employee-ui-client';
+import { postPortalObservation } from '../lib/portal-observation-request';
 import { observationWithin } from '../lib/portal-observation-deadline';
 import { createDeviceObservationCollector } from '../lib/portal-device-observation';
 
@@ -13,7 +15,7 @@ export function PortalAccessTracker() {
     if (path.startsWith('/admin/employees/preview/')) return;
     if (!/^\/(admin|employee|procurement)(\/|$)/.test(path)) return;
     let stopped = false, busy = false, lastAttempt = 0, dirty = true;
-    let interactionAt = 0;
+    let interactionAt = 0, legacyUi = false;
     // Cached reads with bounded retries; no permission requests or employee actions.
     const deviceObservation = createDeviceObservationCollector(navigator);
     const interacted = (event: Event) => { if (event.isTrusted && document.visibilityState === 'visible') interactionAt = Date.now(); };
@@ -22,7 +24,7 @@ export function PortalAccessTracker() {
     document.addEventListener('keydown', interacted, { passive: true });
     const abort = new AbortController();
     async function report() {
-      if (stopped || busy || document.visibilityState !== 'visible' || Date.now() - lastAttempt < (dirty ? 5000 : 60000)) return;
+      if (stopped || busy || document.visibilityState !== 'visible' || Date.now() - lastAttempt < (dirty ? 5000 : !legacyUi && employeeUiObservation() ? 10000 : 60000)) return;
       busy = true; dirty = false; lastAttempt = Date.now();
       const request = new AbortController();
       const cancel = () => request.abort(); abort.signal.addEventListener('abort', cancel);
@@ -45,7 +47,8 @@ export function PortalAccessTracker() {
       try { if (!stopped) {
         const app = appClientObservation();
         const device = await deviceObservation();
-        const response = await fetch('/api/auth/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }), signal: request.signal });
+        const sent = await postPortalObservation({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }, request.signal, legacyUi);
+        const response=sent.response; legacyUi=sent.legacyUi;
         if (response.ok && !stopped) acceptAppCommand((await response.json()).updateCommand);
         else dirty = true;
       } }
@@ -55,9 +58,10 @@ export function PortalAccessTracker() {
     void report();
     const changed = () => { dirty = true; void report(); };
     window.addEventListener(appStateEvent, changed);
+    window.addEventListener(employeeUiEvent, changed);
     const timer = window.setInterval(report, 5000);
     window.addEventListener('focus', report); document.addEventListener('visibilitychange', report);
-    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener('focus', report); document.removeEventListener('visibilitychange', report); document.removeEventListener('pointerdown', interacted); document.removeEventListener('keydown', interacted); };
+    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener(employeeUiEvent, changed); window.removeEventListener('focus', report); document.removeEventListener('visibilitychange', report); document.removeEventListener('pointerdown', interacted); document.removeEventListener('keydown', interacted); };
   }, [path]);
   return null;
 }

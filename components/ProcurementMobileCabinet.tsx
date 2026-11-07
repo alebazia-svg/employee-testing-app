@@ -5,8 +5,7 @@ import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalH
 import { CashIssueProvider } from '@/app/(dashboard)/employee/CashIssueClient';
 import { EmployeeActionReminder, EmployeeActionReminderProvider } from './workday/EmployeeActionReminder';
 import { EmployeeAppSetupProposal, useAppSetupProposal } from './workday/EmployeeAppSetupProposal';
-import { EmployeeAppSetupProvider } from './workday/EmployeeAppSetupProvider';
-import { EmployeeWorkHelpProvider } from './workday/EmployeeWorkHelp';
+import { EmployeeExperienceProvider } from './workday/EmployeeExperienceProvider';
 import { EmployeeNavigation } from './EmployeeNavigation';
 import { useEmployeeActivityVisit } from './EmployeeActivityTracker';
 import { ProcurementMobileNavigationContext as Context } from './ProcurementMobileNavigation';
@@ -19,7 +18,7 @@ export function ProcurementMobileCabinet({ name, workday, children }: { name: st
   // The approved setup/help belongs to the mobile cabinet. Desktop Procurement
   // keeps its existing permission UI and connector. The isolated studio already
   // supplies its explicitly labelled device-state/help providers.
-  return setup ? cabinet : <EmployeeAppSetupProvider><EmployeeWorkHelpProvider department='procurement' attendanceOnly>{cabinet}</EmployeeWorkHelpProvider></EmployeeAppSetupProvider>;
+  return setup ? cabinet : <EmployeeExperienceProvider department='procurement' attendanceOnly>{cabinet}</EmployeeExperienceProvider>;
 }
 
 function ProcurementMobileCabinetViews({ name, workday, children }: { name: string; workday: ReactNode; children: ReactNode }) {

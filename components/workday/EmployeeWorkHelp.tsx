@@ -18,6 +18,7 @@ const Context = createContext<Help | null>(null);
 export function EmployeeWorkHelpProvider({ department, enabled = true, attendanceOnly = department === 'procurement', newGuidePreview = true, children }: { department: string; enabled?: boolean; attendanceOnly?: boolean; newGuidePreview?: boolean; children: ReactNode }) {
   const preview = useEmployeePreview();
   const setup = useAppSetupProposal();
+  const previewRequest = preview?.request;
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<WorkHelpSnapshot | null>(null);
   const [mode, setMode] = useState<'manual' | 'automatic' | null>(null);
@@ -25,13 +26,13 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
   const attempted = useRef(false), flight = useRef<AbortController | null>(null), revision = useRef(0);
   const modeRef = useRef(mode); modeRef.current = mode;
   const refresh = useCallback(async (force = false) => {
-    if (!enabled || preview || flight.current && !force) return;
+    if (!enabled || flight.current && !force) return;
     flight.current?.abort();
     const before = revision.current;
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
     flight.current = controller;
     try {
-      const response = await fetch('/api/employee/work-help', { cache: 'no-store', signal: controller.signal });
+      const response = await (previewRequest ?? fetch)('/api/employee/work-help', { cache: 'no-store', signal: controller.signal });
       const data = response.ok ? await response.json() : null;
       if (!data || data.version !== WORK_HELP_VERSION || !Array.isArray(data.missingDates) || typeof data.due !== 'boolean') return;
       if (before === revision.current) {
@@ -40,9 +41,9 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
       }
     } catch { /* Unknown availability is not a new employee obligation. */ }
     finally { clearTimeout(timer); if (flight.current === controller) flight.current = null; }
-  }, [enabled, preview]);
+  }, [enabled, previewRequest]);
   useEffect(() => {
-    if (!enabled || preview) return;
+    if (!enabled) return;
     const stop = startVisibleSync(() => refresh(), 60000);
     const sourceChanged = () => { revision.current++; void refresh(true); };
     const storageChanged = (event: StorageEvent) => { if (event.key === 'mobo-work-help-refresh') sourceChanged(); };
@@ -51,9 +52,9 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
     window.addEventListener('storage', storageChanged);
     document.addEventListener('visibilitychange', returned);
     return () => { stop(); revision.current++; flight.current?.abort(); flight.current = null; window.removeEventListener('mobo:attention-refresh', sourceChanged); window.removeEventListener('storage', storageChanged); document.removeEventListener('visibilitychange', returned); };
-  }, [enabled, preview, refresh]);
+  }, [enabled, refresh]);
   useEffect(() => {
-    if (!enabled || preview || !snapshot?.due || setup?.state === 'safari' || setup?.state === 'checking') return;
+    if (!enabled || !snapshot?.due || setup?.state === 'safari' || setup?.state === 'checking') return;
     const tryOpen = () => {
       if (attempted.current || modeRef.current || document.visibilityState !== 'visible' || !window.matchMedia('(max-width: 767px)').matches) return;
       if (document.querySelector('dialog[open], [role=dialog][aria-modal=true]') || ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName ?? '')) return;
@@ -63,16 +64,16 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
     const observer = new MutationObserver(tryOpen); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
     document.addEventListener('visibilitychange', tryOpen);
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', tryOpen); };
-  }, [enabled, preview, snapshot, setup?.state]);
+  }, [enabled, snapshot, setup?.state]);
   const open = useCallback(() => { attempted.current = true; setError(''); setMode('manual'); }, []);
   const close = () => { if (!busy) setMode(null); };
   const acknowledge = async () => {
-    if (preview) { preview.blocked(); return; }
+    if (preview) { preview.blocked(); setMode(null); return; }
     if (busy) return;
     setBusy(true); setError('');
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch('/api/employee/work-help', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: WORK_HELP_VERSION }), signal: controller.signal });
+      const response = await (previewRequest ?? fetch)('/api/employee/work-help', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: WORK_HELP_VERSION }), signal: controller.signal });
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.recorded !== true || !data.acknowledgedAt || data.version !== WORK_HELP_VERSION) throw Error();
       revision.current++; setSnapshot(data); setMode(null);
@@ -85,7 +86,7 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
     setMode(null);
     const date = snapshot.missingDates[0], edit = snapshot.missingDates.length === 1;
     if (document.getElementById('pwa-work-help-target')) requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:schedule-open', { detail: { date, edit, source: 'work-help' } })));
-    else router.push(scheduleCalendarHref(date, edit));
+    else { const target = scheduleCalendarHref(date, edit); if (preview) { const query = new URL(target,'https://preview.invalid').searchParams; const destination = new URL(preview.href('/employee?tab=schedule'),window.location.origin); query.forEach((value,key)=>{if(key!=='tab')destination.searchParams.set(key,value);}); router.push(destination.pathname+destination.search); } else router.push(target); }
   };
   return <Context.Provider value={enabled ? { open } : null}>{children}
     {enabled && mode && <HelpSheet title={newGuidePreview ? 'Работа в приложении' : 'Как пользоваться приложением'} close={close}>

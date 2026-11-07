@@ -1,3 +1,4 @@
+import { readEmployeeWorkHelp } from '@/lib/employee-work-help-reader';
 import { cookies } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -18,12 +19,7 @@ export async function GET() {
   const user = await employee();
   if (!user) return Response.json({ error: 'Forbidden' }, { status: 403, headers });
   try {
-    const now = new Date(), today = getMoscowDateKey(now);
-    const [states, ack] = await Promise.all([
-      loadScheduleNearReminders(prisma, [user.id], today),
-      prisma.portalActivityEvent.findUnique({ where: { userId_eventKey: { userId: user.id, eventKey: workHelpAckKey(today) } }, select: { createdAt: true } }),
-    ]);
-    return Response.json(workHelpSnapshot(states.get(user.id)!, ack?.createdAt ?? null, now), { headers });
+    return Response.json(await readEmployeeWorkHelp(user.id), { headers });
   } catch { return Response.json({ error: 'Не удалось проверить график.' }, { status: 503, headers }); }
 }
 export async function POST(req: Request) {

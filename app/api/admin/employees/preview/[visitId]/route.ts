@@ -1,3 +1,5 @@
+import { loadEmployeeInspectionDevices } from '@/lib/employee-inspection-state-server';
+import { readEmployeeWorkHelp } from '@/lib/employee-work-help-reader';
 import { readDayReview } from '@/lib/payroll-day-review-store';
 import { dayReviewFailure } from '@/lib/payroll-day-review-http';
 import { employeePreviewResources } from '@/lib/employee-preview-request';
@@ -28,6 +30,16 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
   const allowed = employeePreviewResources(user);
   if (!resource || !allowed.includes(resource)) return Response.json({ error: 'Недоступно в режиме просмотра' }, { status: 400, headers });
   switch (resource) {
+    case 'app-setup': {
+      const connection = url.searchParams.get('connection');
+      if (connection !== null && !/^[a-zA-Z0-9_-]{1,100}$/.test(connection)) return Response.json({error:'Некорректное устройство.'},{status:400,headers});
+      try { return Response.json(await loadEmployeeInspectionDevices(user.id,connection),{headers}); }
+      catch { return Response.json({error:'Не удалось проверить устройство.'},{status:503,headers}); }
+    }
+    case 'work-help': {
+      try { return Response.json(await readEmployeeWorkHelp(user.id),{headers}); }
+      catch { return Response.json({error:'Не удалось проверить график.'},{status:503,headers}); }
+    }
     case 'payroll-days': {
       if([...url.searchParams.keys()].some(k=>!['resource','month'].includes(k))||url.searchParams.getAll('month').length!==1)return Response.json({error:'Некорректный запрос.'},{status:400,headers});
       try{return Response.json(await readDayReview(user.id,url.searchParams.get('month')!),{headers});}catch(e){return dayReviewFailure(e);}

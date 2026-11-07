@@ -1,6 +1,7 @@
 'use client';
 import type { AppObservation, AppState } from './portal-app-observation';
 import { readAppRelease } from './employee-app-update';
+import { employeeUiObservation } from './employee-ui-client';
 
 export const appStateEvent = 'portal-app-state';
 export const appCommandEvent = 'portal-app-update-command';
@@ -27,7 +28,8 @@ export function appClientObservation(): AppObservation | undefined {
       commandId = sessionStorage.getItem('portal-app-command') || undefined;
     } catch { state = 'storage_failed'; }
   }
-  return { ...release, clientId, state, ...(commandId ? { commandId } : {}) };
+  const ui=employeeUiObservation();
+  return { ...release, clientId, state, ...(ui ? {ui}:{}), ...(commandId ? { commandId } : {}) };
 }
 export function acceptAppCommand(value: unknown) {
   if (!value || typeof value !== 'object') return;
