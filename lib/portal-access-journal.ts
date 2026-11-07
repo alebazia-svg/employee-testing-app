@@ -2,6 +2,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { prisma } from './prisma';
 import { readSessionToken } from './session';
+import { isCurrentAccessBrowser } from './portal-access-identity';
 import { accessDevice, type AccessPushState } from './portal-access-device';
 import type { PortalDisplayMode } from './portal-display-mode';
 import { parseAppObservation, type AppObservation } from './portal-app-observation';
@@ -41,6 +42,10 @@ export async function recordPortalAccess(input: { userId: number; token: string 
   const classification = priorClassification ?? {};
   const network = input.clientIp ? { lastIp: input.clientIp, ipCheckedAt: now } : {};
   const mismatched = connectionMismatch(existing?.browserInstanceId, input.browserInstanceId);
+  // Correct the legacy Chromium fallback only on a fresh, exactly bound Yandex
+  // observation. Other sessions, saved device names and history remain untouched.
+  const browserCorrection = existing?.browser === 'Chrome' && isCurrentAccessBrowser(existing.browserInstanceId, input.browserInstanceId)
+    && !mismatched && accessDevice(input.userAgent).browser === 'Яндекс' ? { browser: 'Яндекс' } : {};
   const origin = portalObservationOrigin(input.origin);
   const interaction = input.push?.interactionAt;
   const sampledAt = input.push?.device?.collectedAt;
@@ -80,7 +85,7 @@ export async function recordPortalAccess(input: { userId: number; token: string 
     ...(input.push && !mismatched ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   }] });
   if (existing) await prisma.portalAccessSession.updateMany({ where: { ...where, loggedOutAt: null, lastSeenAt: existing.lastSeenAt }, data: {
-    lastSeenAt: now, ...context, ...browserIdentity, ...classification, ...network, ...evidence, ...(input.login ? { loginAt: now } : {}),
+    lastSeenAt: now, ...context, ...browserIdentity, ...classification, ...network, ...evidence, ...browserCorrection, ...(input.login ? { loginAt: now } : {}),
     ...(input.push && !mismatched ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   } });
 }

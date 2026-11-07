@@ -22,3 +22,8 @@ test('a subscription moved to another account or disabled is not reported as con
   assert.equal(accessPushLabel('unknown', null, 1), 'Не проверены');
   assert.equal(accessPushLabel('blocked', null, 1), 'Запрещены в браузере');
 });
+test('Yandex is identified before its Chromium compatibility token', () => {
+  const ua='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 YaBrowser/26.10.0.0 Safari/537.36';
+  assert.deepEqual(accessDevice(ua),{device:'Mac',browser:'Яндекс'});
+  assert.equal(accessDevice(ua.replace(' YaBrowser/26.10.0.0','')).browser,'Chrome');
+});

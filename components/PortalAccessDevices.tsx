@@ -3,7 +3,7 @@ import { AdminPageJournal } from './AdminPageJournal';
 import React, { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Monitor, Smartphone, Search, Check, BellOff, Clock3, X, ChevronRight } from 'lucide-react';
+import { Monitor, Smartphone, Globe2, Search, Check, BellOff, Clock3, X, ChevronRight } from 'lucide-react';
 import type { AccessJournalRow } from './PortalAccessJournal';
 import { accessPushView, accessWhen, groupAccessRows, accessLatestVisits, accessOverviewRows, groupServiceConnections, accessNotificationDetail, accessModeLabel, accessLastPushView, accessRecentPushFailure, accessIsAdministrative, accessSystemLabel, accessHasRecentContact, accessIsListArchived, accessMatchesSearch, accessNotificationLabel } from '../lib/portal-access-view';
 import { startVisibleSync } from '../lib/visible-sync';
@@ -309,17 +309,17 @@ export function PortalAccessDevicesView({ compactOverview, renderDetailPages, to
             <header className='access-account-header'><h2>{group[0].name}</h2><span>{accessIsListArchived(group[0]) ? 'Подключение убрано в историю' : 'Нет обращений более 7 дней'}</span></header>
             <div className='access-dormant-content'><p>Последняя связь: <time dateTime={group[0].lastSeenAt}>{accessWhen(group[0].lastSeenAt, now)}</time></p><Link className='access-detail-button' href={employeeHistory(group[0].login)}>Открыть историю<ChevronRight size={14} aria-hidden /></Link></div>
           </section>;
-          return <section className='access-account' key={service ? group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
+          return <section className='access-account' data-browser-group={service || undefined} key={service ? group[0].deviceGroupId || group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
             <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${[...new Set(group.map(r => r.browser))].join(', ')} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span>{renderGroupAction?.(group)}</header>
-            <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Последняя связь</span><span>Уведомления</span><span>Версия портала</span><span /></div>
+            <div className='access-column-head' aria-hidden><span>{service ? 'Браузер и кабинет' : 'Устройство'}</span><span>Последняя связь</span><span>Уведомления</span><span>Версия портала</span><span /></div>
             {group.map(row => {
-              const Icon = /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
+              const Icon = service ? Globe2 : /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
               const sameNames = group.filter(other => other.device === row.device && other.browser === row.browser)
                 .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id));
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
               const version = connectionAppStatus(row, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
-                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[deviceSystemListSummary(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
+                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.browser : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3>{service ? <p className='access-browser-cabinet'>Кабинет: {row.name}{sameNames.length > 1 ? ` · Подключение ${number}` : ''}</p> : null}<p>{[deviceSystemListSummary(row.deviceObservation) ?? accessSystemLabel(row.device), row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
                 <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Последняя связь</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
                 <div className='access-push'><PushBadge row={row} now={now} />{!service && accessRecentPushFailure(row, now) ? <p className='access-send-warning'>Последняя отправка не подтверждена</p> : null}</div>
                 <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>

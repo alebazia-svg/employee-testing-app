@@ -180,3 +180,7 @@
 .access-facts dt { flex-shrink:0; max-width:45%; }
 .access-facts dd { min-width:0; overflow-wrap:anywhere; }
 .access-facts dd .access-note { font-weight:400; }
+
+/* Confirmed device groups: compact browser rows, each cabinet keeps its own data. */
+.access-account[data-browser-group] .access-connection { padding-top:11px; padding-bottom:11px; }
+.access-account[data-browser-group] .access-browser-cabinet { color:#42494e; }

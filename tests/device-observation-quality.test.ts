@@ -58,3 +58,10 @@ test('provenance cannot carry extra identifiers or claim missing fields', () => 
   }
   assert.equal(parseDeviceObservation({ source: 'user-agent', platform: 'Android', fieldSources: { platform: 'client-hints' } }), null);
 });
+test('Yandex version keeps its own UA provenance rather than a Chrome engine version',async()=>{
+  const ua='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/152.0.0.0 YaBrowser/26.10.0.0 Safari/537.36';
+  const result=await collectDeviceObservation({userAgent:ua,userAgentData:{getHighEntropyValues:async()=>({platform:'macOS',platformVersion:'26.6.2',fullVersionList:[{brand:'Google Chrome',version:'152.0.1.2'}]})}});
+  assert.equal(result.browserVersion,'26.10.0.0');
+  assert.equal(result.fieldSources?.browserVersion,'user-agent');
+  assert.equal(result.fieldSources?.platformVersion,'client-hints');
+});

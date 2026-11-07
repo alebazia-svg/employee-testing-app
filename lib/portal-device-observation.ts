@@ -31,7 +31,7 @@ export function parseDeviceObservation(value: unknown): DeviceObservation | null
 /** Preserve reported values for diagnostics; presentation must account for UA reduction. */
 export function deviceObservationFromUa(userAgent: string): DeviceObservation {
   const ua = userAgent.slice(0, 2048);
-  const browserVersion = ua.match(/Edg(?:e|A|iOS)?\/([\d.]+)/)?.[1]
+  const browserVersion = ua.match(/YaBrowser\/([\d.]+)/)?.[1] ?? ua.match(/Edg(?:e|A|iOS)?\/([\d.]+)/)?.[1]
     ?? ua.match(/OPR\/([\d.]+)/)?.[1] ?? ua.match(/SamsungBrowser\/([\d.]+)/)?.[1]
     ?? ua.match(/(?:Firefox|FxiOS|CriOS|Chrome)\/([\d.]+)/)?.[1]
     ?? ua.match(/Version\/([\d.]+).*Safari/)?.[1];
@@ -72,7 +72,7 @@ export async function collectDeviceObservation(nav: HintsNavigator): Promise<Dev
     }
     for (const key of ['platform', 'platformVersion', 'architecture', 'model'] as const) set(key, hints[key]);
     const brands = Array.isArray(hints.fullVersionList) ? hints.fullVersionList : [];
-    const expected = /Edg\//.test(nav.userAgent) ? 'Microsoft Edge' : /OPR\//.test(nav.userAgent) ? 'Opera' : /SamsungBrowser\//.test(nav.userAgent) ? 'Samsung Internet' : /Chrome\//.test(nav.userAgent) ? 'Google Chrome' : '';
+    const expected = /YaBrowser\//i.test(nav.userAgent) ? 'Yandex' : /Edg\//.test(nav.userAgent) ? 'Microsoft Edge' : /OPR\//.test(nav.userAgent) ? 'Opera' : /SamsungBrowser\//.test(nav.userAgent) ? 'Samsung Internet' : /Chrome\//.test(nav.userAgent) ? 'Google Chrome' : '';
     const brand = brands.find(b => b && b.brand === expected);
     if (brand) set('browserVersion', brand.version);
     result.hintsState = result.fieldSources?.platformVersion === 'client-hints' && result.fieldSources.browserVersion === 'client-hints' ? 'complete' : 'partial';
