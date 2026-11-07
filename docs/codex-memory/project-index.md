@@ -29,14 +29,20 @@ project from scratch.
 
 ## Read First By Task
 
+- Unified PWA reminders: `../ops/pwa-reminder-release-20261108.md`
+  — released/verified1.21.48 /6915be8. Shared today/tomorrow/both caption on
+  Workday/Schedule/Salary/Procurement; whole-card action with chevron replaces
+  separate Open, independent defer retained. Priorities/routing/notice policy,
+  business records/config/uploads preserved. No migration; physical phone pending.
+
 - Actual employee inspection/PWA state: `../ops/employee-inspection-release-20261108.md`
   — released/verified1.21.47 /525d941. Shared real employee providers, actor-bound
   read-only device/help resources and actual setup-state heartbeat; live vs last
   source explicitly dated. Preview does not read/ack/save for employees. Existing
   1571notice read markers,157days,713plans,558tasks/config/uploads preserved;
   no migration/financial policy change. Astemir's authorized23trial dates8–30Nov
-  restored empty with audit history. Identical missing-day qualifiers across tabs
-  are the separate next stage, not included. Physical iPhone check remains.
+  restored empty with audit history. Identical missing-day qualifiers were subsequently released in1.21.48 above.
+  Physical iPhone check remains.
 
 - Employee PWA setup/help and completion: `../ops/pwa-setup-release-20261107.md`
   — released/verified1.21.46 /d9d8adc. Immediate Safari instruction, confirmed push
