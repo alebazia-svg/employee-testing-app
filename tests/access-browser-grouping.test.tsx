@@ -17,3 +17,11 @@ test('only confirmed groups consolidate; all cabinets, browser names, versions a
  assert.equal(JSON.stringify(rows),before);
  const filtered=render('safari-code');assert.ok(filtered.includes('<h3>Яндекс</h3>'),'search retains the full matching confirmed device');assert.ok(!filtered.includes('<h2>Mac Аслана</h2>'));
 });
+test('splitting the anchor browser preserves the remaining confirmed group and all cabinet rows',()=>{
+ const split=rows.map(r=>r.connectionLabel==='Mac Бэлы'?{...r,deviceGroupId:r.browserInstanceId==='edge-code'?null:'edge-code',connectionLabel:r.browserInstanceId==='edge-code'?'Mac Бэлы · Edge':'Mac Бэлы'}:r);
+ const html=renderToStaticMarkup(<PortalAccessDevicesView rows={split} query='' service history={false} page={1} hasMore={false} unavailable={false} nowIso={now}/>);
+ assert.equal((html.match(/<h2>Mac Бэлы<\/h2>/g)||[]).length,1);
+ assert.equal((html.match(/<h2>Mac Бэлы · Edge<\/h2>/g)||[]).length,1);
+ assert.equal((html.match(/<article /g)||[]).length,rows.length);
+ for(const text of ['<h3>Safari</h3>','<h3>Яндекс</h3>','Кабинет: Астемир','1.21.33','Служебный браузер Codex','Служебный браузер Claude'])assert.ok(html.includes(text),text);
+});
