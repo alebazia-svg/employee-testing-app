@@ -117,6 +117,19 @@ and release-quality gate.
   its terminal result and the required read-only verification. A password prompt
   is an intermediate step, not a handoff or completion point.
 
+## Payment Calendar Chat Coordination — Owner Decision 2026-11-07
+
+- For payment calendar chat `01a0d49e-cb94-79c1-9222-778802de7f4f`, do not send
+  routine release progress, rollback reports or requests to hold other releases.
+- If that chat actually has an active release and coordination is necessary,
+  make at most one targeted check immediately before installation. An idle chat
+  with no planned build/install needs no coordination message. Prefer read-only
+  status checks and the existing server release locks/version gates.
+- Do not send an acknowledgement of this rule or a routine completion/unblock
+  message to the calendar chat. Earlier broad queue-messaging permission does not
+  override this restriction. This rule does not expand messaging authorization
+  for any other chat.
+
 ## Repo Map
 
 - `app/(dashboard)/employee/` - employee mobile workday UI.

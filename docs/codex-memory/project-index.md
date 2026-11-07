@@ -29,6 +29,12 @@ project from scratch.
 
 ## Read First By Task
 
+- Confirmed computer/browser grouping: `access-browser-groups-20261107.md` —
+  owner approved and grouped Safari/Yandex with Mac Бэлы(7→5 cards). Browser-first
+  rows retain all cabinets/versions/notifications; current marker stays exact-code.
+  Released 1.21.45 /38e3b15; native Yandex/Safari and exact current-code marker
+  verified; five cards/all13 rows preserved. No migration. See release evidence.
+
 - ADMIN page journal: `admin-page-journal-preview-20261106.md` — final interface approved;
   real ADMIN visit collection/release approved7November. Released/verified1.21.43 /42f3152;
   real collection began7November01:10MSK, image registered and storage finalized. No migration; names/groups preserved, working
