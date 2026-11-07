@@ -1,0 +1,12 @@
+.card{margin:8px 0 16px;padding:18px;border:1px solid var(--pwa-line,#e5e2da);border-radius:24px;background:var(--pwa-paper,#fff);box-shadow:0 4px 16px #30271804}
+.top{display:grid;grid-template-columns:56px minmax(0,1fr);align-items:center;gap:12px}
+.icon{display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:16px;color:#98653f;background:#f4eadb}
+.icon svg{width:40px;height:40px;overflow:visible}
+.sun{transform:translateY(-1.5px)}
+.moving{animation:unfinished-day-sunset 2.4s ease-in-out 1 both}
+@keyframes unfinished-day-sunset{0%{transform:translateY(-4px)}75%{transform:translateY(-1px)}100%{transform:translateY(-1.5px)}}
+.facts h2{margin:0;font-size:18px;line-height:1.25;font-weight:650;letter-spacing:-.25px;color:var(--pwa-ink,#24282d)}
+.facts p{margin:7px 0 0;font-size:13px;line-height:1.4;color:var(--pwa-muted,#60636a)}
+.description{margin:14px 0 0;font-size:14px;line-height:1.45;color:var(--pwa-muted,#60636a)}
+.action{width:100%;margin-top:16px}
+@media(prefers-reduced-motion:reduce){.moving{animation:none}}

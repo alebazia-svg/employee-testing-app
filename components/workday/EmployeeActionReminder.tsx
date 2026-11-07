@@ -25,8 +25,8 @@ export function useActionReminderEnabled() {
   return useContext(Context) !== null;
 }
 
-function revealChecklist() {
-  const card = document.getElementById('pwa-current-action');
+function revealChecklist(href = '/employee#pwa-current-action') {
+  const card = document.getElementById(href.endsWith('#pwa-workday-end') ? 'pwa-workday-end' : 'pwa-current-action');
   if (!card) return;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   card.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
@@ -43,7 +43,7 @@ function revealChecklist() {
 }
 
 /** Reuses authorized current-work reads, without notification-read writes. */
-export function EmployeeActionReminderProvider({ children }: { children: ReactNode }) {
+export function EmployeeActionReminderProvider({ children, attendanceEndRequired = false }: { children: ReactNode; attendanceEndRequired?: boolean }) {
   const preview = useEmployeePreview();
   const requestRead = preview?.request ?? fetch;
   const cashIssue = useCashIssue();
@@ -59,7 +59,7 @@ export function EmployeeActionReminderProvider({ children }: { children: ReactNo
   const publishWorkday = useCallback((value: ReminderWorkday) => { workdayVersion.current++; setWorkday(value); }, []);
   const publishAttention = useCallback((value: EmployeeAttentionItem[], failed: boolean) => { attentionVersion.current++; if (!failed) setAttention(value); setAttentionError(failed); }, []);
   const payroll = pathname.includes('/payroll');
-  const offDay = payroll || view === 'schedule' || view === 'payroll';
+  const offDay = payroll || view === 'schedule' || view === 'payroll' || view === 'procurement';
   const refresh = useCallback(async (forceAttention = false) => {
     if (abort.current) return;
     const controller = new AbortController(); abort.current = controller;
@@ -105,7 +105,7 @@ export function EmployeeActionReminderProvider({ children }: { children: ReactNo
   }, []);
   const request = cashIssue?.snapshot.request;
   const cashItem: EmployeeAttentionItem[] = request ? [{ id: `cash-issue:${request.ref}`, title: cashIssueCompactCopy(request).title, kind: 'cash_issue', state: 'action', status: '', priority: 0, date: request.checkedAt, detail: '' }] : [];
-  const action = employeeActionReminder(workday, [...(attention ?? []).filter(item => item.kind !== 'cash_issue'), ...cashItem]);
+  const action = employeeActionReminder(workday ? { ...workday, attendanceEndRequired } : null, [...(attention ?? []).filter(item => item.kind !== 'cash_issue'), ...cashItem]);
   useEffect(() => { setDeferred(false); }, [action?.id]);
   useEffect(()=>{if(!deferred || !action?.remindAfterMs)return;const timer=window.setTimeout(()=>setDeferred(false),action.remindAfterMs);return()=>window.clearTimeout(timer);},[deferred,action?.id,action?.remindAfterMs]);
   return <Context.Provider value={{ action, deferred, error: error || attentionError, defer: () => setDeferred(true), refresh: () => refresh(true), setView, publishWorkday, publishAttention }}>{children}</Context.Provider>;
@@ -126,14 +126,18 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
   const preview = useEmployeePreview();
   const cashIssue = useCashIssue();
   const highlightedVisit = useRef(false);
+  const explicitOpen = useRef(false);
   const setView = state?.setView;
   useEffect(() => { setView?.(view); }, [setView, view]);
   useEffect(() => {
     if (view !== 'actual-day') { highlightedVisit.current = false; return; }
     if (!state || state.action?.target !== 'checklist' || highlightedVisit.current) return;
+    // Procurement must open at the top (including installation instructions).
+    // Reveal its finish card only after an explicit reminder action.
+    if (state.action?.href.endsWith('#pwa-workday-end') && !explicitOpen.current) return;
     // Also applies to ordinary bottom-tab navigation, once per Workday visit.
     // Snapshot refreshes and form edits must not restart the animation.
-    const frame = requestAnimationFrame(() => { revealChecklist(); highlightedVisit.current = true; });
+    const frame = requestAnimationFrame(() => { revealChecklist(state.action?.href); explicitOpen.current = false; highlightedVisit.current = true; });
     return () => cancelAnimationFrame(frame);
   }, [view, state?.action?.id, state?.action?.target]);
   if (!state || ['day', 'actual-day'].includes(view) || state.deferred) return null;
@@ -143,9 +147,9 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
   if (!action) return null;
   const href = preview ? `${preview.href('/employee')}${new URL(action.href, 'https://preview.invalid').search}${new URL(action.href, 'https://preview.invalid').hash}` : action.href;
   const open = () => {
-    if (action.target === 'schedule') { const url=new URL(action.href,window.location.origin); window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:url.searchParams.get('date'),edit:url.searchParams.get('edit')==='1'}})); }
+    if (action.target === 'schedule') { onOpen?.(); const url=new URL(action.href,window.location.origin); window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:url.searchParams.get('date'),edit:url.searchParams.get('edit')==='1'}})); }
     else if (action.target === 'cash_issue') { cashIssue?.open(action.id.slice('cash-issue:'.length)); }
-    else if (action.target === 'checklist') { onOpen?.(); }
+    else if (action.target === 'checklist') { explicitOpen.current = true; onOpen?.(); }
     else {
       const url = new URL(action.href, window.location.origin);
       onOpen?.();

@@ -1,11 +1,12 @@
 'use client';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
+import { useAppSetupProposal } from './EmployeeAppSetupProposal';
 import type { InteractionContext } from '@/lib/employee-interaction-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronRight, X, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, X, CheckCircle2, CircleAlert } from 'lucide-react';
 import { PremiumClockIcon } from '@/components/PwaPreviewIcons';
 import { useSearchParams } from 'next/navigation';
 import type { EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
@@ -17,13 +18,16 @@ import { Button } from '@/components/ui/button';
 import { useActionReminderEnabled, usePublishAttentionReminder } from './EmployeeActionReminder';
 import { EmployeeNoticeIcon } from './EmployeeNoticeIcon';
 import { employeeAttentionIconKind } from '@/lib/employee-notice-icons';
+import styles from './EmployeeAttentionPanel.module.css';
+import { EmployeeUnfinishedDayCard } from './EmployeeUnfinishedDayCard';
 
 type Item = EmployeeAttentionItem;
 function Marker({ kind, waiting }: { kind: Item['kind']; waiting: boolean }) {
   return <span className={`attention-preview-marker ${waiting ? 'is-waiting' : 'needs-action'}`} aria-hidden="true">{waiting ? <PremiumClockIcon color='#687078' secondaryColor='#d5d9dc' secondaryOpacity={0.9} className='h-5 w-5 shrink-0' /> : <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} />}</span>;
 }
 
-export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClass, activeShift = false, inlineClosingIssueId, onClosing, onExpenses, onScheduleSaved }: {
+export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClass, activeShift = false, inlineClosingIssueId, onClosing, onExpenses, onScheduleSaved, previousDayAction }: {
+  previousDayAction?: { title: string; dateLabel: string; startLabel: string; onOpen: () => void };
   onScheduleSaved?: () => void;
   onExpenses?: (snapshot: EmployeeExpenseSnapshot) => void;
   view: string;
@@ -35,6 +39,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   paletteClass: string;
 }) {
   const preview = useEmployeePreview();
+  const setupProposal = useAppSetupProposal();
   const audit=useInteractionAudit();
   const reminderPreviewEnabled = useActionReminderEnabled();
   const requestRead = preview?.request ?? fetch;
@@ -188,17 +193,27 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   if (view === 'schedule' && !open) return null;
   const action = items.filter(item => item.state === 'action');
   const waiting = items.filter(item => item.state === 'waiting');
+  const compact = Boolean(setupProposal?.finishProposal);
+  const previousAction = view === 'day' ? previousDayAction : undefined;
+  const previousCard = Boolean(previousAction && setupProposal?.previousDayCard);
+  const questionCount = new Set(inlineItems.map(item => item.kind === 'cash' ? `cash:${item.expenseRef || item.id}` : item.id)).size + Number(Boolean(previousAction));
   return <>
-    {view !== 'schedule' && inlineItems.length > 0 && <section className="employee-attention-groups" aria-label="Текущие действия">{[...new Set(inlineItems.map(item => item.kind))].map(kind => {
+    {view !== 'schedule' && (inlineItems.length > 0 || previousAction && !previousCard) && <section className={`employee-attention-groups ${compact ? styles.panel : ''}`} aria-label="Текущие действия">
+      {compact && questionCount > 1 && <header className={styles.heading}><h2>Задачи и проверки</h2><span aria-label={`Открытых вопросов: ${questionCount}`}>{questionCount}</span></header>}
+      {previousAction && !previousCard && <button type='button' className={`employee-attention-row ${styles.previous}`} aria-haspopup='dialog' onClick={previousAction.onOpen}>
+        <span className={styles.marker} aria-hidden='true'><CircleAlert size={23} strokeWidth={1.8}/></span><span className='min-w-0 flex-1'><strong>{previousAction.title}</strong><small className='employee-attention-caption'>{previousAction.dateLabel} · Начало {previousAction.startLabel}</small></span><ChevronRight size={18} aria-hidden='true'/>
+      </button>}
+      {[...new Set(inlineItems.map(item => item.kind))].map(kind => {
       const rows = inlineItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? rows.length === 1 ? rows[0].title : rows.some(row => row.state === 'action' && row.expenseMode === 'execute') ? 'Оформите расходники в 1С' : rows.some(row => row.state === 'action') ? 'Уточните выдачу по заявке' : 'Заявки к оплате' : kind === 'schedule' && rows.length > 1 ? 'Вопросы по графику' : rows[0].title;
       const count = kind === 'cash' ? new Set(rows.map(row => row.expenseRef || row.id)).size : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup={rows.length===1 && rows[0].scheduleAction==='week' && !rows[0].scheduleOpenEditor ? undefined : 'dialog'} className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
-        <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} animated={reminderPreviewEnabled && actionable} />
+        <span className={compact ? styles.marker : undefined}><EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} animated={reminderPreviewEnabled && actionable} size={compact ? 22 : 20} /></span>
         <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? rows.length === 1 ? `По заявке ${rows[0].facts?.find(([label]) => label === 'Заявка')?.[1] || ''} в 1С` : 'Заявки готовы в 1С' : rows.length===1 && rows[0].scheduleAction==='week' ? rows[0].status : !actionable ? rows[0].status : ''}{kind !== 'cash' && !(rows.length===1 && rows[0].scheduleAction==='week') && rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
         {count > 1 && <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500" aria-label={kind === 'cash' ? `Заявок к оплате: ${count}` : undefined}>{count}</span>}<ChevronRight size={18} aria-hidden="true"/>
       </button>;
     })}</section>}
+    {previousCard && previousAction && <EmployeeUnfinishedDayCard dateLabel={previousAction.dateLabel} startLabel={previousAction.startLabel} onOpen={previousAction.onOpen} />}
     {open && createPortal(<div className={`portal-neutral-design employee-material-ui employee-workday-sheet-overlay fixed inset-0 z-[130] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6 ${paletteClass}`} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <section ref={sheet} role="dialog" aria-modal="true" aria-labelledby="attention-preview-dialog-title" className="employee-material-sheet employee-attention-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]">
         {renderHandle(close)}

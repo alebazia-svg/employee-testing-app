@@ -14,17 +14,23 @@ export function LogoutButton({
   iconStyle = 'outline',
   title,
   confirmBeforeLogout = false,
+  onConfirmationChange,
 }: {
   className?: string;
   iconOnly?: boolean;
   iconStyle?: 'outline' | 'duotone';
   title?: string;
   confirmBeforeLogout?: boolean;
+  onConfirmationChange?: (open: boolean) => void;
 }) {
   const preview = useEmployeePreview();
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const setConfirmationOpen = (value: boolean) => {
+    setConfirmOpen(value);
+    onConfirmationChange?.(value);
+  };
 
   async function logout() {
     if (preview) { preview.blocked(); return; }
@@ -44,7 +50,7 @@ export function LogoutButton({
         className={className || 'gap-2 bg-slate-200 text-slate-700 hover:bg-slate-300 hover:text-slate-900'}
         onClick={() => {
           if (confirmBeforeLogout) {
-            setConfirmOpen(true);
+            setConfirmationOpen(true);
             return;
           }
           void logout();
@@ -62,7 +68,7 @@ export function LogoutButton({
         <div
           className='fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/35 backdrop-blur-[2px]'
           role='presentation'
-          onClick={() => !isLoggingOut && setConfirmOpen(false)}
+          onClick={() => !isLoggingOut && setConfirmationOpen(false)}
         >
           <section
             className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl'
@@ -78,7 +84,7 @@ export function LogoutButton({
               <Button
                 type='button'
                 className='employee-material-secondary-action h-12 font-extrabold'
-                onClick={() => setConfirmOpen(false)}
+                onClick={() => setConfirmationOpen(false)}
                 disabled={isLoggingOut}
               >
                 Отмена

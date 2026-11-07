@@ -1,0 +1,18 @@
+.panel{padding:0 15px;box-shadow:none}
+.heading{display:none;align-items:center;justify-content:space-between;gap:12px;padding:12px 0 9px;border-bottom:1px solid #eae0d3}
+.heading h2{margin:0;font:inherit;font-size:12px;line-height:1.4;font-weight:600;color:#7c6a56}
+.heading>span{font-size:12px;line-height:1.4;font-weight:600;font-variant-numeric:tabular-nums;color:#7c6a56}
+.panel:global(.employee-attention-groups)>:global(.employee-attention-row){gap:10px;min-height:54px;padding:9px 0;margin:0}
+.panel :global(.employee-attention-row)>svg{flex:0 0 18px;color:#a18b73}
+.panel :global(.employee-attention-row)>span[aria-hidden=true]{color:#98653f}
+.panel :global(.employee-attention-caption){flex-wrap:wrap;column-gap:7px;row-gap:3px}
+.panel:global(.employee-attention-groups)>.previous{background:#f9ebe6;border-radius:12px;padding:9px 6px;margin:4px 0}
+.panel .previous strong{color:#963e2b}
+.panel .previous>.marker{color:#b54d35}
+.panel .previous>svg{color:#ad6251}
+.marker{display:flex;align-items:center;justify-content:center;flex:0 0 38px;min-height:34px;color:#98653f}
+
+/* Owner-approved compact rows: same geometry as the reviewed local variant. */
+.panel:global(.employee-attention-groups)>:global(.employee-attention-row):not(.previous)>.marker{display:contents}
+.panel:global(.employee-attention-groups)>:global(.employee-attention-row):not(.previous)>.marker>span[style*="22px"]{width:20px!important;height:20px!important}
+.panel:global(.employee-attention-groups)>:global(.employee-attention-row):not(.previous)>.marker>span[style*="22px"]>svg{width:20px;height:20px}

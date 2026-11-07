@@ -44,7 +44,10 @@ export async function POST(req: Request) {
   if (staleCloseInput && !staleCloseInput.ok) return Response.json({ error: staleCloseInput.error }, { status: 400 });
 
   const now = new Date();
-  const reportedEnd = isStaleWorkDay && needsWorkdayEndReminder(user)
+  // New clients close a missed day without guessing departure time. Keep older
+  // clients' explicitly reported times compatible, including their validation.
+  const reportedEndProvided = payload?.actualEndedAt !== undefined && payload?.actualEndedAt !== '';
+  const reportedEnd = isStaleWorkDay && needsWorkdayEndReminder(user) && reportedEndProvided
     ? validateReportedWorkdayEnd(payload.actualEndedAt, activeWorkDay.startedAt, now)
     : null;
   if (reportedEnd && !reportedEnd.ok) return Response.json({ error: reportedEnd.error }, { status: 400 });
@@ -79,7 +82,7 @@ export async function POST(req: Request) {
   const staleCloseViolationComment = staleCloseInput?.ok
     ? (reportedEnd?.ok
       ? `Сотрудник указал фактическое окончание: ${payload.actualEndedAt.replace('T', ' ')} МСК. Записано: ${now.toISOString()}.\nПричина: ${staleCloseInput.reason.label}. ${staleCloseInput.comment}`
-      : staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment }))
+      : [staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment }), needsWorkdayEndReminder(user) ? 'Время ухода не зафиксировано.' : ''].filter(Boolean).join('\n'))
     : '';
   const workDay = await prisma.$transaction(async (tx) => {
     const changed = await tx.workDayEntry.updateMany({

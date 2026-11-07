@@ -78,3 +78,14 @@ test('an unanswered previous-day KKM prompt is immediately reachable after midni
   assert.equal(reminder.href, '/employee#pwa-current-action');
   assert.equal(reminder.remindAfterMs, undefined);
 });
+
+test('procurement end reminder uses the existing 18:00 policy, only with an actual active day', () => {
+  const data = fixture(); data.shiftControl = { run: null, tasks: [] }; data.attendanceEndRequired = true;
+  assert.equal(employeeActionReminder(data, [], new Date('2026-10-22T14:59:59Z')), null);
+  assert.equal(employeeActionReminder(data, [], new Date('2026-10-22T15:00:00Z'))?.href, '/employee#pwa-workday-end');
+  assert.equal(employeeActionReminder({ ...data, attendanceEndRequired: false }, [], new Date('2026-10-22T15:00:00Z')), null);
+  for (const workDay of [null, { ...data.workDay!, status: 'completed' }, { ...data.workDay!, endedAt: new Date() }, { ...data.workDay!, date: '2026-10-21' }]) {
+    assert.equal(employeeActionReminder({ ...data, workDay }, [], new Date('2026-10-22T15:00:00Z')), null);
+  }
+  assert.equal(employeeActionReminder(data, [issue('action')], new Date('2026-10-22T15:00:00Z'))?.id, 'issue:7');
+});

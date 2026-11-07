@@ -1,6 +1,9 @@
 /** A successful HTTP response alone is not confirmation of an active subscription. */
-export async function savePushSubscription(url: string, subscription: PushSubscription) {
+export async function savePushSubscription(url: string, subscription: PushSubscription, signal?: AbortSignal) {
   const controller = new AbortController();
+  const cancelled = () => controller.abort();
+  if (signal?.aborted) cancelled();
+  signal?.addEventListener('abort', cancelled, { once: true });
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15,5 +18,5 @@ export async function savePushSubscription(url: string, subscription: PushSubscr
       throw new Error('Не удалось подтвердить подключение. Проверьте интернет и повторите попытку.');
     }
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally { clearTimeout(timeout); signal?.removeEventListener('abort', cancelled); }
 }

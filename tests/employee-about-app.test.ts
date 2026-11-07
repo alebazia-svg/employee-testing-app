@@ -37,9 +37,10 @@ test('about popover is read-only, anchored, dismissible and non-modal', () => {
   assert.match(source, /focus\(\{ preventScroll: true \}\)/);
   assert.doesNotMatch(source, /fetch\(|localStorage|sessionStorage|\.revision|\.source/);
   const header = readFileSync(new URL('../app/(dashboard)/employee/EmployeePortalHeader.tsx', import.meta.url), 'utf8');
-  assert.match(header, /<EmployeeAboutApp>\s*<img[^>]+alt='MOBO'/);
+  assert.match(header, /<EmployeeAboutApp showLogout>\s*<img[^>]+alt='MOBO'/);
   assert.match(source, /aria-label='О приложении MOBO'/);
   assert.doesNotMatch(header, /<EmployeeAboutApp name=/);
-  assert.match(header, /<WorkdayNotificationsClient \/>/);
-  assert.match(header, /confirmBeforeLogout/);
+  assert.match(header, /<WorkdayNotificationsClient procurement=\{procurement\} \/>/);
+  assert.doesNotMatch(header, /<LogoutButton/);
+  assert.match(source, /<LogoutButton confirmBeforeLogout onConfirmationChange=\{setConfirmingLogout\}/);
 });

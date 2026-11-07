@@ -1,4 +1,5 @@
 import 'server-only';
+import { WORK_HELP_ACK_KIND } from './employee-work-help';
 import { readOperationContext } from './employee-operation-policy';
 import { buildAuditTimeline, noticeAuditKey, type AuditEpisode } from './employee-audit-timeline';
 import { readInteraction } from './employee-interaction-policy';
@@ -49,6 +50,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
   const cases = refs.length ? await prisma.expenseRequestAdminCase.findMany({ where: { oneCRequestRef: { in: refs } }, include: { evaluations: { orderBy: { evaluatedAt: 'desc' }, take: 1 } } }) : [];
   const facts: ActivityFact[] = events.filter(e => ['visit','notification_open'].includes(e.kind)).map(e => ({ id: e.id, section: e.section as ActivitySection, at: e.createdAt.toISOString(),
     title: e.kind === 'visit' ? 'Открыл раздел' : notifications.some(n => n.id === e.notificationId) ? `Открыл уведомление «${notifications.find(n => n.id === e.notificationId)!.title}»` : 'Открыл уведомление', note: e.kind === 'visit' ? 'Раздел был открыт в видимом приложении.' : 'Открытие в приложении зафиксировано; это не подтверждает выполнение поручения.', visit: e.kind === 'visit' }));
+  for (const event of events.filter(e => e.kind === WORK_HELP_ACK_KIND)) facts.push({ id: event.id, section: 'schedule', at: event.createdAt.toISOString(), title: 'Подтвердил справку «Как пользоваться приложением»', note: 'Нажал «Понятно». Это подтверждение ознакомления; заполнение графика проверяется отдельно.', visit: false });
   const add = (id: string, section: ActivitySection, at: Date | null, title: string, note = 'Подтверждено сохранённой записью портала.') => {
     if (at && at >= bounds.start && at < bounds.end) facts.push({ id, section, at: at.toISOString(), title, note, visit: false });
   };

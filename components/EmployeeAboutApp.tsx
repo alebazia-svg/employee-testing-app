@@ -4,9 +4,11 @@ import { useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } f
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { getReleaseInfo } from '@/lib/release-info';
+import { LogoutButton } from './LogoutButton';
 
-export function EmployeeAboutApp({ children }: { children: ReactNode }) {
+export function EmployeeAboutApp({ children, showLogout = false }: { children: ReactNode; showLogout?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 16, width: 288 });
   const panel = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -34,7 +36,7 @@ export function EmployeeAboutApp({ children }: { children: ReactNode }) {
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || confirmingLogout) return;
     closeButton.current?.focus({ preventScroll: true });
     const outside = (event: Event) => {
       const target = event.target;
@@ -57,7 +59,7 @@ export function EmployeeAboutApp({ children }: { children: ReactNode }) {
       document.removeEventListener('keydown', escape);
       window.removeEventListener('scroll', scroll, true);
     };
-  }, [open]);
+  }, [open, confirmingLogout]);
 
   return <>
     <div className='pwa-composition-only pwa-composition-brand relative' style={{ display: 'none', content: 'normal', filter: 'none' }}>
@@ -68,8 +70,8 @@ export function EmployeeAboutApp({ children }: { children: ReactNode }) {
         onClick={() => setOpen(value => !value)} />
     </div>
     {open && createPortal(
-      <section ref={panel} id={panelId} role='region' aria-labelledby={titleId}
-        style={{ ...position, maxHeight: `calc(100dvh - ${position.top + 12}px)` }}
+      <section ref={panel} id={panelId} role='region' aria-labelledby={titleId} hidden={confirmingLogout}
+        style={{ ...position, display: confirmingLogout ? 'none' : undefined, maxHeight: `calc(100dvh - ${position.top + 12}px)` }}
         className='fixed z-[120] overflow-y-auto rounded-3xl border border-[#44494f] bg-[#25292e] p-4 text-[#fafaf8] shadow-[0_8px_30px_#171b203d]'>
         <div className='flex items-center justify-between gap-3'>
           <div>
@@ -85,6 +87,10 @@ export function EmployeeAboutApp({ children }: { children: ReactNode }) {
           <div className='flex flex-wrap justify-between gap-x-3 gap-y-1'><dt className='text-[#c2c6cb]'>Версия</dt><dd className='font-semibold'>{version}</dd></div>
           <div className='flex flex-wrap justify-between gap-x-3 gap-y-1'><dt className='text-[#c2c6cb]'>Сборка</dt><dd className='font-medium'>{date ? `${date} МСК` : 'Дата не определена'}</dd></div>
         </dl>
+        {showLogout && <div className='mt-3 border-t border-[#44494f] pt-3'>
+          <LogoutButton confirmBeforeLogout onConfirmationChange={setConfirmingLogout}
+            className='h-11 w-full justify-start gap-2 rounded-xl bg-transparent px-2 text-[#fafaf8] shadow-none hover:bg-[#363b42] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e4ad82]' />
+        </div>}
       </section>, document.body,
     )}
   </>;

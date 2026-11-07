@@ -1,6 +1,6 @@
-import { LogoutButton } from '@/components/LogoutButton';
 import { EmployeeAboutApp } from '@/components/EmployeeAboutApp';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
+import { EmployeeWorkHelpButton } from '@/components/workday/EmployeeWorkHelp';
 
 export function employeeHeaderDateLabel(dateKey: string) {
   const [year, month, day] = dateKey.split('-').map(Number);
@@ -31,7 +31,7 @@ export function EmployeePortalHeader({
 
   return (
     <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
-      <EmployeeAboutApp>
+      <EmployeeAboutApp showLogout>
         <img className='pwa-composition-only pwa-composition-brand' style={{ display: 'none' }} src='/brand/mobo-master/mobo-symbol-3d-light-ui.svg?v=1.1.2' alt='MOBO' width={40} height={34} />
       </EmployeeAboutApp>
       <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
@@ -50,14 +50,8 @@ export function EmployeePortalHeader({
         </div>
       </div>
       <div className='employee-material-header-actions flex items-center gap-2'>
+        <EmployeeWorkHelpButton />
         <WorkdayNotificationsClient procurement={procurement} />
-        <LogoutButton
-          iconOnly
-          iconStyle='outline'
-          title='Выйти'
-          confirmBeforeLogout
-          className='employee-material-header-action h-11 w-11 px-0 text-slate-600'
-        />
       </div>
     </header>
   );

@@ -9,6 +9,7 @@ import { EmployeeNotificationInbox, type EmployeeInboxItem } from '@/components/
 import { EMPLOYEE_EXPENSE_KIND } from '@/lib/employee-expense-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { savePushSubscription } from '@/lib/push-subscription-client';
+import { EmployeeAppSetupProposal, useAppSetupProposal } from '@/components/workday/EmployeeAppSetupProposal';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +33,7 @@ function urlBase64ToUint8Array(value: string) {
 
 export function WorkdayNotificationsClient({ procurement = false }: { procurement?: boolean } = {}) {
   const preview = useEmployeePreview();
+  const setupProposal = useAppSetupProposal();
   const mobileNavigation = useProcurementMobileNavigation();
   const audit = useInteractionAudit();
   const requestRead = preview?.request ?? fetch;
@@ -70,7 +72,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
   }, [preview,requestRead]);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
-    if (preview) return;
+    if (preview || setupProposal) return;
     setBusy(true);
     setError('');
     try {
@@ -98,7 +100,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
   }, []);
 
   useEffect(() => {
-    if (preview) { void refresh(); const timer = window.setInterval(() => void refresh(), 10000); return () => window.clearInterval(timer); }
+    if (preview || setupProposal) { void refresh(); const timer = window.setInterval(() => void refresh(), 10000); return () => window.clearInterval(timer); }
     if ('serviceWorker' in navigator) {
       void navigator.serviceWorker.register('/workday-sw.js', { scope: '/' }).catch(() => undefined);
     }
@@ -189,7 +191,8 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
 
       {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><span className='text-[#a77550]'><EmployeeNoticeIcon kind={employeeInboxIconKind(banner)} /></span><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}><InteractionShown context={{target:'notification',ref:String(banner.id),stage:'shown'}}/>{banner.title}</button><button type="button" onClick={() => {audit({target:'notification',ref:String(banner.id),stage:'banner_hidden'});setBanner(null);}} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
       {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
-{!preview && !pushConnected && (
+{setupProposal && <EmployeeAppSetupProposal compact />}
+{!setupProposal && !preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
               <p className='text-sm font-semibold leading-snug text-slate-800'>{procurement ? 'Включите напоминания, чтобы не пропустить важные действия по закупкам и рабочему дню.' : 'Включите напоминания, чтобы не пропустить действие по рабочему дню.'}</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-3 rounded-lg bg-green-700 px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50'>

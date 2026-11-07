@@ -3,7 +3,7 @@ import { transferEmployeeCash, saveEmployeeCashIntent, prepareEmployeeCashPhoto,
 import { CASH_PHOTO_ACCEPT } from '@/lib/cash-photo-validation';
 import { readEmployeeCashReceipt, watchEmployeeCashPersistence } from '@/lib/employee-cash-receipt';
 import { cashDuplicateResult } from '@/lib/cash-operation-duplicate';
-import { needsWorkdayEndReminder, toMoscowDateTimeInput, validateReportedWorkdayEnd } from '@/lib/workday-end-policy';
+import { ATTENDANCE_END_MINUTES, needsWorkdayEndReminder } from '@/lib/workday-end-policy';
 
 import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
 import { HandoverAuditShown } from '@/components/HandoverAuditShown';
@@ -51,7 +51,6 @@ import {
   Clock3,
   CreditCard,
   HandCoins,
-  LogOut,
   Pencil,
   ReceiptText,
   RefreshCw,
@@ -98,6 +97,7 @@ import {
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
 import { EmployeeActionReminder, usePublishWorkdayReminder } from '@/components/workday/EmployeeActionReminder';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
+import { EmployeeAppSetupProposal, EmployeeFinishDayIcon, useAppSetupProposal } from '@/components/workday/EmployeeAppSetupProposal';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
 const lateArrivalChoiceLabels: Record<keyof typeof lateArrivalReasons, string> = {
@@ -1284,6 +1284,7 @@ export function EmployeeTodayClient({
   ownVacations = [],
   departmentVacations = [],
 }: Props) {
+  const appSetupProposal = useAppSetupProposal();
   const [today, setToday] = useState(initialToday);
   useEffect(() => setToday(initialToday), [initialToday]);
   const [expenseSnapshot, setExpenseSnapshot] = useState<EmployeeExpenseSnapshot>({ state: 'unavailable', checkedAt: null, pending: [], payable: [] });
@@ -1362,7 +1363,6 @@ export function EmployeeTodayClient({
   const [shiftCorrectionHint, setShiftCorrectionHint] = useState('');
   const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
   const [comment, setComment] = useState('');
-  const [staleActualEndedAt, setStaleActualEndedAt] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
   const [staleCloseOpen, setStaleCloseOpen] = useState(false);
@@ -1646,11 +1646,12 @@ export function EmployeeTodayClient({
     const open = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       if (typeof detail?.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(detail.date)) return;
+      if (detail.source === 'work-help') setActiveTab(detail.edit === true ? 'day' : 'schedule');
       openScheduleReminder(detail.date, detail.edit === true);
     };
     window.addEventListener('mobo:schedule-open', open);
     return () => window.removeEventListener('mobo:schedule-open', open);
-  }, [openScheduleReminder]);
+  }, [openScheduleReminder, setActiveTab]);
 
   const isCompleted = workDay?.status === 'completed' || Boolean(workDay?.endedAt);
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
@@ -1669,6 +1670,7 @@ export function EmployeeTodayClient({
   const elapsedMs = getElapsed(workDay, displayNow);
   const elapsedLabel = formatDuration(elapsedMs);
   const activeElapsedLabel = formatDurationWithSeconds(elapsedMs);
+  const conciseAttendanceSummary = Boolean(appSetupProposal?.finishProposal && needsWorkdayEndReminder(user));
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const shiftControlEnabled = usesWorkdayShiftControl(user);
@@ -2765,10 +2767,6 @@ export function EmployeeTodayClient({
       setError('Коротко опишите причину');
       return;
     }
-    if (needsWorkdayEndReminder(user)) {
-      const result = validateReportedWorkdayEnd(staleActualEndedAt, previousWorkDay.startedAt, new Date());
-      if (!result.ok) { setError(result.error); return; }
-    }
     setIsSaving(true);
     try {
       const response = await request('/api/employee/workday/finish', {
@@ -2779,7 +2777,6 @@ export function EmployeeTodayClient({
           closeStale: true,
           staleCloseReason,
           staleCloseComment,
-          actualEndedAt: staleActualEndedAt,
         }),
       });
       const payload = await response.json();
@@ -2794,7 +2791,6 @@ export function EmployeeTodayClient({
       }
       setUnfinished(null);
       setStaleCloseOpen(false);
-      setStaleActualEndedAt('');
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
@@ -4519,11 +4515,12 @@ export function EmployeeTodayClient({
       )}
       <StaleWorkdayCloseSheet
         open={staleCloseOpen}
+        proposalDay={previousWorkDay ? { date: previousWorkDay.date, dateLabel: formatDateLabel(previousWorkDay.date), startLabel: formatTime(previousWorkDay.startedAt) } : undefined}
         shiftLabel={previousWorkDay?.shiftLabel || ''}
         reason={staleCloseReason}
         comment={staleCloseComment}
         saving={isSaving}
-        actualEnd={needsWorkdayEndReminder(user) && previousWorkDay ? { value: staleActualEndedAt, min: toMoscowDateTimeInput(previousWorkDay.startedAt), max: toMoscowDateTimeInput(new Date()), error: staleActualEndedAt ? (() => { const result = validateReportedWorkdayEnd(staleActualEndedAt, previousWorkDay.startedAt, new Date()); return result.ok ? undefined : result.error; })() : undefined, onChange: setStaleActualEndedAt } : undefined}
+        attendanceOnly={needsWorkdayEndReminder(user)}
         onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
         onCommentChange={setStaleCloseComment}
         onClose={() => setStaleCloseOpen(false)}
@@ -4730,6 +4727,8 @@ export function EmployeeTodayClient({
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
         )}>
+          <span id='pwa-work-help-target' hidden />
+          {activeTab === 'day' && <EmployeeAppSetupProposal />}
           {activeTab === 'day' && activeWorkDay && <button
             type='button'
             className={cn('pwa-studio-only pwa-shift-dock', showCloseResolution && 'pwa-shift-dock-blocked')}
@@ -4765,7 +4764,7 @@ export function EmployeeTodayClient({
                 {cashDuplicateItem?.duplicateOf && <Button type='button' onClick={() => void openCashOperation(cashDuplicateItem.direction as CashOperation['direction'])} disabled={isSaving}>Проверить инкассацию</Button>}
               </div>
             </div> : null}
-          {activeTab === 'day' && previousWorkDay && !canResolvePreviousKkm && (
+          {activeTab === 'day' && previousWorkDay && !canResolvePreviousKkm && !appSetupProposal?.finishProposal && (
             <Card className='mb-4 space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
               <h2 className='text-xl font-black text-slate-950'>{needsWorkdayEndReminder(user) ? 'Завершить рабочий день' : 'Сдать смену'} · {formatDateLabel(previousWorkDay.date)}</h2>
               <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
@@ -5042,9 +5041,9 @@ export function EmployeeTodayClient({
             </div>
           )}
 
-          <EmployeeAttentionPanel inlineClosingIssueId={showCloseResolution && showKkmConfirmation ? kkmCloseIssue?.id : undefined} onScheduleSaved={() => { void syncScheduleState(); }} onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (showKkmConfirmation) { setCloseResolutionPath('photo'); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab === 'payroll' ? 'schedule' : activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
+          <EmployeeAttentionPanel previousDayAction={appSetupProposal?.finishProposal && activeTab === 'day' && previousWorkDay && !canResolvePreviousKkm ? { title: 'Рабочий день не завершён', dateLabel: formatDateLabel(previousWorkDay.date), startLabel: formatTime(previousWorkDay.startedAt), onOpen: () => setStaleCloseOpen(true) } : undefined} inlineClosingIssueId={showCloseResolution && showKkmConfirmation ? kkmCloseIssue?.id : undefined} onScheduleSaved={() => { void syncScheduleState(); }} onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (showKkmConfirmation) { setCloseResolutionPath('photo'); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab === 'payroll' ? 'schedule' : activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
 
-          {activeTab !== 'payroll' && <EmployeeActionReminder view={activeTab === 'day' && showShiftControl ? 'actual-day' : activeTab} onOpen={() => setActiveTab('day')} />}
+          {!mobileNavigation && activeTab !== 'payroll' && <EmployeeActionReminder view={activeTab === 'day' && showShiftControl ? 'actual-day' : activeTab} onOpen={() => setActiveTab('day')} />}
 
           {activeTab === 'payroll' && <PersonalPayrollClient currentMonth={today.slice(0, 7)} embedded onOpenReminder={() => setActiveTab('day')} />}
 
@@ -5109,11 +5108,11 @@ export function EmployeeTodayClient({
                   <div className='pwa-workday-summary-shell'>
                     <div className='pwa-studio-only pwa-workday-summary' style={{ display: 'none' }}>
                       <div className='pwa-workday-summary-top'>
-                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{needsWorkdayEndReminder(user) ? 'Рабочий день начат' : 'На смене'}</strong>
+                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{conciseAttendanceSummary ? 'На работе' : needsWorkdayEndReminder(user) ? 'Рабочий день начат' : 'На смене'}</strong>
                         <span className='pwa-workday-summary-timer' aria-label={`${needsWorkdayEndReminder(user) ? 'Рабочий день' : 'В смене'} ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
                       </div>
                       <div className='pwa-workday-summary-facts'>
-                        <span>Начало {formatTime(workDay!.startedAt)} · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</span>
+                        <span>Начало {formatTime(workDay!.startedAt)}{!conciseAttendanceSummary && <> · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</>}</span>
                       </div>
                     </div>
                     {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
@@ -5179,25 +5178,21 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && !shiftControlEnabled && (
-                <Card className='space-y-3 border-green-100 bg-white p-4'>
-                  <div className='flex items-start gap-3'>
-                    <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'>
-                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' />
-                    </span>
+                <Card id='pwa-workday-end' tabIndex={-1} className='space-y-3 border-green-100 bg-white p-4'>
+                  <div className={cn('flex gap-3', appSetupProposal?.finishProposal ? 'items-center' : 'items-start')}>
+                    {appSetupProposal?.finishProposal ? <EmployeeFinishDayIcon animate={workdayVisible && activeTab === 'day' && (getMoscowMinutes(displayNow) >= ATTENDANCE_END_MINUTES || appSetupProposal.eveningPreview === true)} /> : <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'><PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' /></span>}
                     <div className='min-w-0'>
-                      <h2 className='text-lg font-black leading-tight text-slate-950'>Отметка рабочего дня</h2>
-                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
-                        Для вашей роли сегодня нужен только старт и конец рабочего дня.
-                      </p>
+                      <h2 className='text-lg font-black leading-tight text-slate-950'>{appSetupProposal?.finishProposal ? 'Завершение дня' : 'Отметка рабочего дня'}</h2>
+                      {!appSetupProposal?.finishProposal && <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>Для вашей роли сегодня нужен только старт и конец рабочего дня.</p>}
                     </div>
                   </div>
                   <Button
                     type='button'
-                    className='h-12 w-full rounded-xl bg-slate-950 text-sm font-black hover:bg-slate-800'
+                    className={cn('h-12 w-full rounded-xl text-sm font-black', appSetupProposal?.finishProposal ? 'employee-material-primary-action' : 'bg-slate-950 hover:bg-slate-800')}
                     onClick={finishWorkDay}
                     disabled={isSaving}
                   >
-                    Завершить рабочий день
+                    {appSetupProposal?.finishProposal ? (isSaving ? 'Сохранение…' : 'Отметить уход') : 'Завершить рабочий день'}
                   </Button>
                 </Card>
               )}

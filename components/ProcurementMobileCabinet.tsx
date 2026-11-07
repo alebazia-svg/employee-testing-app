@@ -2,6 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
+import { CashIssueProvider } from '@/app/(dashboard)/employee/CashIssueClient';
+import { EmployeeActionReminder, EmployeeActionReminderProvider } from './workday/EmployeeActionReminder';
+import { EmployeeAppSetupProposal, useAppSetupProposal } from './workday/EmployeeAppSetupProposal';
+import { EmployeeAppSetupProvider } from './workday/EmployeeAppSetupProvider';
+import { EmployeeWorkHelpProvider } from './workday/EmployeeWorkHelp';
 import { EmployeeNavigation } from './EmployeeNavigation';
 import { useEmployeeActivityVisit } from './EmployeeActivityTracker';
 import { ProcurementMobileNavigationContext as Context } from './ProcurementMobileNavigation';
@@ -9,6 +14,15 @@ import { procurementMobileSection, type ProcurementMobileSection } from '@/lib/p
 
 /** Volatile mounted views, never a cache of financial permissions or authorization. */
 export function ProcurementMobileCabinet({ name, workday, children }: { name: string; workday: ReactNode; children: ReactNode }) {
+  const setup = useAppSetupProposal();
+  const cabinet = <CashIssueProvider><EmployeeActionReminderProvider attendanceEndRequired><ProcurementMobileCabinetViews name={name} workday={workday}>{children}</ProcurementMobileCabinetViews></EmployeeActionReminderProvider></CashIssueProvider>;
+  // The approved setup/help belongs to the mobile cabinet. Desktop Procurement
+  // keeps its existing permission UI and connector. The isolated studio already
+  // supplies its explicitly labelled device-state/help providers.
+  return setup ? cabinet : <EmployeeAppSetupProvider><EmployeeWorkHelpProvider department='procurement' attendanceOnly>{cabinet}</EmployeeWorkHelpProvider></EmployeeAppSetupProvider>;
+}
+
+function ProcurementMobileCabinetViews({ name, workday, children }: { name: string; workday: ReactNode; children: ReactNode }) {
   const query = useSearchParams();
   const sectionFromUrl = procurementMobileSection(query.get('tab'));
   const [active, setActive] = useState<ProcurementMobileSection>(sectionFromUrl);
@@ -36,6 +50,7 @@ export function ProcurementMobileCabinet({ name, workday, children }: { name: st
   return <Context.Provider value={value}>
     <div className='employee-material-shell procurement-mobile-cabinet relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'>
       <EmployeePortalHeader name={name} meta='Закупки' procurement />
+      <div className='px-4'><EmployeeActionReminder view={active === 'day' ? 'actual-day' : active} onOpen={() => select('day')} />{active === 'procurement' && <EmployeeAppSetupProposal />}</div>
       <div className='flex-1 min-w-0 procurement-mobile-pages'>
       <div hidden={active !== 'procurement'} className='procurement-mobile-content min-w-0 px-4' data-mobile-pane='procurement'>{children}</div>
       <div hidden={active === 'procurement'} className='min-w-0' data-mobile-pane='workday'>{workday}</div>
