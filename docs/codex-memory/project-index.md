@@ -29,6 +29,14 @@ project from scratch.
 
 ## Read First By Task
 
+- Employee PWA setup/help and completion: `../ops/pwa-setup-release-20261107.md`
+  — released/verified1.21.46 /d9d8adc. Immediate Safari instruction, confirmed push
+  setup, numbered role guide/daily server acknowledgement, help/bell header and
+  logout in About, shared Procurement reminders, approved compact/sunset cards.
+  Previous-day closure no longer guesses departure time; today's actual automatic
+  time retained. No migration/financial policy change; account/template/cashbox
+  hashes and324 mature uploads preserved. Physical iPhone check remains.
+
 - Confirmed computer/browser grouping: `access-browser-groups-20261107.md` —
   owner approved and grouped Safari/Yandex with Mac Бэлы(7→5 cards). Browser-first
   rows retain all cabinets/versions/notifications; current marker stays exact-code.
