@@ -231,3 +231,33 @@ Candidate remains local, unpushed and undeployed. No schema/env/1C/financial
 write; unrelated dirty worktrees preserved. Existing lockfile audit warnings
 include critical Next.js; not silently fixed in Home scope, must be addressed
 before installation. No new design iteration is required by this preparation.
+
+
+## Stage 4 — security blocker closed, 8 November 2026
+
+Owner approved correcting the dependency vulnerability and local release checks;
+production installation is still excluded. Earlier Stage3 critical Next.js warning
+is superseded: Next15.5.29 +sharp0.35.5/librsvg2.63.2; all four inherited npm
+audit warnings eliminated with compatible patches. Full and production-only
+audit0. TypeScript, production build,150 tests and4 component states pass.
+Local native Linux x64 and image optimizer behavior verified; no SVG allowance
+or other security configuration weakened. Existing PWA boundary test updated
+only for the already-released AboutApp logo, reproduced stale on production
+source first. No app/UI/business/schema/integration behavior changed.
+
+Candidate reconciled with latest production1.21.49 /origin4b20300, preserving
+Procurement mobile placement. Branch remains `codex/admin-home-release-20261108`;
+rebased Home implementation97a2530, security runtime83ed7a0. App version1.22.0
+remains unpublished, so no edit-only version bump. New exact source identity
+and checks are in `../ops/admin-home-release-candidate-20261108.md`.
+Old bundle built before security correction is superseded by the security-fixed
+bundle; no push/deployment or production DB writes. Candidate is ready for
+owner-authorized installation subject to routine live version/source/rollback
+gates, without another Home design cycle.
+
+
+Final stage4 verification: full stock Dockerfile Linux amd64 build and isolated
+container startup pass; authenticated8 ADMIN routes, image optimizer200/400,
+all8 Home sources and readonly model counts verified on both macOS and Linux.
+Linux image/OCI source identity and exact logs are recorded in the release note.
+No migration entrypoint, production connection, push or deployment was invoked.
