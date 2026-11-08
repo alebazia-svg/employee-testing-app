@@ -6,6 +6,7 @@ import { savePushSubscription } from '@/lib/push-subscription-client';
 import { ArrowLeft, Bell, ChevronRight, X } from 'lucide-react';
 import {NotificationInboxSwitch} from './NotificationInboxSwitch';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
+import { readAdminInboxJson } from '@/lib/admin-inbox-client';
 import { startVisibleSync } from '@/lib/visible-sync';
 import {adminNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
 import {NotificationRecordDialog,type NotificationSelection} from './NotificationRecordDialog';
@@ -52,9 +53,9 @@ export function AdminInboxBell() {
     setPushBusy(true);
     setPushError('');
     try {
-      const configResponse = await fetch('/api/admin/push-subscription', { cache: 'no-store' });
-      const config = await configResponse.json();
-      if (!configResponse.ok) throw new Error('Push-уведомления ещё не настроены.');
+      const configResponse = await readAdminInboxJson('/api/admin/push-subscription');
+      const config = configResponse.payload;
+      if (!configResponse.ok || !config) throw new Error('Push-уведомления ещё не настроены.');
       if (config.registrationAllowed === false) {
         setPushRegistrationAllowed(false);
         return;
@@ -80,8 +81,8 @@ export function AdminInboxBell() {
 
   async function load() {
     const sequence=++attentionSequence.current;
-    const response = await fetch('/api/admin/inbox?view=attention&limit=8', { cache: 'no-store' }).catch(() => null);
-    const payload = response?.ok ? await response.json().catch(() => null) : null;
+    const response = await readAdminInboxJson('/api/admin/inbox?view=attention&limit=8').catch(() => null);
+    const payload = response?.ok ? response.payload : null;
     if(sequence!==attentionSequence.current)return;
     if (payload&&Array.isArray(payload.items)) {
       setLoaded(true);setLoadError('');

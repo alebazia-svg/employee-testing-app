@@ -27,6 +27,7 @@ type SalesRow = {
 };
 
 type PayrollModule = {
+  parsePayrollReport: (rows: Array<{ values: string[]; excelRow: number; indentLevel: number }>) => { headerMap: unknown; rows: unknown[] };
   classifySalesRows: (rows: SalesRow[]) => {
     rows: Array<SalesRow & { calculationType: string; base: number; bonus: number }>;
     wholesale: {
@@ -143,7 +144,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = engineImport.replace('@/lib/', '../../lib/') + `\nimport { payrollDisplayName } from '../../lib/payroll-display-name';\nimport { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, getPayrollServicePercent } from '../../lib/payroll-trainee';\nimport { getPayrollSalesManagerNameForPeriod } from '../../lib/payroll-sales-classification';\n` + source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\nimport { classifyPayrollSalesRows } from '../../lib/payroll-sales-classification';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\nimport { classifyPayrollSalesRows } from '../../lib/payroll-sales-classification';\n${calculationSource}\nexport { parsePayrollReport, classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -919,4 +920,14 @@ describe('payroll calculation regression rules', () => {
     assert.equal(payrollRow.grossPay, 150);
     assert.equal(payrollRow.netPay, 150);
   });
+});
+
+
+it('rejects an unrecognized import while retaining recognition of an empty sales report', async () => {
+  const { parsePayrollReport } = await loadPayrollModule();
+  assert.equal(parsePayrollReport([]).headerMap, null);
+  assert.equal(parsePayrollReport([{ values: ['unrelated', 'text'], excelRow: 1, indentLevel: 0 }]).headerMap, null);
+  const emptySales = parsePayrollReport([{ values: ['Менеджер', 'Выручка', 'Себестоимость товаров', 'Валовая прибыль'], excelRow: 1, indentLevel: 0 }]);
+  assert.ok(emptySales.headerMap);
+  assert.equal(emptySales.rows.length, 0);
 });

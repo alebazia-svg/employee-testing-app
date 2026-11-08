@@ -23,7 +23,7 @@ class Element {
 }
 class Input extends Element { type = 'text'; readOnly = false; disabled = false; }
 class Textarea extends Element { readOnly = false; disabled = false; }
-function fixture() {
+function fixture(standalone = false) {
   let now = 1000, id = 0, reads = 0, modal = false;
   let mutation!: () => void, disconnected = false;
   const tasks = new Map<number, { at: number; callback: () => void }>();
@@ -31,14 +31,17 @@ function fixture() {
   const media = { matches: true };
   const doc = Object.assign(new Target(), { body: new Element(), activeElement: new Element(), visibilityState: 'visible', querySelector: () => modal ? {} : null });
   const viewport = Object.assign(new Target(), { height: 844, scale: 1 });
-  const nav = Object.assign(new Element(), { contains: (value: unknown) => false });
+  const rect = { bottom: 844, height: 72 };
+  const nav = Object.assign(new Element(), { contains: (value: unknown) => false, getBoundingClientRect: () => rect });
   Object.defineProperty(nav, 'offsetHeight', { get: () => { reads++; return 72; } });
   nav.style.setProperty('display', 'grid', 'important');
   const host = Object.assign(new Target(), {
+    navigator: { standalone },
     document: doc, visualViewport: viewport as typeof viewport | null,
     innerWidth: 390, innerHeight: 844, scrollX: 4, scrollY: 240,
     HTMLElement: Element, HTMLInputElement: Input, HTMLTextAreaElement: Textarea,
     Date: { now: () => now }, matchMedia: () => media,
+    getComputedStyle: () => ({ bottom: '0px' }),
     scrollTo: (options: ScrollToOptions) => scrolls.push(options),
     setTimeout(callback: () => void, delay: number) { const key = ++id; tasks.set(key, { at: now + delay, callback }); return key; },
     clearTimeout(key: number) { tasks.delete(key); },
@@ -54,7 +57,7 @@ function fixture() {
     }
     now = until;
   };
-  return { host, doc, nav, viewport, media, scrolls, tasks, stop, advance,
+  return { host, doc, nav, rect, viewport, media, scrolls, tasks, stop, advance,
     mutation: () => mutation(), modal: (value: boolean) => { modal = value; mutation(); },
     get reads() { return reads; }, get disconnected() { return disconnected; },
     focus(element: Element) { doc.activeElement = element; doc.fire('focusin'); },
@@ -124,4 +127,56 @@ test('both real navigation components use the guard and dialog return focus cann
   }
   const css = readFileSync('app/globals.css', 'utf8');
   assert.match(css, /\.admin-mobile-nav\[data-portal-keyboard='open'\],[\s\S]*?\.employee-material-nav\[data-portal-keyboard='open'\] \{[\s\S]*?visibility: hidden !important;/);
+});
+
+
+test('ordinary scrolling checks once after settling and does not rebuild a correctly positioned dock', () => {
+  const f = fixture(); f.advance(800);
+  const before = f.reads;
+  for (let i = 0; i < 30; i++) { f.host.fire('scroll'); f.advance(20); }
+  assert.equal(f.reads, before);
+  f.advance(250);
+  assert.equal(f.reads, before);
+  f.stop();
+});
+test('a displaced dock is recovered after scrolling with the latest list position', () => {
+  const f = fixture(); f.advance(800); const before = f.reads;
+  f.rect.bottom = 520; f.host.scrollY = 1700;
+  f.host.fire('scroll'); f.advance(250);
+  assert.ok(f.reads > before);
+  assert.equal(f.scrolls.at(-1)?.top, 1700);
+  f.stop();
+});
+test('scroll recovery respects modal, keyboard, zoom and unmount guards', () => {
+  const f = fixture(); f.advance(800); const before = f.reads;
+  f.rect.bottom = 500; f.modal(true); f.host.fire('scrollend');
+  assert.equal(f.reads, before);
+  f.modal(false); f.viewport.scale = 2; f.host.fire('scrollend');
+  assert.equal(f.reads, before);
+  f.viewport.scale = 1; f.focus(new Input()); f.viewport.height = 500;
+  f.host.fire('scrollend'); assert.equal(f.reads, before);
+  f.host.fire('scroll'); f.stop(); f.advance(1000);
+  assert.equal(f.reads, before); assert.equal(f.tasks.size, 0);
+});
+
+
+test('iOS standalone repaints a stale painted layer once after finger inertia, even with a correct DOM rect', () => {
+  const f = fixture(true); f.advance(800); const before = f.reads;
+  f.host.fire('touchstart'); f.host.fire('scroll'); f.advance(300);
+  assert.equal(f.reads, before); // Finger still down.
+  f.host.fire('touchend'); f.advance(100); f.host.scrollY = 1300; f.host.fire('scroll');
+  f.advance(150); assert.equal(f.reads, before); // Momentum still active.
+  f.advance(100); assert.equal(f.reads, before + 2);
+  assert.equal(f.scrolls.at(-1)?.top, 1300);
+  f.host.fire('scrollend'); f.advance(1000); assert.equal(f.reads, before + 2);
+  f.stop();
+});
+test('taps and ordinary browser touch scrolling do not repaint a correct dock', () => {
+  for (const standalone of [true, false]) {
+    const f = fixture(standalone); f.advance(800); const before = f.reads;
+    f.host.fire('touchstart'); f.host.fire('touchend'); f.advance(500);
+    assert.equal(f.reads, before);
+    if (!standalone) { f.host.fire('touchstart'); f.host.fire('scroll'); f.host.fire('touchend'); f.advance(500); assert.equal(f.reads, before); }
+    f.stop();
+  }
 });

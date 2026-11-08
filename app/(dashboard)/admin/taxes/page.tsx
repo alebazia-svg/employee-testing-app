@@ -3,6 +3,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { TaxesWorkspace, taxTabs, type TaxTab } from '@/components/taxes/TaxesWorkspace';
 import { loadPortalReports } from '@/lib/ausn-portal-view';
 import { getCurrentAdmin } from '@/lib/auth';
+import { reconcileTaxDocumentStatuses } from '@/lib/tax-processing-recovery';
 import { prisma } from '@/lib/prisma';
 import { buildTaxWorkspace } from '@/lib/tax-workspace-data';
 import { attachFnsBankCandidates, loadLatestFnsBankReview } from '@/lib/ausn-fns-bank-review';
@@ -22,7 +23,7 @@ export default async function TaxesPage(props: { searchParams?: Promise<{ tab?: 
   const tab: TaxTab = taxTabs.some(([key]) => key === query.tab) ? query.tab as TaxTab : 'overview';
   const [reports, documents] = await Promise.all([
     loadPortalReports(undefined, { latestPerScope: true }),
-    prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }),
+    prisma.taxControlDocument.findMany({ orderBy: { createdAt: 'desc' }, include: { uploadedBy: { select: { name: true } } } }).then(reconcileTaxDocumentStatuses),
   ]);
   const [incomeEvidence, managementReview] = await Promise.all([loadIncomeEvidence(documents), loadTaxManagementReview(documents)]);
   const now = new Date();

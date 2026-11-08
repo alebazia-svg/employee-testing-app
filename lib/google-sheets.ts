@@ -162,7 +162,7 @@ async function readResponseText(response: Response) {
   }
 }
 
-async function getAccessToken() {
+async function getAccessToken(signal?: AbortSignal) {
   const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
   const privateKey = getPrivateKey();
 
@@ -196,6 +196,7 @@ async function getAccessToken() {
         assertion,
       }),
       cache: 'no-store',
+      signal,
     });
   } catch (error) {
     throw new Error(describeFetchError('OAuth token', error));
@@ -212,7 +213,7 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-async function getSheetTitles(spreadsheetId: string, token: string, stage: 'Sheets metadata' | 'Schedule metadata') {
+async function getSheetTitles(spreadsheetId: string, token: string, stage: 'Sheets metadata' | 'Schedule metadata', signal?: AbortSignal) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
 
   let response: Response;
@@ -220,6 +221,7 @@ async function getSheetTitles(spreadsheetId: string, token: string, stage: 'Shee
     response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal,
     });
   } catch (error) {
     throw new Error(describeFetchError(stage, error));
@@ -333,7 +335,7 @@ function mapScheduleRows(data: SpreadsheetGetResponse): ScheduleRow[] {
   });
 }
 
-export async function getAttendanceRows(): Promise<AttendanceResult> {
+export async function getAttendanceRows({ signal }: { signal?: AbortSignal } = {}): Promise<AttendanceResult> {
   if (!hasGoogleSheetsConfig()) {
     return {
       mode: 'demo',
@@ -343,8 +345,8 @@ export async function getAttendanceRows(): Promise<AttendanceResult> {
   }
 
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
-  const token = await getAccessToken();
-  const titles = await getSheetTitles(spreadsheetId, token, 'Sheets metadata');
+  const token = await getAccessToken(signal);
+  const titles = await getSheetTitles(spreadsheetId, token, 'Sheets metadata', signal);
   const attendanceTitle = titles.find((title) => title === ATTENDANCE_SHEET_TITLE);
 
   if (!attendanceTitle) {
@@ -359,6 +361,7 @@ export async function getAttendanceRows(): Promise<AttendanceResult> {
     response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal,
     });
   } catch (error) {
     throw new Error(describeFetchError('Sheets values', error));
@@ -378,7 +381,7 @@ export async function getAttendanceRows(): Promise<AttendanceResult> {
   };
 }
 
-export async function getScheduleRows(): Promise<ScheduleResult> {
+export async function getScheduleRows({ signal }: { signal?: AbortSignal } = {}): Promise<ScheduleResult> {
   if (!hasScheduleSheetsConfig()) {
     return {
       mode: 'not-configured',
@@ -388,8 +391,8 @@ export async function getScheduleRows(): Promise<ScheduleResult> {
   }
 
   const spreadsheetId = process.env.GOOGLE_SHEETS_SCHEDULE_SPREADSHEET_ID!;
-  const token = await getAccessToken();
-  const titles = await getSheetTitles(spreadsheetId, token, 'Schedule metadata');
+  const token = await getAccessToken(signal);
+  const titles = await getSheetTitles(spreadsheetId, token, 'Schedule metadata', signal);
   const scheduleTitle = titles.find((title) => title === SCHEDULE_SHEET_TITLE);
 
   if (!scheduleTitle) {
@@ -404,6 +407,7 @@ export async function getScheduleRows(): Promise<ScheduleResult> {
     response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal,
     });
   } catch (error) {
     throw new Error(describeFetchError('Schedule grid', error));

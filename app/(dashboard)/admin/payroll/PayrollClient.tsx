@@ -4647,6 +4647,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
 
       const nextSelectedSheet = parsed.SheetNames.includes('TDSheet') ? 'TDSheet' : parsed.SheetNames[0] ?? '';
       const selectedRows = nextSelectedSheet ? sheets[nextSelectedSheet] ?? [] : [];
+      // Validate before replacing the current workbook or its saved source.
+      // Manual calculations and a recognized report with no sales keep their rules.
+      const candidate = parsePayrollReport(selectedRows);
+      if (!candidate.headerMap) {
+        throw new Error('Файл не распознан как отчёт продаж. Нужны колонки Менеджер, Выручка, Себестоимость товаров и Валовая прибыль. Действующий источник сохранён.');
+      }
       const sourceSnapshot = await buildSourceFileSnapshot(file, buffer, 'sales', {
         selectedSheet: nextSelectedSheet,
         rowCount: selectedRows.length,
@@ -4656,9 +4662,6 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       setSelectedSheet(nextSelectedSheet);
       setSalesSourceFile(sourceSnapshot);
     } catch (caughtError) {
-      setWorkbook(null);
-      setSelectedSheet('');
-      setSalesSourceFile(null);
       setError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать файл.');
     } finally {
       setIsParsing(false);

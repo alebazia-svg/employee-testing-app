@@ -128,3 +128,37 @@ test('refreshes workday timing and checklist state without focus events', () => 
 
   stop();
 });
+
+test('coalesces concurrent resume/interval events and keeps one trailing read; stop cancels it', async () => {
+  let focus = () => {}, show = () => {}, tick = () => {}, change = () => {};
+  const resolvers: Array<() => void> = [];
+  let count = 0;
+  const environment: VisibleSyncEnvironment = {
+    isVisible: () => true,
+    setInterval: callback => { tick = callback; return 1; }, clearInterval() {},
+    addFocusListener: listener => { focus = listener; }, removeFocusListener() {},
+    addPageShowListener: listener => { show = listener; }, removePageShowListener() {},
+    addVisibilityListener: listener => { change = listener; }, removeVisibilityListener() {},
+  };
+  const stop = startVisibleSync(() => { count++; return new Promise<void>(resolve => resolvers.push(resolve)); }, 5000, environment);
+  focus(); show(); tick(); change();
+  assert.equal(count, 1);
+  resolvers.shift()!();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(count, 2);
+  focus(); tick(); stop();
+  resolvers.shift()!();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(count, 2);
+});
+
+test('a rejected read does not permanently block subsequent updates', async () => {
+  let focus = () => {}, count = 0;
+  const environment: VisibleSyncEnvironment = { isVisible: () => true, setInterval: () => 1, clearInterval() {}, addFocusListener: value => { focus = value; }, removeFocusListener() {}, addPageShowListener() {}, removePageShowListener() {}, addVisibilityListener() {}, removeVisibilityListener() {} };
+  const stop = startVisibleSync(async () => { count++; throw new Error('offline'); }, 5000, environment);
+  await new Promise(resolve => setImmediate(resolve));
+  focus();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(count, 2);
+  stop();
+});

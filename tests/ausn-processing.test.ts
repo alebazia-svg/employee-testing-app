@@ -86,3 +86,21 @@ test('a refresh request carries no document and matches the runner REFRESH schem
     if (saved.key !== undefined) process.env.AUSN_BRIDGE_KEY_PATH = saved.key;
   }
 });
+
+test('uses a durable result without invoking the bridge again', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ausn-existing-'));
+  const resultPath = path.join(root, 'result.json');
+  await writeFile(resultPath, JSON.stringify({ status: 'completed' }));
+  const result = await waitForAusnProcessingResult({ resultPath, invokeBridge: async () => assert.fail('must not resubmit completed work') });
+  assert.equal(result.status, 'completed');
+});
+
+test('a lost bridge response does not discard a completed result', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ausn-lost-response-'));
+  const resultPath = path.join(root, 'result.json');
+  const result = await waitForAusnProcessingResult({ resultPath, invokeBridge: async () => {
+    await writeFile(resultPath, JSON.stringify({ status: 'completed' }));
+    throw new Error('connection closed');
+  } });
+  assert.equal(result.status, 'completed');
+});

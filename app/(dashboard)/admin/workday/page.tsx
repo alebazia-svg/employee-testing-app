@@ -1,3 +1,4 @@
+import { loadWorkdayCreditDocuments, loadWorkdayCreditFiscal, type WorkdayCreditSource } from '@/lib/workday-credit-source';
 import { loadOpenHandoverReviews } from '@/lib/workday-handover-review-server';
 import { handoverReviewRecord, handoverReviewHref, needsHandoverReview } from '@/lib/workday-handover-review';
 import { deriveExtensionProposal } from '@/lib/workday-extension';
@@ -93,12 +94,7 @@ function assignmentAt(assignments: KkmAssignmentInterval[], moment: Date | null)
   return assignments.find((assignment) => assignment.effectiveFrom <= moment && (!assignment.effectiveTo || assignment.effectiveTo > moment)) ?? null;
 }
 
-type TbankSalesForDate = {
-  ok: boolean;
-  documents: OneCSalesRealizationDocument[];
-  fiscalByRealization: Record<string, OneCSalesRealizationFiscalOperationsResult>;
-  error?: string;
-};
+type TbankSalesForDate = WorkdayCreditSource;
 
 function scheduleClass(status: string | undefined) {
   if (status === 'working') return 'bg-green-100 text-green-800';
@@ -284,37 +280,6 @@ function factualCashRegisterRefs(shifts: OneCCashShift[], employeeName: string) 
   )];
 }
 
-async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
-  const limit = 100;
-  const documents: OneCSalesRealizationDocument[] = [];
-
-  for (let offset = 0; offset < 1000; offset += limit) {
-    const result = await getSalesRealizations({
-      ...DEFAULT_SALES_REALIZATIONS_PARAMS,
-      dateFrom: date,
-      dateTo: date,
-      posted: 'true',
-      limit,
-      offset,
-      includeLines: false,
-    });
-    if (!result.ok) return { ok: false, documents, fiscalByRealization: {}, error: result.error ?? result.diagnostics.join('; ') };
-
-    documents.push(...result.documents);
-    if (result.responseDocumentCount < limit) break;
-  }
-
-  const fiscalByRealization: Record<string, OneCSalesRealizationFiscalOperationsResult> = {};
-  for (let index = 0; index < documents.length; index += 4) {
-    const batch = documents.slice(index, index + 4);
-    const results = await Promise.all(batch.map((document) => getSalesRealizationFiscalOperations(document.ref)));
-    results.forEach((result) => {
-      fiscalByRealization[result.realizationRef] = result;
-    });
-  }
-
-  return { ok: true, documents, fiscalByRealization };
-}
 
 function kkmUsageForEmployee({
   result,
@@ -1153,6 +1118,19 @@ export default async function AdminWorkdayPage(
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
   const selectedDayRange = moscowDayRange(selectedDate);
+  // These reads depend only on the authorized date, not on employee DB rows.
+  // Start them together with the DB snapshot, retaining every existing check.
+  const fiscalReads = Promise.all([
+    getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 300 }),
+    getCashShifts(selectedDate),
+  ]);
+  const creditDocumentsRead = loadWorkdayCreditDocuments(selectedDate, params => getSalesRealizations({ ...DEFAULT_SALES_REALIZATIONS_PARAMS, ...params }));
+  void creditDocumentsRead.catch(() => {});
+  const googleRead = getTeamGoogleSnapshot();
+  // Handle early rejection while other independent reads are still running;
+  // the original promises below still propagate errors at their await sites.
+  void fiscalReads.catch(() => {});
+  void googleRead.catch(() => {});
   const [employees, schedules, vacations, vacationHistory, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
@@ -1260,6 +1238,18 @@ export default async function AdminWorkdayPage(
     }),
   ]);
 
+  const creditRunsByUser = new Map(shiftControlRuns.map(run => [run.userId, run]));
+  const completedCreditTasks = employees.filter(usesWorkdayShiftControl).flatMap(employee =>
+    (creditRunsByUser.get(employee.id)?.tasks ?? []).filter(task => task.category === 'credit' && task.status === 'done').map(task => ({
+      employeeName: employee.name, cutoff: taskCutoff(task as AutoCheckTask)?.getTime() ?? Number.POSITIVE_INFINITY,
+    })),
+  );
+  const creditFiscalRead = creditDocumentsRead.then(source => loadWorkdayCreditFiscal(source, document => {
+    const timestamp = oneCDateTimestamp(document.date);
+    return timestamp !== null && completedCreditTasks.some(task => matchesEmployeeManager(task.employeeName, document.managerName) && timestamp <= task.cutoff);
+  }, getSalesRealizationFiscalOperations));
+  void creditFiscalRead.catch(() => {});
+
   const closeRequests = await prisma.workdayCloseExceptionRequest.findMany({
     where: { workDayEntry: { date: selectedDate } },
     orderBy: { requestedAt: 'desc' },
@@ -1345,10 +1335,9 @@ export default async function AdminWorkdayPage(
   const depositSafeCashbox =
     cashStatementDimensions.cashboxes.find((cashbox) => normalizeSearchText(cashbox.name) === depositSafeCashboxSearchName)
     ?? null;
-  const [kkmDiagnostics, cashShifts, tbankSales, reserveStatement, depositSafeStatement] = await Promise.all([
-    getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 300 }),
-    getCashShifts(selectedDate),
-    getTbankSalesForDate(selectedDate),
+  const [[kkmDiagnostics, cashShifts], tbankSales, reserveStatement, depositSafeStatement] = await Promise.all([
+    fiscalReads,
+    creditFiscalRead,
     cashStatementDimensions.ok && cashStatementOrganization && reserveCashbox
       ? getCashStatementSummary({
         date: selectedDate,
@@ -1518,7 +1507,7 @@ export default async function AdminWorkdayPage(
   const acquiringPendingCount = acquiringTaskRows.filter((row) => row.status.problem && row.task.integerValue !== 2).length;
   const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
-  const googleSnapshot = await getTeamGoogleSnapshot();
+  const googleSnapshot = await googleRead;
   const employeeControlRows = employees
     .filter(employee => employee.department === 'retail' || employee.department === 'wholesale' || employee.department === 'procurement')
     .map((employee) => {

@@ -9,8 +9,8 @@ export const processableTypes = new Set(['AUSN_INCOME', 'ENS_OPERATIONS', 'AUSN_
 const bridgeRetryDelayMs = 2_000;
 const bridgeResultDeadlineMs = 26 * 60_000;
 
-type ProcessingInput = { documentType: string; periodKey: string; extension: string; bytes: Uint8Array; sha256: string };
-export type AusnProcessingResult = { status: 'not_required' | 'completed' | 'failed'; message: string; requestId?: string };
+type ProcessingInput = { documentType: string; periodKey: string; extension: string; bytes: Uint8Array; sha256: string; requestId?: string; onQueued?: () => void };
+export type AusnProcessingResult = { status: 'not_required' | 'completed' | 'failed' | 'pending'; message: string; requestId?: string };
 
 function intakeRoot() {
   return process.env.AUSN_PORTAL_INTAKE_DIR || '/app/runtime/ausn-intake';
@@ -57,7 +57,15 @@ export async function waitForAusnProcessingResult(input: {
   const deadline = now() + (input.deadlineMs ?? bridgeResultDeadlineMs);
 
   while (true) {
-    const response = await input.invokeBridge();
+    const existing = await readProcessingResult(input.resultPath);
+    if (existing) return existing;
+    let response: { stdout: string };
+    try { response = await input.invokeBridge(); }
+    catch (error) {
+      const completed = await readProcessingResult(input.resultPath);
+      if (completed) return completed;
+      throw error;
+    }
     const result = await readProcessingResult(input.resultPath);
     if (result) return result;
 
@@ -75,7 +83,8 @@ export async function processAusnDocument(input: ProcessingInput): Promise<AusnP
   if (input.documentType === 'ENS_OPERATIONS' && !['zip', 'csv'].includes(input.extension)) return { status: 'failed', message: 'Для сверки ЕНС нужна выгрузка ZIP или CSV.' };
   if (input.documentType === 'AUSN_CALCULATION' && input.extension !== 'pdf') return { status: 'failed', message: 'Справка о расчёте АУСН должна быть в PDF.' };
 
-  const requestId = randomBytes(16).toString('hex');
+  const requestId = input.requestId ?? randomBytes(16).toString('hex');
+  if (!/^[a-f0-9]{32}$/.test(requestId)) throw new Error('Некорректная попытка обработки.');
   const fileName = `${requestId}.${input.extension}`;
   const root = intakeRoot();
   const filePath = path.join(root, 'files', fileName);
@@ -86,6 +95,7 @@ export async function processAusnDocument(input: ProcessingInput): Promise<AusnP
   await atomicWrite(filePath, input.bytes);
   await atomicWrite(requestPath, JSON.stringify({ request_id: requestId, document_type: input.documentType, file_name: fileName, sha256: input.sha256, period_key: input.periodKey }));
 
+  input.onQueued?.();
   return runBridge(requestId, resultPath, 'document');
 }
 
@@ -107,7 +117,7 @@ async function runBridge(requestId: string, resultPath: string, kind: 'document'
     if (result.status !== 'completed') return { status: 'failed', requestId, message: result.error || 'Сервер не подтвердил обновление отчёта.' };
     return { status: 'completed', requestId, message: kind === 'document' ? 'Документ проверен. Данные АУСН и полный отчёт обновлены.' : 'Цифры пересчитаны по свежим данным 1С, банка и кассы.' };
   } catch (error) {
-    return { status: 'failed', requestId, message: kind === 'document' ? 'Документ сохранён, но серверная обработка не завершилась. Повторите загрузку позже — дубликат файла не создастся.' : 'Сервер не успел пересчитать цифры. Попробуйте ещё раз через несколько минут.' };
+    return { status: kind === 'document' ? 'pending' : 'failed', requestId, message: kind === 'document' ? 'Документ сохранён. Сервер пока не подтвердил результат обработки; статус будет проверен повторно.' : 'Сервер не успел пересчитать цифры. Попробуйте ещё раз через несколько минут.' };
   }
 }
 

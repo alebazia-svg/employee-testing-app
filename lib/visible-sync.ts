@@ -25,7 +25,23 @@ function browserVisibleSyncEnvironment(): VisibleSyncEnvironment {
 }
 
 export function startVisibleSync(sync: () => void | Promise<void>, intervalMs: number, environment = browserVisibleSyncEnvironment()) {
-  const syncNow = () => void sync();
+  let stopped = false;
+  let running = false;
+  let pending = false;
+  const syncNow = () => {
+    if (stopped) return;
+    if (running) { pending = true; return; }
+    let result: void | Promise<void>;
+    try { result = sync(); } catch { return; }
+    if (!result || typeof result.then !== 'function') return;
+    running = true;
+    // Keep one trailing read: a resume or update during a slow request may
+    // represent newer data, but must not start parallel copies of that read.
+    void Promise.resolve(result).catch(() => {}).then(() => {
+      running = false;
+      if (pending && !stopped) { pending = false; syncNow(); }
+    });
+  };
   const syncWhenVisible = () => {
     if (environment.isVisible()) syncNow();
   };
@@ -39,6 +55,8 @@ export function startVisibleSync(sync: () => void | Promise<void>, intervalMs: n
   environment.addPageShowListener(syncNow);
 
   return () => {
+    stopped = true;
+    pending = false;
     environment.clearInterval(timer);
     environment.removeFocusListener(syncNow);
     environment.removeVisibilityListener(syncWhenVisible);

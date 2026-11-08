@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Loader2, Upload, XCircle } from 'lucide-react';
+import { followTaxProcessing } from '@/lib/tax-upload-monitor';
+import { createTaxUploadStore, idleTaxUpload, type TaxUploadStatus } from '@/lib/tax-upload-state';
 import { taxDocumentTypes } from '@/lib/tax-document-types';
 
 const monthLabel = (key: string) => { const text = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${key}-01T12:00:00Z`)).replace(/ г\.$/, ''); return text.charAt(0).toUpperCase() + text.slice(1); };
@@ -13,49 +15,27 @@ function monthsUpTo(last: string) {
   return result.reverse();
 }
 
-// One upload status for the whole page. The form that started an upload may
+// Upload states survive form unmounts and remain isolated by submission. The form that started an upload may
 // disappear after a refresh (the file closes its own «Что загрузить» item), so
 // the status lives here and TaxUploadStatus shows it in a fixed place.
-type UploadStatus = { progress: '' | 'sending' | 'processing' | 'done' | 'failed'; fileName: string; message: string; changes: string[]; owner: string; ownerVisible: boolean };
-const idle: UploadStatus = { progress: '', fileName: '', message: '', changes: [], owner: '', ownerVisible: false };
-let uploadStatus = idle;
-const listeners = new Set<() => void>();
-function setUploadStatus(next: Partial<UploadStatus>) { uploadStatus = { ...uploadStatus, ...next }; listeners.forEach((listener) => listener()); }
-function subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
-const useUploadStatus = () => useSyncExternalStore(subscribe, () => uploadStatus, () => idle);
-
-async function followProcessing(id: string, since: string, refresh: () => void) {
-  const started = Date.now();
-  while (Date.now() - started < 25 * 60_000) {
-    await new Promise((resolve) => setTimeout(resolve, 8_000));
-    const response = await fetch(`/api/admin/taxes/documents/status?id=${encodeURIComponent(id)}&since=${encodeURIComponent(since)}`, { cache: 'no-store' }).catch(() => null);
-    if (!response?.ok) continue;
-    const payload = await response.json().catch(() => ({}));
-    if (payload.state === 'done') {
-      setUploadStatus({ progress: 'done', message: 'Файл учтён, цифры и сверка пересчитаны.', changes: Array.isArray(payload.changes) ? payload.changes.filter((item: unknown): item is string => typeof item === 'string') : [] });
-      refresh();
-      return;
-    }
-    if (payload.state === 'failed') {
-      setUploadStatus({ progress: 'failed', message: payload.message || 'Сервер не смог обработать файл. Загрузите его ещё раз.' });
-      refresh();
-      return;
-    }
-  }
-  setUploadStatus({ progress: 'failed', message: 'Пересчёт идёт дольше обычного. Результат появится в «Истории загрузок»; если там будет «Не обработан» — загрузите файл ещё раз.' });
-}
+const uploadStore = createTaxUploadStore();
+const serverSnapshot: readonly TaxUploadStatus[] = [];
+const useUploadStatuses = () => useSyncExternalStore(uploadStore.subscribe, uploadStore.getSnapshot, () => serverSnapshot);
 
 // placement='page' is the fallback spot at the top of «Документы»; it stays
 // empty while the form that started the upload is still on screen.
-export function TaxUploadStatus({ placement = 'form' }: { placement?: 'form' | 'page' }) {
-  const status = useUploadStatus();
+export function TaxUploadStatus({ placement = 'form', owner }: { placement?: 'form' | 'page'; owner?: string }) {
+  const statuses = useUploadStatuses();
+  return <>{statuses.filter(status => placement === 'page' ? !status.ownerVisible : owner === undefined || status.owner === owner).map(status => <UploadStatusNotice key={status.attempt} status={status} />)}</>;
+}
+
+function UploadStatusNotice({ status }: { status: TaxUploadStatus }) {
   if (!status.progress || status.progress === 'sending') return null;
-  if (placement === 'page' && status.ownerVisible) return null;
   const tone = status.progress === 'failed' ? 'error' : 'ok';
-  const Icon = status.progress === 'processing' ? Loader2 : status.progress === 'failed' ? XCircle : CheckCircle2;
-  const title = status.progress === 'processing' ? 'Файл принят' : status.progress === 'failed' ? 'Файл не обработан' : 'Готово';
+  const Icon = ['processing', 'waiting'].includes(status.progress) ? Loader2 : status.progress === 'failed' ? XCircle : CheckCircle2;
+  const title = ['processing', 'waiting'].includes(status.progress) ? 'Файл принят' : status.progress === 'failed' ? 'Файл не обработан' : 'Готово';
   return <div className='tax-callout' data-tone={tone} role='status' aria-live='polite'>
-    <p className='flex items-start gap-2'><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${status.progress === 'processing' ? 'animate-spin' : ''}`} /><span><strong>{title}{status.fileName ? `: «${status.fileName}»` : ''}.</strong> {status.progress === 'processing' ? 'Пересчитываем цифры и сверку — обычно 3–5 минут. Страницу можно закрыть: результат будет в «Истории загрузок».' : status.message}</span></p>
+    <p className='flex items-start gap-2'><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${status.progress === 'processing' ? 'animate-spin' : ''}`} /><span><strong>{title}{status.fileName ? `: «${status.fileName}»` : ''}.</strong> {status.progress === 'processing' ? status.message || 'Пересчитываем цифры и сверку — обычно 3–5 минут. Страницу можно закрыть: результат будет в «Истории загрузок».' : status.message}</span></p>
     {status.changes.length > 0 && <ul className='mt-1 space-y-1 pl-6'>{status.changes.map((change, index) => <li key={index}>• {change}</li>)}</ul>}
   </div>;
 }
@@ -63,15 +43,17 @@ export function TaxUploadStatus({ placement = 'form' }: { placement?: 'form' | '
 export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeriod, defaultDocumentType = 'USN_DECLARATION', fixedType }: { defaultPeriod: string; latestDuePeriod?: string; defaultDocumentType?: keyof typeof taxDocumentTypes; fixedType?: keyof typeof taxDocumentTypes }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const status = useUploadStatus();
   const [error, setError] = useState('');
   const [formId] = useState(() => Math.random().toString(36).slice(2));
+  const statuses = useUploadStatuses();
+  const status = statuses.find(status => status.owner === formId) ?? idleTaxUpload;
   const mine = status.owner === formId;
+  const attempt = status.attempt;
   useEffect(() => {
     if (!mine) return;
-    setUploadStatus({ ownerVisible: true });
-    return () => { if (uploadStatus.owner === formId) setUploadStatus({ ownerVisible: false }); };
-  }, [mine, formId]);
+    uploadStore.update(attempt, { ownerVisible: true });
+    return () => { uploadStore.update(attempt, { ownerVisible: false }); };
+  }, [mine, formId, attempt]);
   const [documentType, setDocumentType] = useState<keyof typeof taxDocumentTypes>(defaultDocumentType);
   const [period, setPeriod] = useState(defaultDocumentType === 'AUSN_CALCULATION' ? latestDuePeriod : defaultPeriod);
 
@@ -91,24 +73,25 @@ export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeri
   const busy = mine && (status.progress === 'sending' || status.progress === 'processing');
 
   async function submit(form: FormData) {
+    if (uploadStore.isBusy(formId)) return;
     const file = form.get('file');
+    const attempt = uploadStore.begin(formId, file instanceof File ? file.name : '');
     setError('');
-    setUploadStatus({ progress: 'sending', fileName: file instanceof File ? file.name : '', message: '', changes: [], owner: formId });
     try {
       const response = await fetch('/api/admin/taxes/documents', { method: 'POST', body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Не удалось загрузить документ.');
       if (fileRef.current) fileRef.current.value = '';
       if (payload.accepted && payload.document?.id) {
-        setUploadStatus({ progress: 'processing' });
+        uploadStore.update(attempt, { progress: 'processing' });
         router.refresh();
-        void followProcessing(payload.document.id, payload.acceptedAt, () => router.refresh());
+        void followTaxProcessing(attempt, payload.document.id, payload.acceptedAt, { update: uploadStore.update, refresh: () => router.refresh() });
         return;
       }
-      setUploadStatus({ progress: 'done', message: 'Документ сохранён в архиве.' });
+      uploadStore.update(attempt, { progress: 'done', message: 'Документ сохранён в архиве.' });
       router.refresh();
     } catch (failure) {
-      setUploadStatus({ ...idle });
+      uploadStore.update(attempt, { progress: '' });
       setError(failure instanceof Error ? failure.message : 'Не удалось загрузить документ.');
     }
   }
@@ -132,7 +115,7 @@ export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeri
     <button disabled={busy} className='inline-flex h-10 items-center justify-center gap-2 admin-material-primary rounded-lg px-5 text-[13px] font-semibold text-white disabled:opacity-50'><Upload className='h-4 w-4' />{busy && status.progress === 'sending' ? 'Отправляем…' : busy ? 'Пересчитываем…' : 'Загрузить'}</button>
     {!autoPeriod && documentType === 'AUSN_CALCULATION' && <p className='text-xs leading-relaxed text-[#796e64] col-span-full'>Выберите самый поздний месяц, который есть в справке. Повторная загрузка той же справки просто расширит период.</p>}
     {mine && status.progress === 'sending' && <p role='status' className='col-span-full text-sm font-semibold text-[#796e64]'>Отправляем файл…</p>}
-    {mine && <div className='col-span-full'><TaxUploadStatus /></div>}
+    {mine && <div className='col-span-full'><TaxUploadStatus owner={formId} /></div>}
     {error && <p role='alert' className='col-span-full text-sm font-semibold text-[#a3342d]'>{error}</p>}
   </form>;
 }

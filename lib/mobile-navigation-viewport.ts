@@ -12,6 +12,9 @@ export function bindMobileNavigationViewport(nav: HTMLElement, host: Window & ty
   let baselineHeight = host.innerHeight;
   let keyboardSeen = false;
   let blurredAt = 0;
+  let scrollTimer: number | undefined;
+  let touching = false, touchGesture = false, touchScrolled = false;
+  const standalone = (host.navigator as Navigator & { standalone?: boolean } | undefined)?.standalone === true;
   const timers = new Set<number>();
   const editable = () => {
     const element = doc.activeElement;
@@ -78,6 +81,31 @@ export function bindMobileNavigationViewport(nav: HTMLElement, host: Window & ty
     hadEditable = nextEditable; hadModal = nextModal; bodyLock = nextLock;
     measure();
   };
+  // Ordinary finger scrolling can leave a fixed layer displaced without a
+  // keyboard/modal event. Inspect only after scrolling settles, and rebuild
+  // a displaced dock (or stale iOS standalone paint). Never reset the list position.
+  const inspectScrollEnd = () => {
+    if (scrollTimer !== undefined) { host.clearTimeout(scrollTimer); scrollTimer = undefined; }
+    if (disposed || touching || !mobile.matches || doc.visibilityState !== 'visible' || zoomed()
+      || measure() || editable() || modal() || locked()) return;
+    const repaintStandaloneTouch = standalone && touchGesture && touchScrolled;
+    touchGesture = false; touchScrolled = false;
+    const rect = nav.getBoundingClientRect();
+    const bottom = Number.parseFloat(host.getComputedStyle(nav).bottom);
+    if (!Number.isFinite(bottom) || rect.height <= 0) return;
+    const expectedBottom = host.innerHeight - bottom;
+    // WebKit can paint a displaced layer while reporting a correct DOM rect.
+    // Rebuild once after a completed finger scroll in iOS standalone as well.
+    if (repaintStandaloneTouch || Math.abs(rect.bottom - expectedBottom) > 3) recover();
+  };
+  const scrolled = () => {
+    if (disposed || !mobile.matches) return;
+    if (touchGesture) touchScrolled = true;
+    if (scrollTimer !== undefined) host.clearTimeout(scrollTimer);
+    scrollTimer = host.setTimeout(inspectScrollEnd, 200);
+  };
+  const touchStarted = () => { touching = true; touchGesture = true; touchScrolled = false; };
+  const touchEnded = () => { touching = false; if (touchScrolled) scrolled(); };
   const resized = () => { measure(); schedule(); };
   const returned = () => { if (doc.visibilityState === 'visible') { inspect(); schedule(); } };
   const observer = new host.MutationObserver(inspect);
@@ -86,6 +114,11 @@ export function bindMobileNavigationViewport(nav: HTMLElement, host: Window & ty
   doc.addEventListener('focusout', inspect, true);
   doc.addEventListener('close', inspect, true);
   doc.addEventListener('visibilitychange', returned);
+  host.addEventListener('touchstart', touchStarted, { passive: true });
+  host.addEventListener('touchend', touchEnded, { passive: true });
+  host.addEventListener('touchcancel', touchEnded, { passive: true });
+  host.addEventListener('scroll', scrolled, { passive: true });
+  host.addEventListener('scrollend', inspectScrollEnd);
   host.addEventListener('resize', resized);
   host.addEventListener('orientationchange', resized);
   host.addEventListener('pageshow', returned);
@@ -96,11 +129,17 @@ export function bindMobileNavigationViewport(nav: HTMLElement, host: Window & ty
   return () => {
     disposed = true;
     clearTimers();
+    if (scrollTimer !== undefined) host.clearTimeout(scrollTimer);
     observer.disconnect();
     doc.removeEventListener('focusin', inspect, true);
     doc.removeEventListener('focusout', inspect, true);
     doc.removeEventListener('close', inspect, true);
     doc.removeEventListener('visibilitychange', returned);
+    host.removeEventListener('touchstart', touchStarted);
+    host.removeEventListener('touchend', touchEnded);
+    host.removeEventListener('touchcancel', touchEnded);
+    host.removeEventListener('scroll', scrolled);
+    host.removeEventListener('scrollend', inspectScrollEnd);
     host.removeEventListener('resize', resized);
     host.removeEventListener('orientationchange', resized);
     host.removeEventListener('pageshow', returned);

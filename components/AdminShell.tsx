@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './AdminSectionLink';
 import { useAdminIdentity } from './AdminIdentityProvider';
 import { portalPersonInitials } from '@/lib/portal-person';
 import { usePathname } from 'next/navigation';
@@ -49,7 +49,7 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
   return (
     <Link
       href={item.href}
-      prefetch={item.href === '/admin/taxes' ? true : undefined}
+      prefetch={item.href === '/admin/taxes' ? false : undefined}
       title={sidebarCollapsed ? item.label : undefined}
       className={cn(
         'admin-nav-item relative flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300/25 md:justify-start md:gap-2.5 md:px-3',
@@ -204,7 +204,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
               {dailyNavigation.slice(3).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
-                return <Link key={item.href} href={item.href} prefetch={item.href === '/admin/taxes' ? true : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
+                return <Link key={item.href} href={item.href} prefetch={item.href === '/admin/taxes' ? false : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
               })}
             </div>
             <div className='mt-4 border-t border-slate-200 pt-3'>
@@ -213,7 +213,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
                 {serviceNavigation.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item.href);
-                  return <Link key={item.href} href={item.href} prefetch={item.href === '/admin/taxes' ? true : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
+                  return <Link key={item.href} href={item.href} prefetch={item.href === '/admin/taxes' ? false : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
                 })}
               </div>
             </div>
