@@ -49,8 +49,8 @@ function ProcurementMobileCabinetViews({ name, workday, children }: { name: stri
   return <Context.Provider value={value}>
     <div className='employee-material-shell procurement-mobile-cabinet relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8]'>
       <EmployeePortalHeader name={name} meta='Закупки' procurement />
-      <div className='px-4'><EmployeeActionReminder view={active === 'day' ? 'actual-day' : active} onOpen={() => select('day')} />{active === 'procurement' && <EmployeeAppSetupProposal />}</div>
       <div className='flex-1 min-w-0 procurement-mobile-pages'>
+      <div className='px-4'><EmployeeActionReminder view={active === 'day' ? 'actual-day' : active} onOpen={() => select('day')} />{active === 'procurement' && <EmployeeAppSetupProposal />}</div>
       <div hidden={active !== 'procurement'} className='procurement-mobile-content min-w-0 px-4' data-mobile-pane='procurement'>{children}</div>
       <div hidden={active === 'procurement'} className='min-w-0' data-mobile-pane='workday'>{workday}</div>
       </div>
