@@ -128,3 +128,16 @@ cache/evidence timestamps and mutable read markers. Retain both whole-row and
 stable business projections where possible; report changed hashes separately
 from deleted rows. Never claim all fields stayed unchanged solely because the
 row count or historical IDs were preserved.
+
+
+## Surviving native Terminal/SSH interruption
+
+The Activity1.22.1 attached SSH build received SIGHUP before installation. The
+EXIT trap misleadingly printed0 while the running image remained the old release.
+For a long authorised install, a reviewed narrow root worker can instead run in a
+transient systemd unit started through native Terminal sudo. Create the append-only
+owner-readable log first, preserve attempt folders, catch HUP/TERM explicitly and
+monitor unit Result plus application health. A launch success or EXIT0 alone does
+not establish installation. Require deploy-ready, independent commit/metadata/UI
+verification and the final verified-registry marker. This does not authorise a
+new release, broaden sudo access or introduce a permanent service.

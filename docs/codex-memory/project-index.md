@@ -30,6 +30,13 @@ project from scratch.
 
 ## Read First By Task
 
+- Employee Activity release 1.22.1: `../ops/employee-activity-release-20261108.md` —
+  approved installation, source-backed outcomes and readable chronology; see
+  preservation checks and current installation status before continuing.
+  Local acceptance: `employee-activity-scenario-coverage-20261108.md`,
+  `employee-activity-professional-plan-20261108.md`,
+  `employee-activity-live-candidate-20261108.md`. Separate auto-update WIP excluded.
+
 - ADMIN Home: `../ops/admin-home-release-20261108.md` — released/verified
   1.22.0 /6507422, including Next15.5.29/sharp0.35.5. Real source links,
   all8 successful reads and317-second automatic refresh verified.89,379 existing
