@@ -261,3 +261,19 @@ container startup pass; authenticated8 ADMIN routes, image optimizer200/400,
 all8 Home sources and readonly model counts verified on both macOS and Linux.
 Linux image/OCI source identity and exact logs are recorded in the release note.
 No migration entrypoint, production connection, push or deployment was invoked.
+
+
+## Stage 5 — installed and verified, 8 November 2026
+
+Owner explicitly authorized production installation and preservation/source
+refresh checks. This supersedes all earlier local-only/no-deployment status.
+Released1.22.0 /server6507422; public and authenticated UI version/build verified.
+All8 sources succeed;317-second observation without reload/manual refresh proves
+all8 timestamps advance. Exact payment/expense dialogs, payroll426650.20,
+tax review, team4working/3off and October analytics match source sections.
+No financial actions, employee completion or financial approval used as smoke.
+89,379 existing records fingerprinted/no deletion; stable saved financial
+history/config/uploads preserved. Ordinary expense/payroll source synchronization
+continued during release; its changing projections are disclosed in the note.
+Current+two reserves registered,21.76GiB free, RELEASE_EXIT=0/healthy.
+Exact evidence/limits: `../ops/admin-home-release-20261108.md`.

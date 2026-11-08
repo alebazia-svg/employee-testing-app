@@ -19,7 +19,7 @@ project from scratch.
 | Module | Main Files | Memory |
 | --- | --- | --- |
 | Employee Workday | `app/(dashboard)/employee/`, `app/api/employee/workday/`, `app/api/employee/shift-control/`, `lib/workday.ts` | `workday-playbook.md` |
-| ADMIN Home | `app/(dashboard)/admin/home/`, `app/api/admin/home/`, `lib/admin-home*.ts` | `admin-home-local-20261107.md`, `../ops/admin-home-release-candidate-20261108.md` — approved interface and source refresh; local candidate1.22.0, Next security blocker closed/audit0, no deployment approval |
+| ADMIN Home | `app/(dashboard)/admin/home/`, `app/api/admin/home/`, `lib/admin-home*.ts` | `../ops/admin-home-release-20261108.md`, `admin-home-local-20261107.md` — released/verified1.22.0 /6507422; shared sources and full automatic refresh verified, Next security fix/audit0 |
 | Admin Workday | `app/(dashboard)/admin/workday/`, `app/api/admin/workday/` | `workday-playbook.md`, `one-c-workday-audit.md`, `team-control-release-20261018.md` |
 | OFD / SABY / 1C matching | `app/(dashboard)/admin/ofd/`, `app/api/admin/ofd/probe/`, `lib/saby-ofd.ts`, `lib/one-c.ts` | `ofd-one-c-playbook.md` |
 | Payroll | `app/(dashboard)/admin/payroll/`, payroll helpers/tests | `payroll-playbook.md` |
@@ -29,6 +29,13 @@ project from scratch.
 | Deployment | `docs/ops/vps-deploy-runbook.md` | `deploy-playbook.md`, `tool-registry.md`, `error-playbook.md` |
 
 ## Read First By Task
+
+- ADMIN Home: `../ops/admin-home-release-20261108.md` — released/verified
+  1.22.0 /6507422, including Next15.5.29/sharp0.35.5. Real source links,
+  all8 successful reads and317-second automatic refresh verified.89,379 existing
+  rows checked/no deletion; saved financial history/config/uploads retained,
+  ordinary sync projections continue updating. No new migration. Registry and
+  current plus two reserves verified; no release step remains pending.
 
 - Procurement mobile layout: `../ops/procurement-mobile-layout-release-20261108.md`
   — released/verified 1.21.49 / d370770. Restores header/content seam and the

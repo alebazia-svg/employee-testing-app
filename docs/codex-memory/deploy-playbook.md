@@ -111,3 +111,20 @@ Check in this order:
 5. browser/cache/session is not showing old state;
 6. route is protected and unauthenticated `404/307` is not being mistaken for UI
    failure.
+
+
+## Owner-readable root worker log
+
+Before launching a sudo/systemd release worker, create its log as Bela with
+append semantics and mode600; confirm the owner can read it. Do not truncate a
+previous attempt's log. A root-created600 log prevents the existing SSH monitor
+from observing progress. If already running, correct ownership of that exact
+technical log only through the authorized native-Terminal sudo flow; do not
+restart a healthy build or change application/security configuration for logging.
+Observed/resolved in the ADMIN Home1.22.0 release on8November2026.
+
+For live preservation checks, distinguish stable business fields from source
+cache/evidence timestamps and mutable read markers. Retain both whole-row and
+stable business projections where possible; report changed hashes separately
+from deleted rows. Never claim all fields stayed unchanged solely because the
+row count or historical IDs were preserved.
