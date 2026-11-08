@@ -1892,3 +1892,14 @@ calculation comparison available. Missing/invalid evidence must preserve active
 warnings. This approval does not authorize deleting events, marking reminders
 read or hiding the existing exceeded-limit fact signal. Local implementation and
 verification:docs/ops/source-recovery-candidate-20261108.md; not yet released.
+
+##2026-11-09 — Approved bounded AUSN recovery
+
+Bela explicitly approved up to three automatic scheduled-refresh retries at
+15-minute intervals after failure. Preserve the primary timer, strict owner
+runner, calculations, cache identity, source completeness and sandbox. Only a
+successful full/current refresh may close the technical incident; starting a
+retry is not recovery. Cancel abandoned/expired Platforma reads so retries do
+not accumulate discarded exports. Candidate and evidence:
+`docs/ops/recovery-1.22.4-candidate-20261109.md`. New release and acceptance of the
+currently degraded external OFD source remain pending operations approval.
