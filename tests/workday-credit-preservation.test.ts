@@ -15,9 +15,9 @@ function engine(source: string) {
   const js = ts.transpileModule(source.slice(start, end) + '\nreturn {buildEmployeeAutoChecks,matchesEmployeeManager,taskCutoff};', { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
   return new Function('oneCDateTimestamp', 'parseOneCDateTime', 'formatTime', js)(oneCDateTimestamp, parseOneCDateTime, formatTime);
 }
-// Capture baseline from the current branch parent; this comparison is a local
-// acceptance harness, rather than a fixed historical UI contract.
-const before = engine(execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' }));
+// Pin the pre-reliability production baseline so committing/rebasing this
+// candidate cannot turn the preservation check into a comparison with itself.
+const before = engine(execFileSync('git', ['show', `8b4c751c41b554d88abf5cdd45ebc043c251f538:${file}`], { encoding: 'utf8' }));
 const after = engine(fs.readFileSync(file, 'utf8'));
 for (const scenario of ['matched', 'no-receipt', 'wrong-amount', 'ambiguous', 'unavailable', 'waiting', 'none', 'unknown-date']) {
   test(`selective reads preserve the actual credit check output: ${scenario}`, async () => {
