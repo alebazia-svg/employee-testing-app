@@ -152,3 +152,21 @@ new portal release and AUSN task installation, rollback and post-release checks.
   verification, so use reviewed scoped finalization after all checks; no blind
   rebuild/restart or premature verified-image registration.
 - Main portal and original AI workspace unrelated dirty files remain untouched.
+
+
+## Approved notification follow-up —2026-11-08
+
+Owner explicitly approved moving the two obsolete forward-looking AUSN limit
+warnings into history after documentary confirmation of termination, preserving
+text/date, document reminders and the original comparison model.
+Implementation7aa5d86 is local, NOT deployed and must receive a new portal patch
+version before any later release. It uses the same verified management archive
+as the tax workspace; missing/failed/newer invalid evidence preserves warnings.
+Only future decision predictions retire; the existing exceeded-limit fact signal
+is unchanged. No event/receipt deletion, read-state writes or manual messages.
+TypeScript, production build and20 focused tests passed. The authenticated real
+local app on isolated synthetic database demonstrated three active reminders
+without proof, one document reminder after proof, and both original warning
+texts/dates still visible in History. Preview:http://127.0.0.1:3287/admin/inbox.
+Screenshots are in the private local source-recovery evidence folder. Production
+AUSN diagnosis remains incomplete; last verification Terminal still awaits sudo.

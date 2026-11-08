@@ -1881,3 +1881,14 @@ recovery, live parity and complete AUSN background readback. Candidate only;
 no new release/host install authorized yet. Tests/build pass; source warnings
 must recover through real normal checks, never by deleting/marking down events.
 Strict owner reporting/calculators/payment processes remain unchanged.
+
+
+##2026-11-08 — AUSN forecast-reminder lifecycle after documented termination
+
+Bela approved retiring forward-looking AUSN limit warnings from active attention
+after the existing verified documentary review confirms AUSN termination. Keep
+original text and dates in History, keep tax-document reminders and the original
+calculation comparison available. Missing/invalid evidence must preserve active
+warnings. This approval does not authorize deleting events, marking reminders
+read or hiding the existing exceeded-limit fact signal. Local implementation and
+verification:docs/ops/source-recovery-candidate-20261108.md; not yet released.
