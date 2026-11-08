@@ -29,6 +29,12 @@ project from scratch.
 
 ## Read First By Task
 
+- Procurement mobile layout: `../ops/procurement-mobile-layout-release-20261108.md`
+  — released/verified 1.21.49 / d370770. Restores header/content seam and the
+  original trailing scroll clearance with one wrapper placement correction.
+  Notification policy/copy and business data unchanged; physical iPhone pending.
+  Includes separate read-only help/activity findings and explicitly deferred ideas.
+
 - Unified PWA reminders: `../ops/pwa-reminder-release-20261108.md`
   — released/verified1.21.48 /6915be8. Shared today/tomorrow/both caption on
   Workday/Schedule/Salary/Procurement; whole-card action with chevron replaces
