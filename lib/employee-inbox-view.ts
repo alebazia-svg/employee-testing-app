@@ -3,11 +3,12 @@ import { workdayNotificationThreadKey, type WorkdayNotificationThreadTarget } fr
 export type EmployeeInboxState = WorkdayNotificationThreadTarget & {
   readAt?: string | null;
   active?: boolean;
+  actionRequired?: boolean;
   sentAt?: string | null;
 };
 
 export function isNewEmployeeNotification(item: EmployeeInboxState) {
-  return !item.readAt && item.active !== false;
+  return item.active !== false && (item.actionRequired === true || !item.readAt);
 }
 
 export function employeeInboxSections<T extends EmployeeInboxState>(items: readonly T[]) {

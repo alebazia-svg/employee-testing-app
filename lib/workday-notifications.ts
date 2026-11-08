@@ -34,6 +34,7 @@ import { CASH_ISSUE_KIND, cashIssueHref } from '@/lib/procurement-cash-issue-pol
 import { cashIssuePushDecision, queueCashIssuePush } from '@/lib/procurement-cash-issue-notifications';
 import {QR_CHECK_KIND,qrCheckPlan} from './procurement-qr-check-policy';
 import {qrCheckPushDecision} from './procurement-qr-check-notifications';
+import { EMPLOYEE_ACTION_NOTIFICATION_KINDS, employeeNotificationRequiresAction, informationalNotificationExpired } from './notification-lifetime';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -41,6 +42,8 @@ type NotificationLifecycleRow = {
   id: number;
   kind: string;
   fingerprint: string;
+  sentAt?: Date | null;
+  scheduledAt?: Date;
   taskId: number | null;
   issueId: number | null;
   reviewId: string | null;
@@ -61,8 +64,8 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
   return match ? { requestId: match[1], decision: match[2] } : null;
 }
 
-export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
-  const activeEndReminders = await activeWorkdayEndReminders(db, rows, new Date());
+export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[], now = new Date()) {
+  const activeEndReminders = await activeWorkdayEndReminders(db, rows, now);
   const routing = rows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadExpenseRouting().catch(() => null) : null;
   const expenseKeys = new Set(routing?.items.map(expenseRouteKey));
   const activeSchedule = await activeScheduleNotices(db, rows);
@@ -94,6 +97,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
 
   return rows.filter((notification) => {
+    if (informationalNotificationExpired(notification, now)) return false;
     if (notification.kind === WORKDAY_END_REMINDER_KIND && !activeEndReminders.has(notification.id)) return false;
     if (notification.kind === EMPLOYEE_EXPENSE_KIND && routing?.state === 'ready' && !routing.unavailableRefs.includes(notification.fingerprint?.split(':')[3] ?? '') && !expenseKeys.has(notification.fingerprint ?? '')) return false;
     if (inactiveProcurement.has(notification.id)) return false;
@@ -112,8 +116,8 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   });
 }
 
-export async function reconcileActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
-  const activeRows = await filterActiveWorkdayNotifications(db, rows);
+export async function reconcileActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[], now = new Date()) {
+  const activeRows = await filterActiveWorkdayNotifications(db, rows, now);
   const activeIds = new Set(activeRows.map((notification) => notification.id));
   const inactiveIds = rows
     .filter((notification) => !activeIds.has(notification.id) && !scheduleNoticeKinds.includes(notification.kind))
@@ -126,7 +130,7 @@ export async function reconcileActiveWorkdayNotifications<T extends Notification
   });
   if (inactiveIds.length) {
     await db.workdayNotification.updateMany({
-      where: { id: { in: inactiveIds }, status: 'sent', readAt: null },
+      where: { id: { in: inactiveIds }, status: 'sent' },
       data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
     });
   }
@@ -345,13 +349,15 @@ export function workdayNotificationHref(notification: { issueId: number | null; 
   return '/employee';
 }
 
-async function reconcileStoredUnreadWorkdayNotifications() {
+async function reconcileStoredUnreadWorkdayNotifications(now = new Date()) {
   const rows = await prisma.workdayNotification.findMany({
     where: { status: 'sent', readAt: null },
     select: {
       id: true,
       kind: true,
       fingerprint: true,
+      sentAt: true,
+      scheduledAt: true,
       taskId: true,
       issueId: true,
       reviewId: true,
@@ -360,16 +366,22 @@ async function reconcileStoredUnreadWorkdayNotifications() {
       review: { select: { status: true } },
     },
   });
-  await reconcileActiveWorkdayNotifications(prisma, rows);
+  await reconcileActiveWorkdayNotifications(prisma, rows, now);
 }
 
-async function activeUnreadNotificationTargets(userId: number, excludeNotificationId?: number) {
+async function activeNotificationTargets(userId: number, excludeNotificationId: number | undefined, now: Date) {
   const rows = await prisma.workdayNotification.findMany({
-    where: { userId, status: 'sent', readAt: null },
+    where: { userId, status: 'sent', OR: [
+      { readAt: null }, { taskId: { not: null } }, { issueId: { not: null } }, { reviewId: { not: null } },
+      { kind: { in: [...EMPLOYEE_ACTION_NOTIFICATION_KINDS] } },
+    ] },
     select: {
       id: true,
+      readAt: true,
       kind: true,
       fingerprint: true,
+      sentAt: true,
+      scheduledAt: true,
       taskId: true,
       issueId: true,
       reviewId: true,
@@ -378,8 +390,12 @@ async function activeUnreadNotificationTargets(userId: number, excludeNotificati
       review: { select: { status: true } },
     },
   });
-  const active = await reconcileActiveWorkdayNotifications(prisma, rows);
-  return new Set(active.filter((notification) => notification.id !== excludeNotificationId).map(notificationTargetKey));
+  const active = await reconcileActiveWorkdayNotifications(prisma, rows, now);
+  const other = active.filter(notification => notification.id !== excludeNotificationId);
+  return {
+    unread: new Set(other.filter(notification => !notification.readAt).map(notificationTargetKey)),
+    current: new Set(other.filter(notification => !notification.readAt || employeeNotificationRequiresAction(notification)).map(notificationTargetKey)),
+  };
 }
 
 export async function dispatchDueWorkdayNotifications(now = new Date()) {
@@ -404,7 +420,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   await reconcileCashInventoryIssues(dispatchTime()).catch(() => undefined);
   await queueCollectionReadyPush(now).catch(() => undefined);
   await queueCashMorningPushes(now).catch(() => undefined);
-  await reconcileStoredUnreadWorkdayNotifications();
+  await reconcileStoredUnreadWorkdayNotifications(dispatchTime());
   const due = await prisma.workdayNotification.findMany({
     where: {
       OR: [
@@ -428,7 +444,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   });
   const pushConfigured = configureWebPush();
   const results: Array<{ id: number; status: string; pushStatus: string }> = [];
-  const activeDue = await filterActiveWorkdayNotifications(prisma, due);
+  const activeDue = await filterActiveWorkdayNotifications(prisma, due, dispatchTime());
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
@@ -486,6 +502,11 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       if(!current || !['pending','sent'].includes(current.status) || current.scheduledAt>dispatchTime())continue;
     }
     const sendTime = dispatchTime();
+    if (informationalNotificationExpired(notification, sendTime)) {
+      await prisma.workdayNotification.updateMany({ where: { id: notification.id, status: { in: ['pending', 'sent'] } },
+        data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
+      continue;
+    }
     const notBefore = employeePushNotBefore(sendTime);
     if (notBefore > sendTime) {
       await prisma.workdayNotification.updateMany({ where: {
@@ -494,15 +515,15 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       continue;
     }
 
-    const unreadTargets = await activeUnreadNotificationTargets(notification.userId, notification.id);
+    const targets = await activeNotificationTargets(notification.userId, notification.id, dispatchTime());
     const targetKey = notificationTargetKey(notification);
     const targetAlreadyUnread = suppressUnreadWorkdayPush({
-      targetAlreadyUnread: unreadTargets.has(targetKey) && !isCashMorning(notification),
+      targetAlreadyUnread: targets.unread.has(targetKey) && !isCashMorning(notification),
       kind: notification.kind,
       task: notification.task,
     });
-    unreadTargets.add(targetKey);
-    const badgeCount = unreadTargets.size;
+    targets.current.add(targetKey);
+    const badgeCount = targets.current.size;
     if (delivery?.state === 'send') {
       // CAS guards both the timer and an overlapping internal dispatcher request.
       const claimed = await prisma.workdayNotification.updateMany({ where: {

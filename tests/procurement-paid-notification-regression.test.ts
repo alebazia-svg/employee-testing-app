@@ -61,7 +61,7 @@ test('today’s request-based payment retires its notification through the real 
     assert.equal(writes.length, fullyPaid ? 1 : 0, scenario);
     if (fullyPaid) {
       assert.equal(periods.at(-1)?.[1], '2026-10-01', 'exclusive end includes today');
-      assert.deepEqual(writes[0], { where: { id: { in: [1] }, status: 'sent', readAt: null },
+      assert.deepEqual(writes[0], { where: { id: { in: [1] }, status: 'sent' },
         data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
       assert.deepEqual(await mod.exports.filterActiveWorkdayNotifications(db, [notice]), [], 'pending push is also suppressed');
     }

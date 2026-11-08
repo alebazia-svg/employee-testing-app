@@ -100,6 +100,7 @@ test('dispatcher sends morning once even if evening is unread; badge remains one
       '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {} },
     '@/lib/procurement-collection-notifications': { COLLECTION_READY_KIND: kind, COLLECTION_PUSH_COPY: { title: 'Деньги для оплаты', body: 'Календарь' }, queueCollectionReadyPush: async () => {}, collectionPushDecision: async () => ({ state: 'send' }) },
     '@/lib/procurement-morning-notifications': { queueCashMorningPushes: async () => {} },
+    './workday-end-notifications': { queueWorkdayEndReminders: async () => {}, activeWorkdayEndReminders: async () => new Set() },
     'web-push': { setVapidDetails: () => {}, sendNotification: async (_: any, payload: string) => sent.push(JSON.parse(payload)) },
   });
   await Promise.all([api.dispatchDueWorkdayNotifications(morning), api.dispatchDueWorkdayNotifications(morning)]);
@@ -107,7 +108,7 @@ test('dispatcher sends morning once even if evening is unread; badge remains one
 });
 
 test('real bell returns one fresh card and reading it updates only the user’s sent thread', async () => {
-  const reminder = { id: 2, userId: 42, kind, fingerprint: cashMorningKey(base), title: 'stale', body: 'stale' };
+  const reminder = { id: 2, userId: 42, kind, fingerprint: cashMorningKey(base), title: 'stale', body: 'stale', status: 'sent', sentAt: morning, readAt: null, taskId: null, issueId: null, reviewId: null };
   let readWhere: any;
   const api = await load('app/api/employee/workday-notifications/route.ts', {
     '@/lib/auth': { getCurrentUser: async () => ({ id: 42 }) },
@@ -118,12 +119,13 @@ test('real bell returns one fresh card and reading it updates only the user’s 
     } } },
     '@/lib/workday-notifications': { reconcileActiveWorkdayNotifications: async (_: any, rows: any) => rows, workdayNotificationHref: () => '/procurement' },
     '@/lib/procurement-collection-notifications': { COLLECTION_READY_KIND: kind, currentCollectionPushes: async () => ({ state: 'ready', notices: [{ userId: 42, fingerprint: base, title: 'Можно получить 10 000 ₽', body: 'Касса' }] }) },
+    './procurement-collection-notifications': { COLLECTION_READY_KIND: kind, currentCollectionPushes: async () => ({ state: 'ready', notices: [{ userId: 42, fingerprint: base, title: 'Можно получить 10 000 ₽', body: 'Касса' }] }) },
   });
   const result = await (await api.GET()).json();
   assert.equal(result.notifications.length, 1); assert.equal(result.notifications[0].id, 2);
   assert.equal(result.notifications[0].title, 'Можно получить 10 000 ₽');
   assert.equal((await api.POST(new Request('http://local', { method: 'POST', body: JSON.stringify({ id: 2 }) }))).status, 200);
-  assert.deepEqual(readWhere, { userId: 42, kind, fingerprint: { in: [base, cashMorningKey(base)] }, status: 'sent' });
+  assert.deepEqual(readWhere, { userId: 42, kind, fingerprint: { in: [base, cashMorningKey(base)] }, status: 'sent', sentAt: { lte: morning } });
 });
 test('both cash invitation kinds retire morning and original together, not during outage', async () => {
   for (const k of [kind, 'procurement_delivery_ready']) for (const state of ['active', 'paid', 'offline']) {

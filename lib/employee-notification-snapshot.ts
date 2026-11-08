@@ -1,5 +1,6 @@
 import { employeeReplyMessageId, employeeReplyCopy } from './employee-reply-author';
 import 'server-only';
+import { EMPLOYEE_ACTION_NOTIFICATION_KINDS, employeeNotificationRequiresAction } from './notification-lifetime';
 import { loadEmployeeExpenseRouting } from './employee-expense-routing-snapshot';
 import { expenseRouteKey, expenseRouteCopy } from './employee-expense-routing';
 import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
@@ -16,31 +17,33 @@ import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 import { loadScheduleNearReminders } from './work-schedule-notifications';
 import { SCHEDULE_NEAR_KIND, scheduleCalendarHref } from './schedule-near-reminder';
 
+const notificationSelect = {
+  id: true, status: true, kind: true, fingerprint: true, title: true, body: true,
+  sentAt: true, readAt: true, taskId: true, issueId: true, reviewId: true,
+  task: { select: { status: true, category: true, title: true, run: { select: { status: true } } } },
+  issue: { select: { status: true, employeeActionRequired: true, ruleKey: true, title: true, detail: true, sourceData: true } },
+  review: { select: { status: true } },
+} as const;
+
 export async function loadEmployeeNotifications(user: { id: number }, readOnly = false) {
-  const rows = await prisma.workdayNotification.findMany({
+  const [recentRows, actionRows] = await Promise.all([prisma.workdayNotification.findMany({
     where: { userId: user.id, sentAt: { not: null }, OR: [
       { status: 'sent', readAt: null },
       { status: { in: ['sent', 'cancelled'] }, sentAt: { gte: new Date(Date.now() - 30 * 86400000) } },
     ] },
     take: 200,
     orderBy: { sentAt: 'desc' },
-    select: {
-      id: true,
-      status: true,
-      kind: true,
-      fingerprint: true,
-      title: true,
-      body: true,
-      sentAt: true,
-      readAt: true,
-      taskId: true,
-      issueId: true,
-      reviewId: true,
-      task: { select: { status: true, category: true, title: true, run: { select: { status: true } } } },
-      issue: { select: { status: true, employeeActionRequired: true, ruleKey: true, title: true, detail: true, sourceData: true } },
-      review: { select: { status: true } },
-    },
-  });
+    select: notificationSelect,
+  }), prisma.workdayNotification.findMany({
+    // Read/history limits must never hide unfinished work, even after opening.
+    where: { userId: user.id, status: 'sent', sentAt: { not: null }, OR: [
+      { taskId: { not: null } }, { issueId: { not: null } }, { reviewId: { not: null } },
+      { kind: { in: [...EMPLOYEE_ACTION_NOTIFICATION_KINDS] } },
+    ] },
+    select: notificationSelect,
+  })]);
+  const rows = [...new Map([...recentRows, ...actionRows].map(row => [row.id, row])).values()]
+    .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0));
   const replyRows = rows.map(row => ({ row, messageId: employeeReplyMessageId(row) })).filter(item => item.messageId);
   const issueMessageIds = replyRows.filter(item => item.row.kind === 'workday_issue_reply').map(item => item.messageId!);
   const reviewMessageIds = replyRows.filter(item => item.row.kind === 'terminal_fiscal_review_reply').map(item => item.messageId!);
@@ -87,6 +90,7 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       return {
         ...notification,
         active: activeIds.has(notification.id),
+        actionRequired: activeIds.has(notification.id) && employeeNotificationRequiresAction(notification),
         ...(issue ? { attentionKind: issue.ruleKey === 'kkm_shift_not_closed' ? 'closing' as const : 'receipt' as const } : {}),
         title: replyCopy?.title || (notification.kind === 'workday_closed_by_admin' ? 'Смена завершена' : '') || (activeIds.has(notification.id) ? scheduleCopy?.title || copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title),
         body: replyCopy?.body || (activeIds.has(notification.id) ? scheduleCopy?.body || copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body).replace(/^Администратор завершил рабочий день за (\d{4}-\d{2}-\d{2})\./u, 'Смена за $1 завершена.'),
@@ -94,6 +98,6 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       };
     })
     .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))
-    .slice(0, 100);
+    .filter((notification, index) => index < 100 || notification.actionRequired);
   return { notifications };
 }
