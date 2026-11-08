@@ -1859,3 +1859,15 @@ Local continuation verification completed on the same candidate:
   live/branch immediately before an authorized release. Deployment, rollback
   image-registry verification (sudo) and merged-candidate production checks
   remain outstanding. Preparation is not deployment authorization.
+
+### 2026-11-08 — Reliability 1.22.2 released and verified
+
+Owner explicitly authorized after completed1.22.1. Runtime6ef2687; public metadata,
+server source, authenticated desktop label, actual original installed ADMIN PWA,
+preserved payroll/config/uploads and isolated previous-image boot checked.
+Final registration/retention exit0; current plus two reserves present,21.58GiB free.
+See ../ops/portal-reliability-release-20261108.md for exact files, evidence and
+limits. Initial raw mount-order check failed; sorted full-parameter comparison
+passed without runtime changes. Existing AUSN cache timeout / financial forecast
+exit1 and historical T-Bank health warnings remain unresolved and visible. Do not
+report the full original audit or all source-service failures as closed.
