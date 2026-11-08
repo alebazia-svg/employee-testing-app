@@ -60,8 +60,10 @@ Released and independently verified on 8 November 2026:
   an EXIT line. Parent storage lock was released before registry registration.
 - Root verification folder `/root/mobo-activity-1.22.1-20261108-retry2`; owner-readable
   technical log `/home/bela/mobo-activity-1.22.1-release.log`.
-- After this worker completed, the deployment checkout advanced to the separate
-  reliability candidate 1.22.2 / `6ef2687`; it contains this release as an ancestor.
+- After this worker completed, the separate reliability release 1.22.2 / `6ef2687`
+  became public (build `2026-11-08T16:18:25.924Z`, visible19:18 MSK). It contains
+  this release as an ancestor. Authenticated Activity was rechecked on1.22.2:
+  preserved guide acknowledgements, schedule source outcome and chronology work.
   Do not overwrite it with the older Activity checkout or reserve its version.
 
 The owner subsequently approved a local interactive preview of a personalised
