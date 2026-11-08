@@ -1871,3 +1871,13 @@ limits. Initial raw mount-order check failed; sorted full-parameter comparison
 passed without runtime changes. Existing AUSN cache timeout / financial forecast
 exit1 and historical T-Bank health warnings remain unresolved and visible. Do not
 report the full original audit or all source-service failures as closed.
+
+### 2026-11-08 — Remaining source recovery candidate prepared
+
+Owner approved remaining source fixes and explicitly added АЛЬФА-БАНК to owner
+forecast funds. See ../ops/source-recovery-candidate-20261108.md for exact source
+causes, pinned VTB zero-proof contract, active-aQsi health, Platforma timeout
+recovery, live parity and complete AUSN background readback. Candidate only;
+no new release/host install authorized yet. Tests/build pass; source warnings
+must recover through real normal checks, never by deleting/marking down events.
+Strict owner reporting/calculators/payment processes remain unchanged.
