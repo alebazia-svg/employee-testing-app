@@ -109,3 +109,46 @@ AUSN worktree `/Users/bela/Projects/ausn-source-recovery-20261108`:
 - `tools/ausn-monthly-control/ausn_cache_refresh_test.py`
 - `tools/ausn-monthly-control/deploy/ausn-report-cache-refresh`
 - `tools/ausn-monthly-control/deploy/ausn-report-cache-refresh.service.d/90-background-source-windows.conf`
+
+
+## Production checkpoint —2026-11-08, verification incomplete
+
+This supersedes the candidate-only status above. Owner explicitly approved the
+new portal release and AUSN task installation, rollback and post-release checks.
+
+- Portal1.22.3 is live at source78d7446393ea4a33637bb4aa6ee1e5513f3e1aa2,
+  build2026-11-08T19:26:58.555Z, healthy image
+  sha256:b2af4d1f7df016a05c51b7aeac7099da06cecf7206a4b26326aa9366ba53feea.
+- Prior1.22.2 image was boot-tested in isolation. Configuration/payroll/upload
+  preservation, identical env and sorted mounts passed after restart. No new
+  production migrations. New image is NOT yet registered verified.
+- Natural watchdogs recovered both T-Bank sources and forecast service; desktop
+  System shows only AUSN technical failure. Forecast readback of seven accounts,
+  Alfa once and explicitly confirmed VTB zero still requires final verification.
+- The permanent AUSN task failed. Original full/current background helper had a
+  shorter180-second monthly OFD HTTP budget inside its720-second report budget.
+  Runtime source05b333b631dd343e5adf10bddc05a7a82300a261 now applies600 seconds
+  only to background reads; strict owner default stays180.89 Python tests passed,
+  one skipped. New immutable runtime's39 Python source hashes verified; previous
+  runtime7b8801588014f1e69ec271ee98fed53ae6224d2d retained for rollback.
+- No sandbox protections were weakened, and source cache identity/revalidation
+  was preserved. New code identity requires cold source revalidation.
+- Subsequent strict-sandbox trace failed on April2026 OFD HTTP503. A separate
+  read-only April diagnostic started20:00:21UTC and remained running after ten
+  minutes.600 seconds alone is NOT established as sufficient. Do not claim AUSN
+  recovered until actual scheduled full/current succeeds and published reports
+  read back correctly. Last complete reports are retained, never partial totals.
+- Reporting current symlink changed to05b333b; telegram-current stays556fcaf.
+  No1C extension changes or financial actions. Host wrapper/drop-in rollback and
+  runtime symlink rollback are prepared in private server staging.
+- Desktop authenticated version1.22.3 observed. Original installed iPhone PWA
+  Control/menu/scroll dock checks passed so far; final visible phone version and
+  re-entry verification remain incomplete because Mirroring relocked.
+- Two limit predictions in the bell conflict with the approved documentary tax
+  view (AUSN ended1October). Exact proposed lifecycle correction was presented
+  for separate owner approval; NOT implemented. Other document reminders remain.
+- Private staging:/home/bela/mobo-source-recovery-1.22.3; rollback backup:
+  /root/mobo-source-recovery-1.22.3-20261108. release.sh exited1 at initial AUSN
+  verification, so use reviewed scoped finalization after all checks; no blind
+  rebuild/restart or premature verified-image registration.
+- Main portal and original AI workspace unrelated dirty files remain untouched.
