@@ -19,6 +19,7 @@ project from scratch.
 | Module | Main Files | Memory |
 | --- | --- | --- |
 | Employee Workday | `app/(dashboard)/employee/`, `app/api/employee/workday/`, `app/api/employee/shift-control/`, `lib/workday.ts` | `workday-playbook.md` |
+| ADMIN Home | `app/(dashboard)/admin/home/`, `app/api/admin/home/`, `lib/admin-home*.ts` | `admin-home-local-20261107.md`, `../ops/admin-home-release-candidate-20261108.md` — approved interface and source refresh; local candidate1.22.0, no deployment approval |
 | Admin Workday | `app/(dashboard)/admin/workday/`, `app/api/admin/workday/` | `workday-playbook.md`, `one-c-workday-audit.md`, `team-control-release-20261018.md` |
 | OFD / SABY / 1C matching | `app/(dashboard)/admin/ofd/`, `app/api/admin/ofd/probe/`, `lib/saby-ofd.ts`, `lib/one-c.ts` | `ofd-one-c-playbook.md` |
 | Payroll | `app/(dashboard)/admin/payroll/`, payroll helpers/tests | `payroll-playbook.md` |
