@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const read = path => fs.readFileSync(path, 'utf8');
-test('PWA and icon share copper contours without lighting filters', () => {
+test('approved branding assets and current PWA header survive release', () => {
   const asset = fs.readFileSync('public/brand/mobo-master/mobo-symbol-copper-ui.svg');
   assert.equal(createHash('sha256').update(asset).digest('hex'), 'aebb312cbb4c759a712fa640a0025ccf0f3093509d4b66bbdfeffcc4f8dae929');
   const compact = read('public/brand/mobo-master/mobo-symbol-copper-compact.svg');
@@ -12,7 +12,11 @@ test('PWA and icon share copper contours without lighting filters', () => {
   for (const color of ['#efbd93', '#cb8956', '#b96c36']) assert.ok(compact.includes(color));
   assert.doesNotMatch(compact, /<filter|feGaussianBlur|feSpecularLighting|<image/);
   assert.match(read('scripts/render-copper-app-icons.mjs'), /Buffer.from\(compactMark\)/);
-  assert.match(read('app/(dashboard)/employee/EmployeePortalHeader.tsx'), /src='\/brand\/mobo-master\/mobo-symbol-copper-compact.svg\?v=1\.1\.1'/);
+  // The already released 1.21.46 header uses the light mark in AboutApp.
+  // Keep the existing screen; do not restore an obsolete asset for this test.
+  const header = read('app/(dashboard)/employee/EmployeePortalHeader.tsx');
+  assert.match(header, /<EmployeeAboutApp showLogout>/);
+  assert.match(header, /src='\/brand\/mobo-master\/mobo-symbol-3d-light-ui.svg\?v=1\.1\.2'/);
   assert.doesNotMatch(read('public/pwa-copper.css'), /content:url\('\/brand\/mobo-master\/mobo-symbol-3d-light-ui.svg'\)/);
 });
 test('release contains no acceptance routes, seeds, design lab or test runner', () => {
