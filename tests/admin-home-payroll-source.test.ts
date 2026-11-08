@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {homePayrollAggregate} from '../lib/admin-home-payroll-source';
+import {createPayrollOneCControlAggregate,getPayrollOneCSourceFingerprint,getPayrollOneCSupplierRulesFingerprint} from '../lib/payroll-one-c-control-aggregate';
+const suppliers=[{normalizedName:'supplier',isActive:true,updatedAt:'2026-11-07T10:00:00Z'}];
+const slices=[{kind:'DAILY',dateFrom:'2026-11-01',dateTo:'2026-11-01',contentHash:'source',revision:1}];
+function envelope(){return createPayrollOneCControlAggregate({periodKey:'2026-11',sourceKind:'DAILY',sourceFingerprint:getPayrollOneCSourceFingerprint(slices),supplierRulesFingerprint:getPayrollOneCSupplierRulesFingerprint(suppliers),response:{ok:true as const,mode:'control' as const,affectsPayroll:false as const,period:{periodKey:'2026-11',dateFrom:'2026-11-01',verifiedThrough:'2026-11-06'},sales:{rows:[{manager:'Employee',client:'Client',category:'Category',item:'Item',revenue:100,cost:70,grossProfit:30}]},purchases:{ready:true,approvedBase:500},snapshot:{kind:'DAILY' as const,storedAt:'2026-11-07T10:00:00Z'}}});}
+test('uses the existing dated aggregate, including an isolated export without raw slices',()=>{assert.equal(homePayrollAggregate(envelope(),'2026-11',suppliers,slices,'2026-11-07')?.purchases.approvedBase,500);assert.equal(homePayrollAggregate(envelope(),'2026-11',suppliers,[],'2026-11-07')?.period.verifiedThrough,'2026-11-06');});
+test('changed raw source or supplier decision invalidates the aggregate',()=>{assert.equal(homePayrollAggregate(envelope(),'2026-11',suppliers,[{...slices[0],revision:2}],'2026-11-07'),null);assert.equal(homePayrollAggregate(envelope(),'2026-11',[{...suppliers[0],isActive:false}],slices,'2026-11-07'),null);});
+test('rejects wrong, future and impossible coverage rather than inventing a total',()=>{for(const date of ['2026-10-31','2026-11-08','2026-99-99']){const e=envelope();e.response.period.verifiedThrough=date;assert.equal(homePayrollAggregate(e,'2026-11',suppliers,slices,'2026-11-07'),null);}});
+test('rejects incomplete amount and response shapes',()=>{const e=envelope();e.response.purchases.approvedBase=NaN;assert.equal(homePayrollAggregate(e,'2026-11',suppliers,slices,'2026-11-07'),null);assert.equal(homePayrollAggregate({response:{}},'2026-11',suppliers,slices,'2026-11-07'),null);});

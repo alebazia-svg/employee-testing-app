@@ -41,7 +41,7 @@ function stamp(value?: string) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
 
-export function ProcurementPaymentHistory({ plans, hidden = false, showManager = false, splitView = false, compactBuyer = false, adminDialogs = false, searchQuery, receiptCounts={}, receiptLoadState='loading' }: { plans: HistoryPlan[]; hidden?: boolean; showManager?: boolean; splitView?: boolean; compactBuyer?: boolean;adminDialogs?:boolean;searchQuery?:string;receiptCounts?:Record<string,number>;receiptLoadState?:'loading'|'ready'|'error' }) {
+export function ProcurementPaymentHistory({ plans, hidden = false, showManager = false, splitView = false, compactBuyer = false, adminDialogs = false, searchQuery, receiptCounts={}, receiptLoadState='loading',openItemId }: { openItemId?:string;plans: HistoryPlan[]; hidden?: boolean; showManager?: boolean; splitView?: boolean; compactBuyer?: boolean;adminDialogs?:boolean;searchQuery?:string;receiptCounts?:Record<string,number>;receiptLoadState?:'loading'|'ready'|'error' }) {
   const dialogList=adminDialogs||compactBuyer;
   const List=dialogList?ProcurementAdminList:ProcurementSplitList;
   const compact = compactBuyer && !showManager;
@@ -101,7 +101,7 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
       </article>;
 
   };
-  if (splitView || compactBuyer) return <List {...(dialogList?{busy:documentBusy}:{})} history={dialogList} searchQuery={searchQuery} items={dated.map(({plan,date})=>{
+  if (splitView || compactBuyer) return <List {...(dialogList?{busy:documentBusy,openItemId}:{})} history={dialogList} searchQuery={searchQuery} items={dated.map(({plan,date})=>{
     const completion=plan.status===COMPLETED_WITHOUT_TOPUP?paymentCompletion(plan.oneCCashEvidence):null;
     const foreign=completion?.paidForeignAmount??plan.evidence?.paidForeignAmount??0;
     const paid=completion?.paidAmount??Number(plan.evidence?.issuedAmount||0);

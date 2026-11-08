@@ -4,7 +4,8 @@ import { employeeSalaryBalance, type PayrollBalanceRead } from '@/lib/payroll-on
 import { resolvePayrollSettlementIdentity, type PayrollCashRead } from '@/lib/payroll-one-c-payments';
 import { payrollPaymentMonth } from '@/lib/payroll-settlement-month';
 import { payrollPostedAccrual, type PayrollLedgerRead } from '@/lib/payroll-one-c-ledger';
-import { oldestPayrollDebt } from '@/lib/payroll-oldest-debt';
+import { paymentCardSummary } from '@/lib/payroll-payment-summary';
+export { paymentCardSummary } from '@/lib/payroll-payment-summary';
 
 export type Evidence = { periodKey: string; balance: PayrollBalanceRead; cash: PayrollCashRead; ledger?: PayrollLedgerRead };
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(value);
@@ -30,19 +31,6 @@ export function usePayrollPaymentEvidence(periodKey: string | null) {
     return () => controller.abort();
   }, [periodKey, retry]);
   return { data: data?.periodKey === periodKey ? data : null, error, retry: () => setRetry(x => x + 1) };
-}
-export function paymentCardSummary(data: Evidence | null, employee: string, names: string[]) {
-  if (!data) return null;
-  const ref = resolvePayrollSettlementIdentity(employee, names, data.periodKey, data.cash, data.balance, data.ledger?.employees);
-  const balance = employeeSalaryBalance(data.balance, ref);
-  if (!ref || !balance) return null;
-  const documents = data.cash.documents.filter(d => d.identityConfirmed && d.employeeRef.toLowerCase() === ref);
-  const monthly = oldestPayrollDebt(employee, ref, data.periodKey, data.ledger, data.cash, balance.remainingMinor);
-  const allocations = documents.map(document => ({document, parts: payrollPaymentMonth(employee, document)}));
-  const advances = allocations.reduce((sum, {parts}) => sum + (parts?.period === data.periodKey ? Math.round(parts.advance * 100) : 0), 0) / 100;
-  const periodPaid = allocations.reduce((sum, {document,parts}) => sum + (parts?.period === data.periodKey ? Math.round(document.amount * 100) : 0), 0) / 100;
-  return { balance, documents, monthly, accruedInOneC: payrollPostedAccrual(data.ledger, ref, data.periodKey), advances: monthly?.advances ?? advances, periodPaid: monthly?.paid ?? periodPaid, unassigned: monthly ? 0 : allocations.filter(x=>!x.parts).length,
-    paid: documents.reduce((s, d) => s + Math.round(d.amount * 100), 0) / 100 };
 }
 export default function PayrollPaymentEvidence({ periodKey, employee, names, read }: { periodKey: string; employee: string; names: string[]; read: ReturnType<typeof usePayrollPaymentEvidence> }) {
   const { data, error } = read;

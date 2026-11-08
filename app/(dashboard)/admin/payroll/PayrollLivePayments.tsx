@@ -4,8 +4,8 @@ import { paymentCardSummary, type usePayrollPaymentEvidence } from './PayrollPay
 import { payrollPaymentMonth, payrollPaymentDateColumn } from '@/lib/payroll-settlement-month';
 import { currentPayrollSettlement, completeSettlementTotal } from '@/lib/payroll-current-export';
 const money=(v:number)=>v.toLocaleString('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2});
-export default function PayrollLivePayments({enabled,read,names,periodPicker,onEmployee,children}:{enabled:boolean;read:ReturnType<typeof usePayrollPaymentEvidence>;names:string[];periodPicker:ReactNode;onEmployee:(name:string)=>void;children:ReactNode}) {
-  const [tab,setTab]=useState('accruals');
+export default function PayrollLivePayments({enabled,read,names,periodPicker,onEmployee,children,initialTab="accruals"}:{initialTab?:"accruals"|"payments";enabled:boolean;read:ReturnType<typeof usePayrollPaymentEvidence>;names:string[];periodPicker:ReactNode;onEmployee:(name:string)=>void;children:ReactNode}) {
+  const [tab,setTab]=useState(initialTab);
   if(!enabled)return <>{children}</>;
   const summaries=names.map(name=>({name,value:paymentCardSummary(read.data,name,names)}));
   const allMatched = summaries.length > 0 && summaries.every(row => row.value !== null);

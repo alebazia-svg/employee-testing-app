@@ -3151,8 +3151,8 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   return { status: 'OK', reason: 'замечаний нет' };
 }
 
-export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, dayReviewEnabled = false, settlementRows, settlementEvidence }: { visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; dayReviewEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
-  const defaultPayrollPeriod = liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
+export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, dayReviewEnabled = false, settlementRows, settlementEvidence, initialPeriod, initialPaymentsTab=false }: { initialPeriod?: string; initialPaymentsTab?: boolean; visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; dayReviewEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
+  const defaultPayrollPeriod = initialPeriod ? {year:initialPeriod.slice(0,4),month:String(Number(initialPeriod.slice(5))-1)} : liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
   const modernManagerCard = liveWorkspace || Boolean(settlementRows);
   const [showCurrentComparison, setShowCurrentComparison] = useState(false);
   const [correction, setCorrection] = useState<{ periodKey: string; runId: number; runNumber: number } | null>(null);
@@ -6217,7 +6217,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         void openOneCManagerDetails(match.manager);
         return true;
       }}>
-      {(openSettlementCard) => <PayrollLivePayments enabled={liveWorkspace} read={paymentRead} names={paymentNames} periodPicker={periodPicker} onEmployee={name=>{
+      {(openSettlementCard) => <PayrollLivePayments initialTab={initialPaymentsTab ? "payments" : "accruals"} enabled={liveWorkspace} read={paymentRead} names={paymentNames} periodPicker={periodPicker} onEmployee={name=>{
         requestedManagerCardTab.current = 'payments';
         if(workspaceFinalRun){setSelectedManagerSource('saved');setSelectedManager(name);}else{void openOneCManagerDetails(name);}
         setManagerCardTab('payments');
