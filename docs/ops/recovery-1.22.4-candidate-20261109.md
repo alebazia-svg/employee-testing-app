@@ -27,8 +27,10 @@ No production process, tax total, financial operation or message was altered.
    comparison model and the existing exceeded-limit fact signal remain.
    Missing/invalid/unavailable proof never retires an active warning.
 2. Add up to three retries15minutes after a failed scheduled AUSN refresh.
-   Initial attempt plus retries are limited to four starts within3hours.
-   The primary daily timer, full/current calculation, cache identity,
+   Initial attempt plus retries are limited to four starts within4hours.
+   The4-hour limit includes the final attempted restart after all four
+   30-minute timeouts,90-second stop graces and15-minute waits, preventing
+   an unintended new cycle at the boundary. The primary daily timer, full/current calculation, cache identity,
    completeness gate, sandbox and strict owner CLI remain unchanged.
 3. Necessary safety for those retries: propagate caller cancellation and a
    540-second endpoint deadline to active/queued Platforma reads. The client
@@ -38,7 +40,7 @@ No production process, tax total, financial operation or message was altered.
    count as completed recovery. Other unit-health behavior is unchanged.
 
 Portal code858feefd40609206fec97dfea40000697cbbe8bd; notification change7aa5d86.
-Host policy source28de802e31f991f47aca24cfa330807d81254a72 in the separate
+Host policy sourceea5f8b565ad05f6c38dc4c3c825f075bc6143459 in the separate
 AUSN worktree. Installed reporting runtime stays05b333b; policy-only installation
 does not relabel source caches or change the report code identity.
 
