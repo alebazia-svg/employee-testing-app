@@ -1840,3 +1840,22 @@ Local continuation verification completed on the same candidate:
   group remain, pointing at the inactive preview. Original MOBO untouched.
 - Product code unchanged during this device-check completion; earlier candidate
   test/build evidence remains applicable. No production release/deploy performed.
+
+### 2026-11-08 — Reliability release preparation on latest branch
+
+- Scoped implementation committed, then rebased without conflicts onto
+  origin/design-local-updates 04c097c (activity journal candidate 1.22.1).
+  Production public metadata still 1.22.0; a separate 1.22.1 build was active
+  on VPS during preparation, so no push, checkout or parallel install attempted.
+- Rechecked on merged code: 71 targeted checks, 305 Workday checks, 80 payroll,
+  49 Home/team, one real disposable PostgreSQL recovery integration and five
+  release-metadata checks pass; TypeScript and production build pass. Counts
+  overlap. Client React checks require normal conditions, server checks require
+  react-server; the initial mixed command was corrected without product changes.
+- Pinned credit preservation harness to pre-reliability production 8b4c751,
+  rather than moving HEAD; all eight full-vs-selective output cases pass.
+- No schema/migration changes; durable jobs reuse existing persistent intake
+  mount. Main dirty checkout untouched. Release number not reserved; recheck
+  live/branch immediately before an authorized release. Deployment, rollback
+  image-registry verification (sudo) and merged-candidate production checks
+  remain outstanding. Preparation is not deployment authorization.
