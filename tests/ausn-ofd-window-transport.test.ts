@@ -78,3 +78,27 @@ test('a single-day provider timeout remains incomplete after bounded retries', a
   try { const r=await loadPlatforma('2026-10-01','2026-10-01');assert.equal(reads,3);assert.equal(r.complete,false);assert.equal(r.errors.length,1); }
   finally {globalThis.fetch=savedFetch;if(savedBase===undefined)delete process.env.PLATFORMA_OFD_PROXY_BASE_URL;else process.env.PLATFORMA_OFD_PROXY_BASE_URL=savedBase;}
 });
+
+test('only the timed-out day is split, all half-day receipts are required and malformed success stays incomplete', async () => {
+  const savedFetch=globalThis.fetch,savedBase=process.env.PLATFORMA_OFD_PROXY_BASE_URL;
+  process.env.PLATFORMA_OFD_PROXY_BASE_URL='http://ofd.test';
+  try {
+    for (const malformed of [false,true]) {
+      const calls: string[][]=[];
+      globalThis.fetch=async input=>{
+        const u=new URL(String(input));
+        if(u.pathname.endsWith('/kkts'))return Response.json({data:{kkts:[{registrationNumber:'111'}]}});
+        const start=u.searchParams.get('from')!,end=u.searchParams.get('to')!;calls.push([start,end]);
+        if(Date.parse(end)-Date.parse(start)===86400000)return Response.json({error:{code:'OFD_PROVIDER_TIMEOUT',retryable:true}},{status:504});
+        if(malformed&&start.includes('12:00:00'))return Response.json({meta:{complete:true},data:{}});
+        const receipt=dto('111',calls.length,start.slice(0,10));receipt.receiptAt=new Date(Date.parse(start)+1000).toISOString();
+        return Response.json({meta:{complete:true},data:{receipts:[receipt]}});
+      };
+      const result=await loadPlatforma('2026-08-13','2026-08-13');
+      assert.equal(calls.length,3);assert.equal(result.complete,!malformed);
+      assert.deepEqual(calls, [['2026-08-13T00:00:00+03:00','2026-08-14T00:00:00+03:00'],['2026-08-13T00:00:00+03:00','2026-08-13T12:00:00+03:00'],['2026-08-13T12:00:00+03:00','2026-08-14T00:00:00+03:00']]);
+      assert.equal(result.receipts.length,malformed?1:2);
+      assert.equal(result.errors.length,malformed?1:0);
+    }
+  } finally {globalThis.fetch=savedFetch;if(savedBase===undefined)delete process.env.PLATFORMA_OFD_PROXY_BASE_URL;else process.env.PLATFORMA_OFD_PROXY_BASE_URL=savedBase;}
+});

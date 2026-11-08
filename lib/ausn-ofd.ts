@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { exportSabyOfdReceipts } from '@/lib/saby-ofd';
+import { readPlatformaReceiptWindow } from './platforma-receipt-window';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -161,6 +162,10 @@ async function getCompletePlatformaPage(url: string) {
   for (let attempt = 1; attempt < 3; attempt += 1) {
     const meta = record(last.body?.meta);
     if (last.response.ok && meta?.complete === true) return last;
+    // Repeating the same oversized window does not repair a provider timeout.
+    // Let the bounded window reader split this exact range instead.
+    if (last.response.status === 504 && record(last.body?.error)?.code === 'OFD_PROVIDER_TIMEOUT'
+      && record(last.body?.error)?.retryable === true) return last;
     await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
     last = await getJson(url);
   }
@@ -212,11 +217,19 @@ export async function loadPlatforma(dateFrom: string, dateTo: string) {
     while (cursor < jobs.length) {
       const index = cursor++;
       const job = jobs[index];
-      const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from: `${job.from}T00:00:00+03:00`, to: `${job.toExclusive}T00:00:00+03:00` });
-      const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
-      const sourceRows = rows(record(result.body?.data)?.receipts);
-      const receipts = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
-      const complete = result.response.ok && record(result.body?.meta)?.complete === true && receipts.length === sourceRows.length;
+      const { receipts, complete } = await readPlatformaReceiptWindow({
+        from: `${job.from}T00:00:00+03:00`, toExclusive: `${job.toExclusive}T00:00:00+03:00`,
+        read: async (from, to) => {
+          const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from, to });
+          const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
+          const receiptRows = record(result.body?.data)?.receipts;
+          const sourceRows = rows(receiptRows);
+          const normalized = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
+          return { receipts: normalized,
+            complete: result.response.ok && record(result.body?.meta)?.complete === true && Array.isArray(receiptRows) && normalized.length === sourceRows.length,
+            providerTimeout: result.response.status === 504 && record(result.body?.error)?.code === 'OFD_PROVIDER_TIMEOUT' && record(result.body?.error)?.retryable === true };
+        },
+      });
       results[index] = { receipts, ...(!complete ? { error: `Platforma OFD receipt export incomplete for KKT …${job.registrationNumber.slice(-4)} (${job.from}–${job.toExclusive})` } : {}) };
     }
   }

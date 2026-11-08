@@ -11,6 +11,17 @@ const input=():AdminForecastInput=>({todayKey:'2026-10-11',plansComplete:true,or
  scopedOrders:[],managerOrders:[],usdtBalance:{balance:100},accountableBalance:{balance:0}});
 const source=():AdminForecastSources=>({asOf:'2026-10-11',checkedAt:'2026-10-11T15:00:00Z',history:null,owner:null,payroll:null,tbank:null,debts:null});
 
+test('approved Alfa account is counted once in ADMIN owner resources without changing other balances',()=>{
+ const s=source();
+ s.owner={forecast:null,activePlanCount:0,sourceWarnings:[],portalPlans:[],money:{accountNames:OWNER_MONEY_ACCOUNTS.map(a=>a.name),positions:OWNER_MONEY_ACCOUNTS.map((_,n)=>({bucketId:String(n),currency:'RUB',balanceMinor:10000,observedOn:s.asOf,verified:true})),complete:true,warnings:[],currencyAssumedRubles:true}};
+ const before=buildAdminProcurementForecast(input(),s);
+ assert.equal(before.debtAllocation.resourcesMinor,70000);
+ const alfa=s.owner.money!.accountNames.indexOf('АЛЬФА-БАНК');
+ assert.ok(alfa>=0);
+ s.owner.money!.positions[alfa].balanceMinor=25000;
+ assert.equal(buildAdminProcurementForecast(input(),s).debtAllocation.resourcesMinor,85000);
+});
+
 test('deferral changes forecast timing, not outstanding obligation or approval reserve',()=>{
  const i=input(),p=i.plansWithOrderContext[0];
  p.evidence={state:'PARTIALLY_ISSUED',issuedAmount:2500,paidAmount:0,remainingAmount:7500};

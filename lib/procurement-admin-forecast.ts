@@ -64,7 +64,8 @@ export function buildAdminProcurementForecast(input: AdminForecastInput, sources
     : null;
   const tbankAccountMinor = ownerBalance(ownerMoney, "Т-Банк КБР");
   const vtbAccountMinor = ownerBalance(ownerMoney, "ВТБ КБР");
-  const bankParts = [tbankAccountMinor, vtbAccountMinor];
+  const alfaAccountMinor = ownerBalance(ownerMoney, "АЛЬФА-БАНК");
+  const bankParts = [tbankAccountMinor, vtbAccountMinor, alfaAccountMinor];
   const bankAccountsMinor = bankParts.every((value) => value !== null)
     ? bankParts.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;

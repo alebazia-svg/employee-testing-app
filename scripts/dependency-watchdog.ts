@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { getAIAgentHealth } from '@/lib/one-c';
 import { runSabyOfdProbe } from '@/lib/saby-ofd';
 import { getTBankTerminals } from '@/lib/tbank-acquiring';
+import { loadCompleteTBankOperations } from '@/lib/terminal-fiscal-sources';
+import { confirmsCabinetReplacement, probeAcquiringDependency } from '@/lib/acquiring-dependency-probe';
 import { expiryWarning, parseDependencyExpiries, type DependencyProbe } from '@/lib/dependency-watchdog';
 import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 
@@ -26,20 +28,25 @@ async function platformaProbe(): Promise<DependencyProbe> {
   }
 }
 
-async function probes(): Promise<DependencyProbe[]> {
+async function probes(): Promise<Array<DependencyProbe & { source?: 'aqsi' | 'legacy' }>> {
   const checkedAt = new Date();
   const date = moscowDate(checkedAt);
   const inn = process.env.SABY_OFD_ORGANIZATION_INN?.trim() ?? '';
   const [oneC, saby, tbank, platforma] = await Promise.all([
     getAIAgentHealth(),
     runSabyOfdProbe({ organizationInn: inn, dateFrom: date, dateTo: date, limit: 1 }),
-    getTBankTerminals(),
+    probeAcquiringDependency({ config: {
+      aqsiKey: Boolean(process.env.AQSI_API_KEY?.trim()),
+      mappings: process.env.AQSI_TERMINAL_MAPPINGS,
+      legacyKey: process.env.AQSI_PORTAL_TERMINAL_KEY,
+      legacyId: process.env.AQSI_TERMINAL_ID,
+    }, readOperations: loadCompleteTBankOperations, readLegacyTerminals: getTBankTerminals, now: checkedAt }),
     platformaProbe(),
   ]);
   return [
     { key: 'one_c', label: '1С', ok: oneC.ok, checkedAt, detail: oneC.ok ? '' : compact(oneC.errors.join('; ')) },
     { key: 'saby_ofd', label: 'СБИС ОФД', ok: saby.ok, checkedAt, detail: saby.ok ? '' : compact(saby.errors?.join('; ')) },
-    { key: 'tbank_acquiring', label: 'Т-Банк — терминалы', ok: tbank.ok, checkedAt, detail: tbank.ok ? '' : compact(tbank.error) },
+    tbank,
     platforma,
   ];
 }
@@ -72,6 +79,18 @@ async function main() {
     }
     if (result.ok && latest?.type === 'dependency.down') {
       await publish({ eventKey: `dependency:${result.key}:recovered:${createHash('sha256').update(result.checkedAt.toISOString()).digest('hex').slice(0, 16)}`, type: 'dependency.recovered', title: `Связь восстановлена: ${result.label}`, body: 'Источник снова доступен. Пропущенный период будет перепроверен действующими контрольными заданиями.', sourceId: result.key });
+    }
+    if (result.key === 'tbank_acquiring' && result.ok && result.source === 'aqsi' && process.env.TBANK_CABINET_SNAPSHOT_ENABLED !== 'true') {
+      const cabinet = await prisma.adminInboxEvent.findFirst({ where: {
+        sourceType: 'dependency', sourceId: 'tbank_cabinet_operations',
+        type: { in: ['dependency.down', 'dependency.recovered'] },
+      }, orderBy: { occurredAt: 'desc' } });
+      if (confirmsCabinetReplacement({ cabinetEnabled: false, source: result.source, ok: result.ok, latestType: cabinet?.type })) {
+        await publish({ eventKey: `dependency:tbank_cabinet_operations:replaced:${cabinet!.id}`,
+          type: 'dependency.recovered', title: 'Поступление операций Т-Банка подтверждено через aQsi',
+          body: 'Все настроенные действующие терминалы проверены через текущее подключение. Старый браузерный кабинет отключён; прежний сбой сохранён в журнале.',
+          sourceId: 'tbank_cabinet_operations' });
+      }
     }
   }
 

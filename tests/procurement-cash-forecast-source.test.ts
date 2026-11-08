@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { OWNER_MONEY_ACCOUNTS, parseOwnerMoneyStatements } from '../lib/procurement-cash-forecast-source';
+import { OWNER_MONEY_ACCOUNTS, VTB_OWNER_ACCOUNT, parseOwnerMoneyStatements } from '../lib/procurement-cash-forecast-source';
 
 const asOf = '2026-09-12';
 const row = (name: string, type: string, index: number) => ({
@@ -16,13 +16,14 @@ const valid = () => ['bank', 'cash'].map((kind) => payload(kind,
   OWNER_MONEY_ACCOUNTS.filter((account) => account.type === kind)
     .map((account) => row(account.name, kind, OWNER_MONEY_ACCOUNTS.indexOf(account)))));
 
-test('maps exactly six verified owner bank/card/safe positions and no other 1C cashboxes', () => {
+test('maps exactly seven verified owner bank/card/safe positions and no other 1C cashboxes', () => {
   const statements = valid();
   statements[1].accounts.push(row('Касса Подотчетника', 'cash', 20));
+  statements[1].accounts.push(row('Сейф Расходный ', 'cash', 21));
   const result = parseOwnerMoneyStatements(statements, asOf);
   assert.equal(result.complete, true);
-  assert.equal(result.positions.length, 6);
-  assert.equal(result.positions.reduce((sum, position) => sum + position.balanceMinor, 0), 72_000);
+  assert.equal(result.positions.length, 7);
+  assert.equal(result.positions.reduce((sum, position) => sum + position.balanceMinor, 0), 84_000);
   assert.ok(result.accountNames.includes('Сейф Депозитный'));
   assert.equal(result.currencyAssumedRubles, true);
 });
@@ -42,6 +43,9 @@ test('does not silently use an incomplete, mismatched or newly named account set
   added[1].accounts.push(row('Новая карта КБР', 'cash', 25));
   assert.equal(parseOwnerMoneyStatements(added, asOf).complete, false);
   assert.ok(parseOwnerMoneyStatements(added, asOf).warnings.includes('new_owner_account_needs_mapping'));
+  const unknownSafe = valid();
+  unknownSafe[1].accounts.push(row('Новый сейф', 'cash', 26));
+  assert.equal(parseOwnerMoneyStatements(unknownSafe, asOf).complete, false);
 });
 
 test('rejects stale or truncated statement and duplicate account ref', () => {
@@ -56,4 +60,19 @@ test('rejects stale or truncated statement and duplicate account ref', () => {
   const duplicate = valid();
   (duplicate[1].accounts[0] as ReturnType<typeof row>).account.ref = 'account-0';
   assert.equal(parseOwnerMoneyStatements(duplicate, asOf).complete, false);
+});
+
+test('zero VTB requires its exact complete scoped empty statement, never just absence', () => {
+  const statements = valid();
+  statements[0].accounts = statements[0].accounts.filter((r: any) => r.account.name !== 'ВТБ КБР');
+  const empty = { ...payload('bank', []), account_ref: VTB_OWNER_ACCOUNT.ref, movements: [], movements_returned: 0 };
+  const proof = { ...VTB_OWNER_ACCOUNT, payload: empty };
+  assert.equal(parseOwnerMoneyStatements(statements, asOf).complete, false);
+  const verified = parseOwnerMoneyStatements(statements, asOf, [proof]);
+  assert.equal(verified.complete, true);
+  assert.equal(verified.positions.find(p => p.bucketId === `onec:${VTB_OWNER_ACCOUNT.ref}`)?.balanceMinor, 0);
+  for (const patch of [{ complete: false }, { truncated: true }, { date_to: '2026-09-11' }, { account_ref: 'wrong' }, { movements: [{}] }, { movements_returned: 1 }, { accounts: [{}] }]) {
+    assert.equal(parseOwnerMoneyStatements(statements, asOf, [{ ...proof, payload: { ...empty, ...patch } }]).complete, false);
+  }
+  assert.equal(parseOwnerMoneyStatements(statements, asOf, [{ ...proof, ref: '00000000-0000-0000-0000-000000000001', payload: { ...empty, account_ref: '00000000-0000-0000-0000-000000000001' } }]).complete, false);
 });
