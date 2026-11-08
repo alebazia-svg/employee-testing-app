@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenLayer } from '@/components/EmployeeScreenObservation';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
@@ -101,6 +102,8 @@ export function CashIssueProvider({ children }: { children: ReactNode }) {
     document.addEventListener('keydown', onKey);
     return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); previous?.focus({preventScroll:true}); };
   }, [openedRef, close]);
+  useEmployeeScreenLayer(openedRef?{dialog:'cash_issue',ref:openedRef}:null,75);
+  useEffect(()=>{if(!preview?.followScreen)return;const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);if(!c?.live||!c.runtime?.screen)return;const screen=c.runtime.screen;if(screen.dialog==='cash_issue'&&screen.ref){if(openedRef!==screen.ref)open(screen.ref);}else if(openedRef)setOpenedRef(null);},[preview?.followScreen,preview?.deviceSnapshot]);
   const request = snapshot.request?.ref === openedRef ? snapshot.request : null;
   const unknown = snapshot.unavailable || Boolean(request && Date.now() - Date.parse(request.checkedAt) > DELIVERY_MAX_AGE_MS);
   const ready = request && !unknown && !busy;

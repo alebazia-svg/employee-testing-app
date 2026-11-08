@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   }
 
   const existing = workDay.deviations.find((item) => item.kind === kind);
-  if (existing) return Response.json({ deviation: serializeDeviation(existing), alreadySubmitted: true });
+  if (existing) return Response.json({ deviation: serializeDeviation(existing), alreadySubmitted: true },{headers:{'X-Portal-Activity-Ref':existing.id}});
 
   if (kind === 'late_arrival' && workDay.lateMinutes < lateArrivalThresholdMinutes) {
     return Response.json({ error: 'При опоздании до 5 минут причина не требуется.' }, { status: 409 });
@@ -129,7 +129,7 @@ export async function POST(req: Request) {
       }
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    return Response.json({ deviation: serializeDeviation(deviation), alreadySubmitted: false });
+    return Response.json({ deviation: serializeDeviation(deviation), alreadySubmitted: false },{headers:{'X-Portal-Activity-Ref':deviation.id}});
   } catch (error) {
     if (error instanceof Error && error.message === 'WORKDAY_NO_LONGER_ACTIVE') {
       return Response.json({ error: 'Состояние смены изменилось. Обновите экран.' }, { status: 409 });
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
       const raced = await prisma.workdayDeviation.findUnique({
         where: { workDayEntryId_kind: { workDayEntryId: workDay.id, kind } },
       });
-      if (raced) return Response.json({ deviation: serializeDeviation(raced), alreadySubmitted: true });
+      if (raced) return Response.json({ deviation: serializeDeviation(raced), alreadySubmitted: true },{headers:{'X-Portal-Activity-Ref':raced.id}});
     }
     throw error;
   }

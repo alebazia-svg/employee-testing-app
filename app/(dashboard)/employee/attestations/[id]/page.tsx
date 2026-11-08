@@ -1,4 +1,7 @@
 'use client';
+import { employeeObservedFetch } from '@/lib/employee-observed-fetch';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
+import { workflowEvent } from '@/lib/employee-workflow-client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -23,6 +26,8 @@ const ATTESTATION_DURATION_SECONDS = 15 * 60;
 export default function EmployeeAttestationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const preview=useEmployeePreview(),request=preview?.request??employeeObservedFetch;
+  const observe=(stage:Parameters<typeof workflowEvent>[1],operation: 'learning_load'|'learning_progress'|'learning_finish',failure?:'response')=>{if(!preview)workflowEvent('learning',stage,undefined,undefined,id,{operation,...(failure?{failure}:{})});};
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -34,11 +39,15 @@ export default function EmployeeAttestationPage() {
 
   useEffect(() => {
     async function load() {
-      await fetch(`/api/attestations/${id}/start`, { method: 'POST' });
-      const response = await fetch(`/api/attestations/${id}/progress`);
+      observe('opened','learning_load');
+      try {
+      await request(`/api/attestations/${id}/start`, { method: 'POST' });
+      const response = await request(`/api/attestations/${id}/progress`);
       const data = await response.json();
+      if(!response.ok||(!data.completed&&(!Array.isArray(data.questions)||!data.questions.length)))throw Error('Не удалось загрузить аттестацию. Повторите открытие.');
 
       if (data.completed) {
+        observe('completed_view','learning_load');
         setResult(data.result);
         setSectionStats(data.sectionStats ?? []);
         return;
@@ -57,9 +66,10 @@ export default function EmployeeAttestationPage() {
         const elapsed = Math.floor((Date.now() - Number(existingStartedAt)) / 1000);
         setTimeLeft(Math.max(ATTESTATION_DURATION_SECONDS - elapsed, 0));
       }
+      }catch{observe('error_shown','learning_load','response');setMessage('Не удалось загрузить аттестацию. Проверьте связь и повторите открытие.');}
     }
 
-    load();
+    void load();
   }, [id]);
 
   const question = questions[currentIndex];
@@ -71,43 +81,61 @@ export default function EmployeeAttestationPage() {
   const timerText = `${Math.floor(timeLeft / 60).toString().padStart(2, '0')}:${(timeLeft % 60).toString().padStart(2, '0')}`;
 
   async function persist(nextAnswers = answers, nextIndex = currentIndex) {
-    await fetch(`/api/attestations/${id}/progress`, {
-      method: 'PATCH',
-      body: JSON.stringify({ answers: nextAnswers, currentIndex: nextIndex }),
-    });
+    try {
+      const response=await request(`/api/attestations/${id}/progress`, {
+        method: 'PATCH',body: JSON.stringify({ answers: nextAnswers, currentIndex: nextIndex }),
+      });
+      if(!response.ok){setMessage('Сохранение ответа не подтверждено. Введённое осталось на экране; повторите выбор после восстановления связи.');return;}
+      setMessage('');
+    }catch{setMessage('Сохранение ответа не подтверждено. Введённое осталось на экране; проверьте связь и повторите выбор.');}
   }
 
   async function selectAnswer(index: number) {
     if (!question) return;
+    if(preview){preview.blocked();return;}
+    observe('confirmed_choice','learning_progress');
     const nextAnswers = { ...answers, [question.id]: index };
     setAnswers(nextAnswers);
     await persist(nextAnswers, currentIndex);
   }
 
   async function move(nextIndex: number) {
+    observe('next_question','learning_progress');
+    if(preview){preview.blocked();return;}
     setCurrentIndex(nextIndex);
     await persist(answers, nextIndex);
   }
 
   async function finish(force = false) {
+    if(preview){preview.blocked();return;}
     if (finishingRef.current) return;
+    observe(force?'auto_finish':'finish_requested','learning_finish');
 
     if (!force && !allAnswered) {
+      observe('validation','learning_finish');
       setMessage('Ответьте на все вопросы перед завершением аттестации.');
       return;
     }
 
-    if (!force && !window.confirm('Вы уверены, что хотите завершить аттестацию? После завершения изменить ответы будет нельзя.')) return;
+    if (!force && !window.confirm('Вы уверены, что хотите завершить аттестацию? После завершения изменить ответы будет нельзя.')) {observe('cancelled','learning_finish');return;}
 
     finishingRef.current = true;
-    const response = await fetch(`/api/attestations/${id}/finish`, {
+    try{
+    const response = await request(`/api/attestations/${id}/finish`, {
       method: 'POST',
       body: JSON.stringify({ answers }),
     });
     const data = await response.json();
+    if(!response.ok||!data.result)throw Error('Finish not confirmed');
     setResult(data.result);
     setSectionStats(data.sectionStats ?? []);
     window.localStorage.removeItem(`attestation:${id}:startedAt`);
+    }catch{
+      // A lost response may follow a successful save. Read it once; never replay completion automatically.
+      try{const check=await request(`/api/attestations/${id}/progress`);const saved=await check.json();if(check.ok&&saved.completed&&saved.result){observe('completed_view','learning_load');setResult(saved.result);setSectionStats(saved.sectionStats??[]);window.localStorage.removeItem(`attestation:${id}:startedAt`);return;}}catch{}
+      observe('error_shown','learning_finish','response');setMessage('Завершение не подтверждено. Ответы остались на этом экране; проверьте связь и повторите завершение.');
+    }
+    finally{finishingRef.current=false;}
   }
 
   useEffect(() => {
@@ -177,12 +205,12 @@ export default function EmployeeAttestationPage() {
           <p className='mt-1'>{passed ? 'Продолжайте в том же духе!' : 'Рекомендуем повторить рабочие правила по разделам, где были ошибки, и пройти аттестацию повторно после разрешения администратора.'}</p>
         </div>
 
-        <Button onClick={() => router.push('/employee')}>Вернуться в кабинет</Button>
+        <Button onClick={() => {observe('closed','learning_load');router.push('/employee');}}>Вернуться в кабинет</Button>
       </main>
     );
   }
 
-  if (!question) return <main className='p-6 text-slate-600'>Загрузка аттестации...</main>;
+  if (!question) return <main className='p-6 text-slate-600'>{message?<div role='alert'><p>{message}</p><button type='button' className='mt-3 underline' onClick={()=>window.location.reload()}>Повторить загрузку</button></div>:'Загрузка аттестации...'}</main>;
 
   return (
     <main className='mx-auto max-w-5xl space-y-6 p-4 md:p-8'>
@@ -206,7 +234,7 @@ export default function EmployeeAttestationPage() {
               <PremiumClockIcon color={timeLeft <= 60 ? '#b42318' : '#278f18'} secondaryColor={timeLeft <= 60 ? '#f3b7b1' : '#b7e9ac'} secondaryOpacity={0.9} className='h-4 w-4' />
               {timerText}
             </div>
-            <Button className='bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900' onClick={() => router.push('/employee')}>
+            <Button className='bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900' onClick={() => {observe('closed','learning_load');router.push('/employee');}}>
               Завершить позже
             </Button>
           </div>
@@ -241,7 +269,7 @@ export default function EmployeeAttestationPage() {
           </div>
         </div>
 
-        {message && <p className='text-sm text-red-600'>{message}</p>}
+        {message && <div role='alert'><p className='text-sm text-red-600'>{message}</p>{timeLeft<=0&&<Button className='mt-2' onClick={()=>finish(true)}>Повторить завершение</Button>}</div>}
 
         <div className='flex justify-between gap-2 border-t border-border pt-4'>
           <Button className='gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' disabled={currentIndex === 0} onClick={() => move(currentIndex - 1)}>

@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     take: 10,
   });
   const existing = pending.find((request) => sameIssueIds(readIssueIds(request.issueIds), issueIds));
-  if (existing) return Response.json({ request: existing, created: false });
+  if (existing) return Response.json({ request: existing, created: false },{headers:{'X-Portal-Activity-Ref':existing.id}});
 
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -60,5 +60,5 @@ export async function POST(req: Request) {
     return request;
   });
 
-  return Response.json({ request: result, created: true });
+  return Response.json({ request: result, created: true },{headers:{'X-Portal-Activity-Ref':result.id}});
 }

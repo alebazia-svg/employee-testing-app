@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   let plannedAmount = checked.data.plannedAmount;
   if (!plannedAmount && checked.data.paymentMethod === 'USDT' && checked.data.foreignAmount) {
     const rate = await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date()));
-    if (!rate.rate) return Response.json({ error: 'Курс пока недоступен. Укажите примерную сумму в рублях.' }, { status: 400 });
+    if (!rate.rate) return Response.json({ error: 'Курс пока недоступен. Укажите примерную сумму в рублях.' }, { status: 400,headers:{'X-Portal-Activity-Failure':'rate'} });
     plannedAmount = plannedFxRubles(checked.data.foreignAmount, rate.rate);
     checked.data.exchangeRate = rate.rate;
   }
@@ -49,14 +49,14 @@ export async function POST(req: Request) {
     fetchSupplierOrderFinance(), fetchSupplierSettlements(), freshEvidence().catch(() => null),
     readFundingBalance([checked.data]).then(balance => ({ balance, failed: false })).catch(() => ({ balance: null, failed: true })),
   ]);
-  if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
+  if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503,headers:{'X-Portal-Activity-Failure':'source'} });
   const allowed = new Map(ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
   if (!checked.data.orderRefs.every((ref) => allowed.has(ref))) return Response.json({ error: 'Один из заказов не относится к вашему менеджеру в 1С.' }, { status: 400 });
   const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner)) return Response.json({ error: 'Заказы должны относиться к выбранному поставщику.' }, { status: 400 });
-  if (!settlements.complete) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
+  if (!settlements.complete) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503,headers:{'X-Portal-Activity-Failure':'source'} });
   const balances = summarizeSupplierSettlements(settlements.rows, [checked.data.supplierPartner]);
-  if (balances.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
+  if (balances.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503,headers:{'X-Portal-Activity-Failure':'source'} });
   if (checked.data.orderRefs.some(ref => !['order', 'prepayment'].includes(buyerOrderPurpose(allowed.get(ref)!, balances.bySupplier[checked.data.supplierPartner])))) return Response.json({ error: 'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.' }, { status: 400 });
   checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
   // Reuse this command's fresh catalogue, retaining selection/closure guards.
@@ -93,6 +93,6 @@ export async function POST(req: Request) {
     return created;
   }).catch(error=>{if(error instanceof Error&&/^[А-ЯЁ]/.test(error.message)){fundingError=error.message;return null;}throw error;});
   if(fundingError)return Response.json({error:fundingError},{status:409});
-  if (!plan) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку. Измените её вместо повторной отправки.' }, { status: 409 });
-  return Response.json(jsonPlan(plan), { status: 201 });
+  if (!plan) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку. Измените её вместо повторной отправки.' }, { status: 409,headers:{'X-Portal-Activity-Failure':'duplicate'} });
+  return Response.json(jsonPlan(plan), { status: 201,headers:{'X-Portal-Activity-Ref':plan.id} });
 }

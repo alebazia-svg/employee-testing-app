@@ -30,6 +30,6 @@ export async function createCargoPayment(payload:Record<string,unknown>,user:{id
       await notifyAdminsAboutProcurementPlans({db:tx,eventKey:`procurement-payment:${event.id}:submitted`,action:'SUBMITTED',managerName:user.name,plans:[plan]});
       return plan;
     });
-    return result?Response.json(JSON.parse(JSON.stringify(result)),{status:201}):Response.json({error:'Оплата перевозчику уже есть в календаре. Измените существующую заявку.'},{status:409});
+    return result?Response.json(JSON.parse(JSON.stringify(result)),{status:201,headers:{'X-Portal-Activity-Ref':result.id}}):Response.json({error:'Оплата перевозчику уже есть в календаре. Измените существующую заявку.'},{status:409});
   }catch(error){return Response.json({error:error instanceof Error&&/^[А-ЯЁ]/.test(error.message)?error.message:'Не удалось проверить действующие оплаты или подтвердить сохранение. Проверьте календарь перед повторной отправкой.'},{status:503});}
 }

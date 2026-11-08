@@ -15,7 +15,10 @@ export async function POST(req: Request) {
   const text = await req.text();
   if (text.length > 512) return new Response(null, { status: 413 });
   let value: unknown; try { value = JSON.parse(text); } catch { return new Response(null, { status: 400 }); }
-  const input = parseActivityInput(value);
+  if(!value||typeof value!=='object'||Array.isArray(value))return new Response(null,{status:400});
+  const {expectedUserId,...event}=value as Record<string,unknown>;
+  if(expectedUserId!==undefined&&(!Number.isSafeInteger(expectedUserId)||expectedUserId!==user.id))return new Response(null,{status:403});
+  const input = parseActivityInput(event);
   if (!input) return new Response(null, { status: 400 });
   const identity = accessSessionIdentity((await cookies()).get(sessionCookieName)?.value, user.id);
   const saved = identity ? await writeEmployeeActivity(user.id, identity.sessionHash, input) : false;

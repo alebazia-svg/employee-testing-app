@@ -1,10 +1,13 @@
 'use client';
+import {employeeObservedFetch} from '@/lib/employee-observed-fetch';
+import {workflowEvent,workflowJson} from '@/lib/employee-workflow-client';
 import {useEffect,useState} from 'react';
 import {paymentDeferral} from '@/lib/procurement-schedule';
 
 type Plan={id:string;plannedDate:string;updatedAt?:string;oneCCashEvidence?:unknown};
 const displayDate=(value:string)=>value&&Number.isFinite(Date.parse(value+'T12:00:00Z'))?new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z')):'выберите дату';
 export function ProcurementFundingSchedule({plan,today,beforeApproval=false,onClose,onSaved,onStateChange}:{plan:Plan;today:string;beforeApproval?:boolean;onClose:()=>void;onSaved:(plan:Plan)=>void;onStateChange:(state:{dirty:boolean;busy:boolean;editing?:boolean})=>void}) {
+ useEffect(()=>{workflowEvent('procurement_payment','opened',undefined,undefined,plan.id,{operation:'payment_schedule'});return()=>workflowEvent('procurement_payment','closed',undefined,undefined,plan.id,{operation:'payment_schedule'});},[plan.id]);
  const previous=paymentDeferral(plan.oneCCashEvidence);
  const [date,setDate]=useState(previous?.date||''),[comment,setComment]=useState(previous?.comment||'');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[discard,setDiscard]=useState(false);
@@ -16,8 +19,8 @@ export function ProcurementFundingSchedule({plan,today,beforeApproval=false,onCl
  async function save(action:'DEFER'|'RESUME') {
   if(busy)return;setBusy(true);setError('');
   try {
-   const response=await fetch(`/api/procurement/payment-plans/${plan.id}/schedule`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,version:plan.updatedAt,...(action==='DEFER'?{date,comment}:{date:resumeDate})})});
-   const data=await response.json();
+   const response=await employeeObservedFetch(`/api/procurement/payment-plans/${plan.id}/schedule`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,version:plan.updatedAt,...(action==='DEFER'?{date,comment}:{date:resumeDate})})});
+   const data=await workflowJson(response,'procurement_payment',plan.id,'payment_schedule');
    if(!response.ok)throw Error(data.error||'Не удалось сохранить отсрочку.');
    onSaved(data);
   }catch(e){setError(e instanceof Error?e.message:'Нет связи с порталом. Проверьте заявку перед повтором.');}finally{setBusy(false);}

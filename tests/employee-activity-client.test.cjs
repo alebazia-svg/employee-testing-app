@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 // Execute the shipped hook with a controlled page lifecycle; no business actions.
-function page({ preview = null, visible = true, disabled = false } = {}) {
+function page({ preview = null, visible = true, disabled = false, legacyTimeout=false,legacyUuid=false,failures=0 } = {}) {
   let now = 100000, effect;
   const timers = new Map(), listeners = new Map(), events = [];
   let id = 0;
@@ -14,9 +14,10 @@ function page({ preview = null, visible = true, disabled = false } = {}) {
     removeEventListener: name => listeners.delete(name) };
   const window = { setTimeout: (fn, delay) => { const key = ++id; timers.set(key, { fn, due: now + delay }); return key; }, clearTimeout: key => timers.delete(key) };
   const context = { exports: {}, document, window, location: { pathname: '/employee' },
-    Date: { now: () => now }, crypto: { randomUUID: () => `test-event-${++id}` }, AbortSignal,
-    fetch: async (_url, init) => { events.push(JSON.parse(init.body)); return { ok: true }; },
-    require: name => name === 'react' ? { useEffect: fn => { effect = fn; } } : name === 'next/navigation' ? { usePathname: () => '/employee' } : name.includes('PreviewProvider') ? { useEmployeePreview: () => preview } : {} };
+    setTimeout:(fn,delay)=>window.setTimeout(fn,delay),clearTimeout:key=>window.clearTimeout(key),
+    Date: { now: () => now }, crypto:legacyUuid?{}:{ randomUUID: () => `test-event-${++id}` }, AbortSignal:legacyTimeout?{}:AbortSignal,AbortController,
+    fetch: async (_url, init) => { events.push(JSON.parse(init.body)); if(failures-->0)return {ok:false,status:503};return { ok: true,json:async()=>({recorded:true}) }; },
+    require: name => name.includes('EmployeeScreenObservation') ? {useEmployeeScreenSection:()=>{}} : name === 'react' ? { useEffect: fn => { effect = fn; } } : name === 'next/navigation' ? { usePathname: () => '/employee' } : name.includes('PreviewProvider') ? { useEmployeePreview: () => preview } : {} };
   const source = fs.readFileSync('components/EmployeeActivityTracker.tsx', 'utf8');
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context);
   let cleanup;
@@ -63,3 +64,9 @@ test('administrator inspection and disabled trackers never create employee visit
   assert.equal(p.events.length, 0);
   }
 });
+
+test('activity capture still works when the browser lacks AbortSignal.timeout',async()=>{const p=page({legacyTimeout:true});p.mount('schedule');p.advance(350);await new Promise(setImmediate);assert.equal(p.events.length,1);assert.equal(p.events[0].section,'schedule');});
+
+test('activity capture still works without crypto.randomUUID',async()=>{const p=page({legacyUuid:true,legacyTimeout:true});p.mount('schedule');p.advance(350);await new Promise(setImmediate);assert.equal(p.events.length,1);assert.match(p.events[0].key,/^event-/);});
+
+test('after failed delivery a later successful event reports an explicit partial-history marker',async()=>{const p=page({failures:2});p.mount('schedule');p.advance(350);await new Promise(setImmediate);p.advance(250);await new Promise(setImmediate);p.mount('payroll');p.advance(350);await new Promise(setImmediate);assert.ok(p.events.some(e=>e.context?.stage==='collection_gap'));assert.ok(p.events.some(e=>e.section==='payroll'));assert.doesNotMatch(JSON.stringify(p.events),/password|amount|answers/);});

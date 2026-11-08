@@ -32,3 +32,8 @@ test('an unconfirmed server response cannot be reported as connected',async()=>b
 test('leaving the account before subscribe finishes prevents a late server save',async()=>browserCase({abortOnSubscribe:true},async({calls,controller})=>{
  await assert.rejects(connectEmployeePush(false,controller.signal));assert.equal(calls.includes('save'),false);
 }));
+
+test('permission observation reports only the browser outcome and cannot interrupt the existing connector',async()=>{
+ for(const result of ['denied','default'])await browserCase({permission:'default',requestResult:result},async({calls,controller})=>{const observed:string[]=[];await assert.rejects(connectEmployeePush(true,controller.signal,s=>observed.push(s)));assert.deepEqual(observed,[result==='denied'?'permission_denied':'permission_default']);assert.deepEqual(calls,['permission']);});
+ await browserCase({permission:'default'},async({controller})=>{await assert.doesNotReject(connectEmployeePush(true,controller.signal,()=>{throw Error('collector failed');}));});
+});

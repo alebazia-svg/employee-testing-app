@@ -26,7 +26,7 @@ import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeAct
 import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 import { EmployeePreviewViewport } from '@/components/EmployeePreviewViewport';
 export const dynamic = 'force-dynamic';
-export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string; dayReview?: string; connection?: string }> }) {
+export default async function EmployeePreviewPage({ params, searchParams }: { params: Promise<{ visitId: string }>; searchParams: Promise<{ tab?: string; frame?: string; dayReview?: string; connection?: string; follow?: string }> }) {
   const admin = await getCurrentAdmin();
   if (!admin) notFound();
   const preview = await readEmployeePreview(admin.id, (await params).visitId);
@@ -36,7 +36,7 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
   const frame: 'phone' | 'desktop' | undefined = procurement && (query.frame === 'phone' || query.frame === 'desktop') ? query.frame : undefined;
   const connection = typeof query.connection === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(query.connection) ? query.connection : undefined;
   const experienceProps = {department:preview.employee.department,attendanceOnly:needsWorkdayEndReminder(preview.employee)};
-  const providerProps = { connection, visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
+  const providerProps = { follow:query.follow!=='0',connection, visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
   if (procurement && !frame) return <EmployeePreviewProvider {...providerProps}><EmployeePreviewViewport visitId={preview.visit.id} employeeName={preview.employee.name}/></EmployeePreviewProvider>;
   const tab = query.tab ?? (procurement ? 'procurement' : 'day');
   if (preview.employee.portalArea === 'WORKDAY' && !employeeNavigation(payrollFeatureState().employeeEnabled).some(section => section.id === tab)) notFound();

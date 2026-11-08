@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenSection } from './EmployeeScreenObservation';
 import { useEffect } from 'react';
 import { useEmployeePreview } from './EmployeePreviewProvider';
 import { sendEmployeeActivity } from './EmployeeActivityTracker';
@@ -24,6 +25,7 @@ export function beginEmployeeOperation(action: OperationContext['action'], optio
 }
 export function useEmployeePeriodView(action: 'payroll_view'|'schedule_view', period: string, enabled = true) {
   const preview = useEmployeePreview();
+  useEmployeeScreenSection(action==='schedule_view'?'schedule':'payroll',!enabled);
   useEffect(() => {
     if (preview || !enabled) return;
     let recorded=false, hiddenAt:number|null=null;

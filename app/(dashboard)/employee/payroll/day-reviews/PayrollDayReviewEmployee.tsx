@@ -1,4 +1,7 @@
 'use client';
+import { employeeObservedFetch } from '@/lib/employee-observed-fetch';
+import { workflowEvent,workflowJson } from '@/lib/employee-workflow-client';
+import { useEmployeeScreenLayer } from '@/components/EmployeeScreenObservation';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {CalendarDays,Check,Clock3} from 'lucide-react';
@@ -29,12 +32,14 @@ export function PayrollDayReviewEmployee({month}:{month:string}){
     }
     setOpening(openPayrollAfterDayReview({latestId:latest?.id,latestStatus:latest?.status,pendingId:pendingSeen.current,reviewRequired:d.reviewRequired}));
     setData(d);setError('');}
-  }catch(e){if(!c.signal.aborted)setError(e instanceof Error?e.message:'Не удалось обновить запрос.');}
+  }catch(e){if(!c.signal.aborted){workflowEvent('salary_review','error_shown',undefined,month,undefined,{operation:'salary_load'});setError(e instanceof Error?e.message:'Не удалось обновить запрос.');}}
  },[month,clear,request]);
  useEffect(()=>{if(opening){clear?.();router.replace(salaryHref);}},[opening,clear,router,salaryHref]);
  useEffect(()=>{const stop=startVisibleSync(load,30000);return()=>{stop();controller.current?.abort();};},[load]);
- async function send(){if(preview){preview.blocked();return;}if(busy||!selected.length)return;setBusy(true);setError('');try{const r=await fetch('/api/employee/payroll/day-reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({month,dates:selected})});const d=await r.json();if(!r.ok)throw Error(d.error);setSelected([]);await load();}catch(e){setError(e instanceof Error?e.message:'Не удалось отправить запрос.');}finally{setBusy(false);}}
- async function cancel(id:string){if(preview){preview.blocked();return;}if(busy)return;setBusy(true);try{const r=await fetch('/api/employee/payroll/day-reviews/'+encodeURIComponent(id),{method:'DELETE'});const d=await r.json();if(!r.ok)throw Error(d.error);await load();}catch(e){setError(e instanceof Error?e.message:'Не удалось отменить запрос.');}finally{setBusy(false);}}
+ async function send(){if(preview){preview.blocked();return;}if(busy||!selected.length)return;setBusy(true);setError('');try{const r=await employeeObservedFetch('/api/employee/payroll/day-reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({month,dates:selected})});const d=await workflowJson(r,'salary_review',undefined,'salary_send');if(!r.ok)throw Error(d.error);setSelected([]);await load();}catch(e){setError(e instanceof Error?e.message:'Не удалось отправить запрос.');}finally{setBusy(false);}}
+ async function cancel(id:string){if(preview){preview.blocked();return;}if(busy)return;setBusy(true);try{const r=await employeeObservedFetch('/api/employee/payroll/day-reviews/'+encodeURIComponent(id),{method:'DELETE'});const d=await workflowJson(r,'salary_review',id,'salary_cancel');if(!r.ok)throw Error(d.error);await load();}catch(e){setError(e instanceof Error?e.message:'Не удалось отменить запрос.');}finally{setBusy(false);}}
+ useEmployeeScreenLayer({dialog:'form'},50);
+ useEffect(()=>{workflowEvent('salary_review','opened',undefined,month,undefined,{operation:'salary_send'});},[]);
  const pending=data?.requests.find(r=>r.status==='pending'),latest=data?.requests[0];
  const accessOnly=!!(data?.accessOnly||pending?.accessOnly);
  const count=new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate();
@@ -55,7 +60,7 @@ export function PayrollDayReviewEmployee({month}:{month:string}){
     <div className='mb-2 grid grid-cols-7 text-center text-xs font-semibold text-stone-500'>{['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d=><span key={d}>{d}</span>)}</div>
     <div className='grid grid-cols-7 gap-1' aria-label='Выбор выходов'>
      {Array.from({length:offset},(_,i)=><span key={'blank'+i}/>)}
-     {Array.from({length:count},(_,i)=>i+1).map(day=>{const date=month+'-'+String(day).padStart(2,'0'),known=data.knownDates.includes(date),disabled=busy||date>=data.today||date<data.earliest||known;return <button key={date} type='button' aria-label={`${day} ${title}`} aria-pressed={selected.includes(date)} disabled={disabled} title={known?'Выход уже подтверждён':undefined} onClick={()=>setSelected(old=>old.includes(date)?old.filter(d=>d!==date):[...old,date].sort())} className={'relative flex min-h-10 items-center justify-center rounded-lg text-sm font-semibold disabled:opacity-30 '+(selected.includes(date)?'bg-[#a5683d] text-white':'bg-[#f0f1ee] text-[#343a3c]')}>{day}{(known||selected.includes(date))&&<Check size={10} className='absolute right-0.5 top-0.5'/>}</button>;})}
+     {Array.from({length:count},(_,i)=>i+1).map(day=>{const date=month+'-'+String(day).padStart(2,'0'),known=data.knownDates.includes(date),disabled=busy||date>=data.today||date<data.earliest||known;return <button key={date} type='button' aria-label={`${day} ${title}`} aria-pressed={selected.includes(date)} disabled={disabled} title={known?'Выход уже подтверждён':undefined} onClick={()=>{workflowEvent('salary_review','confirmed_choice',undefined,month,undefined,{operation:'salary_send'});setSelected(old=>old.includes(date)?old.filter(d=>d!==date):[...old,date].sort());}} className={'relative flex min-h-10 items-center justify-center rounded-lg text-sm font-semibold disabled:opacity-30 '+(selected.includes(date)?'bg-[#a5683d] text-white':'bg-[#f0f1ee] text-[#343a3c]')}>{day}{(known||selected.includes(date))&&<Check size={10} className='absolute right-0.5 top-0.5'/>}</button>;})}
     </div>
     <p className='my-4 flex justify-between text-base font-semibold'><span>Выбрано: {selected.length} дн.</span>{!accessOnly&&<span>{money(selected.length*data.dayRate)}</span>}</p>
     <button disabled={busy||!selected.length} onClick={()=>void send()} className='min-h-[50px] w-full rounded-[14px] bg-[#272b30] px-3 text-base font-semibold text-white disabled:opacity-40'>{busy?'Отправляем…':'Отправить на подтверждение'}</button>

@@ -11,7 +11,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const existingResult = await prisma.result.findFirst({ where: { userId: user.id, attestationId } });
 
   if (existingResult) {
-    return Response.json({ error: 'Аттестация уже пройдена' }, { status: 403 });
+    return Response.json({ error: 'Аттестация уже пройдена' }, { status: 403,headers:{'X-Portal-Activity-Failure':'already_completed'} });
   }
 
   const { answers } = await req.json();

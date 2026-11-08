@@ -1,4 +1,7 @@
 'use client';
+import {employeeObservedFetch} from '@/lib/employee-observed-fetch';
+import { workflowEvent } from '@/lib/employee-workflow-client';
+import { useEmployeeScreenLayer } from '@/components/EmployeeScreenObservation';
 import { transferEmployeeCash, saveEmployeeCashIntent, prepareEmployeeCashPhoto, CashTransferError } from '@/lib/employee-cash-transfer';
 import { CASH_PHOTO_ACCEPT } from '@/lib/cash-photo-validation';
 import { readEmployeeCashReceipt, watchEmployeeCashPersistence } from '@/lib/employee-cash-receipt';
@@ -546,6 +549,8 @@ function WorkdayQrScanner({
   const [state, setState] = useState<QrScannerState>('idle');
   const [error, setError] = useState('');
 
+  useEmployeeScreenLayer({dialog:'form',form:'qr'},60);
+  useEffect(()=>{if(!inspection&&state==='error')workflowEvent('qr','error_shown');},[state,error,Boolean(inspection)]);
   function stopCamera() {
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current);
@@ -599,6 +604,7 @@ function WorkdayQrScanner({
         stopCamera();
         return;
       }
+      workflowEvent('qr','response_received');
       setState('found');
       stopCamera();
       onAccepted({ department, qrPayload: code.data });
@@ -645,7 +651,7 @@ function WorkdayQrScanner({
             <p className='text-xs font-black uppercase tracking-[0.22em] text-[#efbd37]'>Начало дня</p>
             <h2 className='mt-1 text-2xl font-black leading-tight'>Отсканируйте QR отдела</h2>
           </div>
-          <button type='button' onClick={onCancel} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white' aria-label='Закрыть сканер'>
+          <button type='button' onClick={()=>{if(!inspection)workflowEvent('qr','closed');onCancel();}} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white' aria-label='Закрыть сканер'>
             <X className='h-6 w-6' />
           </button>
         </div>
@@ -1289,7 +1295,7 @@ export function EmployeeTodayClient({
   useEffect(() => setToday(initialToday), [initialToday]);
   const [expenseSnapshot, setExpenseSnapshot] = useState<EmployeeExpenseSnapshot>({ state: 'unavailable', checkedAt: null, pending: [], payable: [] });
   const preview = useEmployeePreview();
-  const request = preview?.request ?? fetch;
+  const request = preview?.request ?? employeeObservedFetch;
   const router = useRouter();
   const searchParams = useSearchParams();
   const paletteClass = {
@@ -1310,6 +1316,12 @@ export function EmployeeTodayClient({
     setLocalTab(tab);
     if (tab === 'day' || tab === 'schedule') selectMobile?.(tab, true);
   }, [selectMobile]);
+  useEffect(()=>{
+    if(!preview?.followScreen)return;
+    const observed=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+    const section=observed?.live?observed.runtime?.screen?.section:null;
+    if(section==='day'||section==='schedule'||section==='payroll'&&payrollEnabled){setActiveTab(section);}
+  },[preview?.followScreen,preview?.deviceSnapshot,setActiveTab,payrollEnabled]);
   const workdayVisible = !mobileNavigation || mobileNavigation.active !== 'procurement';
   useEmployeeActivityVisit(!workdayVisible ? null : activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
@@ -1450,6 +1462,8 @@ export function EmployeeTodayClient({
   const [openingPhotoFile, setOpeningPhotoFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const auditedErrorMessage=useRef<string|null>(null);
+  function setAuditedError(message:string){auditedErrorMessage.current=message;setError(message);}
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -1556,6 +1570,7 @@ export function EmployeeTodayClient({
     if (!cashOperationDraft.direction || cashOperationDraft.amount.trim() || cashOperationDraft.comment.trim() || cashFormFocused || isSaving) return;
     const timer = window.setTimeout(() => {
       if (cashPhotoPickerActiveRef.current) return;
+      workflowEvent('cash_form','reset_by_app',undefined,undefined,cashOperationDraft.idempotencyKey||undefined);
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
     }, EMPTY_CASH_FORM_IDLE_MS);
     return () => window.clearTimeout(timer);
@@ -1581,6 +1596,7 @@ export function EmployeeTodayClient({
       if (hiddenAt === null || cashPhotoPickerActiveRef.current) return;
       cashFormHiddenAtRef.current = null;
       if (!cashOperationDraft.direction || isSaving || Date.now() - hiddenAt < CASH_FORM_BACKGROUND_RESET_MS) return;
+      workflowEvent('cash_form','reset_by_app',undefined,undefined,cashOperationDraft.idempotencyKey||undefined);
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       setCashFormFocused(false);
       setMessage('Незавершённая инкассация сброшена. Деньги не учтены.');
@@ -2057,6 +2073,7 @@ export function EmployeeTodayClient({
   }, [activeWorkDay, needsLateArrivalReason]);
 
   function openEarlyFinishSheet() {
+    workflowEvent('deviation','opened');
     const moscowParts = new Intl.DateTimeFormat('ru-RU', {
       timeZone: 'Europe/Moscow',
       hour: '2-digit',
@@ -2076,6 +2093,7 @@ export function EmployeeTodayClient({
   }
 
   async function submitWorkdayDeviation() {
+    workflowEvent('deviation','submit_clicked');
     if (preview) { preview.blocked(); return; }
     if (!deviationSheetKind || isSaving) return;
     setIsSaving(true);
@@ -2341,6 +2359,7 @@ export function EmployeeTodayClient({
   }, [setMobileNavigationHidden, bulkScheduleMode, bulkScheduleConfirmOpen, bulkScheduleExitConfirmOpen, editingScheduleDate, pendingScheduleChange, vacationEditorOpen]);
 
   function openVacationEditor(vacation?: EmployeeVacation | null) {
+    workflowEvent('vacation_editor','opened');
     const initialDate = selectedScheduleDate >= today ? selectedScheduleDate : today;
     setEditingVacation(vacation ?? null);
     setVacationFrom(vacation?.dateFrom ?? initialDate);
@@ -2380,7 +2399,7 @@ export function EmployeeTodayClient({
       setMessage(editingVacation ? 'Отпуск изменён' : 'Отпуск отмечен в графике');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить отпуск');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось сохранить отпуск');
     } finally {
       setIsSaving(false);
     }
@@ -2409,7 +2428,7 @@ export function EmployeeTodayClient({
       setMessage('Отпуск удалён из графика');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось отменить отпуск');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось отменить отпуск');
     } finally {
       setIsSaving(false);
     }
@@ -2453,7 +2472,7 @@ export function EmployeeTodayClient({
       setMessage(status === 'working' ? 'Рабочий день сохранён' : 'Выходной сохранён');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
     } finally {
       setIsSaving(false);
     }
@@ -2461,6 +2480,7 @@ export function EmployeeTodayClient({
 
   function startBulkSchedule() {
     if (!scheduleMonthLoaded) return;
+    workflowEvent('schedule_bulk','opened',undefined,calendarMonth);
     setError(''); setMessage('');
     const original = Object.fromEntries(calendarDays
       .filter(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date))
@@ -2472,7 +2492,8 @@ export function EmployeeTodayClient({
     setBulkScheduleMode(true);
   }
 
-  function cancelBulkSchedule() {
+  function cancelBulkSchedule(stage:'cancelled'|'closed'='cancelled') {
+    workflowEvent('schedule_bulk',stage,undefined,calendarMonth);
     setBulkScheduleMode(false);
     setBulkScheduleConfirmOpen(false);
     setBulkScheduleExitConfirmOpen(false);
@@ -2509,12 +2530,12 @@ export function EmployeeTodayClient({
         throw new Error(isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить график');
       }
       finishAudit('completed');
-      cancelBulkSchedule();
+      cancelBulkSchedule('closed');
       await syncScheduleState();
       setMessage('График сохранён');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
       setBulkScheduleConfirmOpen(false);
     } finally {
       setIsSaving(false);
@@ -2540,7 +2561,7 @@ export function EmployeeTodayClient({
       setMessage('Ответ сохранён');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить ответ');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось сохранить ответ');
     } finally {
       setIsSaving(false);
     }
@@ -2564,6 +2585,7 @@ export function EmployeeTodayClient({
     setRecommendedStartShiftCodes([]);
     setStartRecommendationHint('');
     setShiftSelectionHint('Выберите свою смену на сегодня.');
+    workflowEvent('qr','opened');
     setQrScannerOpen(true);
     if (usesWorkdayQrPhotoFallback(user)) qrPhotoRef.current?.openCamera();
   }
@@ -2626,6 +2648,7 @@ export function EmployeeTodayClient({
       setShiftCorrectionCodes(payload.allowedShiftCodes);
       setShiftCorrectionHint(typeof payload.hint === 'string' ? payload.hint : 'Выберите правильную смену.');
       setShiftCorrectionOpen(true);
+      workflowEvent('shift_change','opened');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось открыть исправление смены');
     } finally {
@@ -2634,6 +2657,7 @@ export function EmployeeTodayClient({
   }
 
   async function correctShift(toShiftCode: string) {
+    workflowEvent('shift_change','submit_clicked');
     if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
@@ -2656,6 +2680,7 @@ export function EmployeeTodayClient({
   }
 
   async function chooseShiftAfterQr(value: string) {
+    workflowEvent('qr','confirmed_choice');
     setSelectedShift(value);
     if (preview) { preview.blocked(); return; }
     if (value && qrDepartmentConfirmed && !workDay && !isSaving) {
@@ -2708,7 +2733,7 @@ export function EmployeeTodayClient({
       return;
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
       setIsSaving(false);
     }
@@ -2720,7 +2745,7 @@ export function EmployeeTodayClient({
     setMessage('');
     if (shiftControlEnabled && showShiftControl && handoverTask && !isHandoverDone) {
       finishAudit('failed','prerequisite');
-      setError('Сначала сдайте смену');
+      setAuditedError('Сначала сдайте смену');
       setShowFullShiftPlan(false);
       if (canActOnShiftTask(handoverTask)) startHandoverWizard(handoverTask);
       return;
@@ -2748,13 +2773,14 @@ export function EmployeeTodayClient({
       setMessage('');
     } catch (reason) {
       finishAudit('failed',navigator.onLine ? 'request' : 'network');
-      setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
     } finally {
       setIsSaving(false);
     }
   }
 
   async function finishUnfinishedWorkDay() {
+    workflowEvent('old_day_close','submit_clicked');
     if (preview) { preview.blocked(); return; }
     if (!previousWorkDay) return;
     setError('');
@@ -2804,6 +2830,7 @@ export function EmployeeTodayClient({
   }
 
   async function requestCloseException() {
+    workflowEvent('deviation','submit_clicked');
     if (preview) { preview.blocked(); return; }
     if (!closeExceptionReason) {
       setError('Выберите техническую причину');
@@ -2835,6 +2862,7 @@ export function EmployeeTodayClient({
   }
 
   async function requestCashEncashmentException() {
+    workflowEvent('deviation','submit_clicked');
     if (preview) { preview.blocked(); return; }
     if (!cashEncashmentExceptionReason) {
       setError('Выберите причину');
@@ -2868,6 +2896,25 @@ export function EmployeeTodayClient({
     }
   }
 
+  const viewedEditor=useRef<string|null>(null);
+  useEffect(()=>{if(preview)return;const before=viewedEditor.current;if(before&&before!==editingScheduleDate)workflowEvent('schedule_editor','closed',undefined,before);if(editingScheduleDate&&editingScheduleDate!==before)workflowEvent('schedule_editor','opened',undefined,editingScheduleDate);viewedEditor.current=editingScheduleDate;},[editingScheduleDate,Boolean(preview)]);
+  useEffect(()=>{if(preview||!error){auditedErrorMessage.current=null;return;}const already=auditedErrorMessage.current===error;auditedErrorMessage.current=null;if(!already)workflowEvent('workday','error_shown');},[error,Boolean(preview)]);
+  useEmployeeScreenLayer(openShiftTaskId?{dialog:'form',form:'task',taskId:openShiftTaskId}:activeHandoverTaskId?{dialog:'form',form:'handover',taskId:activeHandoverTaskId}:cashOperationDraft.direction?{dialog:'form',form:'cash',direction:cashOperationDraft.direction}:editingScheduleDate?{dialog:'form',form:'schedule',date:editingScheduleDate}:vacationEditorOpen?{dialog:'form',form:'vacation'}:bulkScheduleMode?{dialog:'form',form:'schedule_bulk'}:null,50);
+  useEffect(()=>{
+    if(!preview?.followScreen)return;
+    const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+    const screen=c?.live?c.runtime?.screen:null;if(!screen)return;
+    if(screen.dialog==='form'){
+      if(screen.form==='qr'){setQrScannerOpen(true);return;}
+      if(screen.form==='task'&&screen.taskId){const task=shiftControlState?.tasks.find(t=>t.id===screen.taskId);if(task&&openShiftTaskId!==task.id)openShiftTaskForm(task);}
+      if(screen.form==='handover'&&screen.taskId){const task=shiftControlState?.tasks.find(t=>t.id===screen.taskId);if(task&&activeHandoverTaskId!==task.id)startHandoverWizard(task);}
+      if(screen.form==='schedule'&&screen.date)setEditingScheduleDate(screen.date);
+      if(screen.form==='vacation')setVacationEditorOpen(true);
+      if(screen.form==='schedule_bulk'&&!bulkScheduleMode)startBulkSchedule();
+      if(screen.form==='cash'&&screen.direction)setCashOperationDraft(d=>d.direction===screen.direction?d:{direction:screen.direction!,amount:'',comment:'',idempotencyKey:''});
+    }else{setQrScannerOpen(false);setOpenShiftTaskId(null);setActiveHandoverTaskId(null);setEditingScheduleDate(null);setVacationEditorOpen(false);if(cashOperationDraft.direction)setCashOperationDraft({direction:null,amount:'',comment:'',idempotencyKey:''});}
+  },[preview?.followScreen,preview?.deviceSnapshot]);
+
   function updateShiftTaskDraft(taskId: number, patch: Partial<ShiftTaskDraft>) {
     setShiftTaskDrafts((current) => ({
       ...current,
@@ -2877,6 +2924,7 @@ export function EmployeeTodayClient({
   }
 
   function openShiftTaskForm(task: ShiftControlTask) {
+    workflowEvent('task_form',openShiftTaskId===task.id?'closed':'opened',task.id);
     setOpenShiftTaskId((current) => (current === task.id ? null : task.id));
     setShiftTaskDrafts((current) => ({
       ...current,
@@ -2887,6 +2935,7 @@ export function EmployeeTodayClient({
 
   function closeShiftTaskSheet() {
     if (isSaving) return;
+    workflowEvent('task_form','closed',openShiftTaskId||undefined);
     setOpenShiftTaskId(null);
     setEditingShiftTaskId(null);
     setShiftTaskDrafts((current) => {
@@ -2903,6 +2952,7 @@ export function EmployeeTodayClient({
 
   function editCompletedShiftTask(task: ShiftControlTask) {
     if (!activeWorkDay || task.category === 'handover' || task.category === 'closing') return;
+    workflowEvent('task_form','opened',task.id);
     setEditingShiftTaskId(task.id);
     setOpenShiftTaskId(task.id);
     setShiftTaskDrafts((current) => ({ ...current, [task.id]: emptyShiftTaskDraft(task) }));
@@ -2919,6 +2969,7 @@ export function EmployeeTodayClient({
   }
 
   function startHandoverWizard(task: ShiftControlTask) {
+    workflowEvent('handover_form','opened',task.id);
     try { handoverAuditAttempt.current = crypto.randomUUID(); } catch { handoverAuditAttempt.current = undefined; }
     const restoredDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : emptyHandoverDraft();
     setActiveHandoverTaskId(task.id);
@@ -2946,6 +2997,7 @@ export function EmployeeTodayClient({
 
   function confirmHandoverExit() {
     if (isSaving) return;
+    workflowEvent('handover_form','closed',activeHandoverTaskId||undefined);
     setHandoverExitPromptOpen(false);
     setActiveHandoverTaskId(null);
     setHandoverDraft(handoverSavedDraft);
@@ -2976,7 +3028,9 @@ export function EmployeeTodayClient({
     cashFormHiddenAtRef.current = null;
     cashPhotoPickerActiveRef.current = false;
     setCashFormFocused(false);
-    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createIdempotencyKey(), baselineId: cashOperationsState.filter(row => row.workDayEntryId === activeWorkDay?.id && row.direction === direction && row.status !== 'cancelled').reduce<number | null>((latest, row) => Math.max(latest ?? 0, row.id), null) });
+    const cashDraftKey=createIdempotencyKey();
+    workflowEvent('cash_form','opened',undefined,undefined,cashDraftKey);
+    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: cashDraftKey, baselineId: cashOperationsState.filter(row => row.workDayEntryId === activeWorkDay?.id && row.direction === direction && row.status !== 'cancelled').reduce<number | null>((latest, row) => Math.max(latest ?? 0, row.id), null) });
     setError('');
     setMessage('');
     // Start before capture, without delaying or disabling the camera.
@@ -2984,7 +3038,8 @@ export function EmployeeTodayClient({
     void prepareEmployeeCashStorage().then(ready => setCashStorageUnavailable(!ready));
   }
 
-  function resetCashOperationDraft(showNotice = false) {
+  function resetCashOperationDraft(showNotice = false, stage:'cancelled'|'closed'='cancelled') {
+    workflowEvent('cash_form',showNotice?'reset_by_app':stage,undefined,undefined,cashOperationDraft.idempotencyKey||undefined);
     cashFormHiddenAtRef.current = null;
     cashPhotoPickerActiveRef.current = false;
     setCashFormFocused(false);
@@ -2993,6 +3048,7 @@ export function EmployeeTodayClient({
   }
 
   function handleCashPhotoPickerReturn(file: File | null) {
+    workflowEvent('cash_photo',file?'photo_selected':'photo_cancelled',undefined,undefined,cashOperationDraft.idempotencyKey||undefined);
     cashPhotoPickerActiveRef.current = false;
     const hiddenAt = cashFormHiddenAtRef.current;
     if (!file && hiddenAt !== null && Date.now() - hiddenAt >= CASH_FORM_BACKGROUND_RESET_MS) {
@@ -3055,6 +3111,7 @@ export function EmployeeTodayClient({
     const releaseSavedForm = () => {
       if (formReleased) return;
       formReleased = true;
+      try { workflowEvent('cash_form','closed',undefined,undefined,outboxItem.id); } catch { /* A journal fault must never interrupt the verified financial acknowledgement. */ }
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       setUploadProgress(null);
       setIsSaving(false);
@@ -3124,7 +3181,7 @@ export function EmployeeTodayClient({
       if (formReleased) return;
       formReleased = true;
       setCashDuplicateItem(null);
-      resetCashOperationDraft();
+      resetCashOperationDraft(false,'closed');
       setUploadProgress(null);
       setIsSaving(false);
       setMessage('Инкассация сохранена.');
@@ -3144,7 +3201,7 @@ export function EmployeeTodayClient({
       }
       if (!formReleased) {
         setCashDuplicateItem(null);
-        resetCashOperationDraft();
+        resetCashOperationDraft(false,'closed');
       }
       await refreshCashOutboxCount();
       void syncCurrentWorkdayState(true).catch(() => {});
@@ -3214,6 +3271,7 @@ export function EmployeeTodayClient({
   }
 
   async function completeOpeningPhotoTask(task: ShiftControlTask, file: File) {
+    workflowEvent('task_photo','submit_clicked',task.id);
     if (preview) { preview.blocked(); return; }
     setError('');
     setIsSaving(true);
@@ -3245,6 +3303,7 @@ export function EmployeeTodayClient({
       setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
+      workflowEvent('task_photo','error_shown',task.id);
       if (openShiftTaskId === task.id) {
         setShiftTaskErrors((current) => ({ ...current, [task.id]: { form: message } }));
       } else {
@@ -3257,6 +3316,7 @@ export function EmployeeTodayClient({
   }
 
   async function completeShiftControlTask(task: ShiftControlTask, draftOverride?: ShiftTaskDraft) {
+    workflowEvent('task_save','submit_clicked',task.id);
     if (preview && task.category === 'handover') { startHandoverWizard(task); return; }
     if (preview) { preview.blocked(); return; }
     const draft = draftOverride ?? shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
@@ -3307,6 +3367,7 @@ export function EmployeeTodayClient({
     }
 
     if (Object.keys(localErrors).length > 0) {
+      workflowEvent('task_save','validation',task.id);
       setShiftTaskErrors((current) => ({ ...current, [task.id]: localErrors }));
       return;
     }
@@ -3350,7 +3411,7 @@ export function EmployeeTodayClient({
           })();
 
       if (!result) return;
-
+      workflowEvent('task_save','response_received',task.id);
       checklistSaveSucceededRef.current = true;
       setShiftControlState((current) => ({
         ...current,
@@ -3368,7 +3429,8 @@ export function EmployeeTodayClient({
       await syncCurrentWorkdayState(true);
       if (task.category === 'cash' && result.cashRecountUnverified) setMessage('Пересчёт сохранён. Сверить с 1С не удалось.');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
+      workflowEvent('task_save','error_shown',task.id);
+      setAuditedError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
       setUploadProgress(null);
       setIsSaving(false);
@@ -3947,6 +4009,7 @@ export function EmployeeTodayClient({
   }, [activeWorkDay, closeExceptionMatchesCurrentIssues, closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks, staleCloseComment, staleCloseReason, unfinished]);
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
+    workflowEvent('handover_photo',file?'photo_selected':'photo_cancelled',task.id);
     if (preview) { preview.blocked(); return; }
     if (!file) return;
     setHandoverAttemptedStep(null);

@@ -3,7 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { CircleHelp } from 'lucide-react';
-import { HelpSheet } from './EmployeeHelpSheet';
+import { auditExperience, experienceAttempt, ExperienceShown } from '../EmployeeExperienceAudit';
+import { useEmployeeScreenLayer } from '../EmployeeScreenObservation';
+import { HelpSheet, type HelpCloseReason } from './EmployeeHelpSheet';
 import { useAppSetupProposal } from './EmployeeAppSetupContext';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { startVisibleSync } from '@/lib/visible-sync';
@@ -19,10 +21,13 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
   const preview = useEmployeePreview();
   const setup = useAppSetupProposal();
   const previewRequest = preview?.request;
+  const observed=preview?.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+  const observedGuide=preview?.followScreen&&observed?.live&&observed.runtime?.screen?.dialog==='guide';
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<WorkHelpSnapshot | null>(null);
   const [mode, setMode] = useState<'manual' | 'automatic' | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const guideAttempt = useRef(''), guideShown = useRef(false);
   const attempted = useRef(false), flight = useRef<AbortController | null>(null), revision = useRef(0);
   const modeRef = useRef(mode); modeRef.current = mode;
   const refresh = useCallback(async (force = false) => {
@@ -37,7 +42,7 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
       if (!data || data.version !== WORK_HELP_VERSION || !Array.isArray(data.missingDates) || typeof data.due !== 'boolean') return;
       if (before === revision.current) {
         setSnapshot(data);
-        if (!data.due && modeRef.current === 'automatic') setMode(null);
+        if (!data.due && modeRef.current === 'automatic') { if(!preview && guideShown.current)auditExperience({target:'guide',stage:'replaced',attemptId:guideAttempt.current}); setMode(null); }
       }
     } catch { /* Unknown availability is not a new employee obligation. */ }
     finally { clearTimeout(timer); if (flight.current === controller) flight.current = null; }
@@ -54,22 +59,30 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
     return () => { stop(); revision.current++; flight.current?.abort(); flight.current = null; window.removeEventListener('mobo:attention-refresh', sourceChanged); window.removeEventListener('storage', storageChanged); document.removeEventListener('visibilitychange', returned); };
   }, [enabled, refresh]);
   useEffect(() => {
-    if (!enabled || !snapshot?.due || setup?.state === 'safari' || setup?.state === 'checking') return;
+    if (preview?.followScreen || !enabled || !snapshot?.due || setup?.state === 'safari' || setup?.state === 'checking') return;
     const tryOpen = () => {
       if (attempted.current || modeRef.current || document.visibilityState !== 'visible' || !window.matchMedia('(max-width: 767px)').matches) return;
       if (document.querySelector('dialog[open], [role=dialog][aria-modal=true]') || ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName ?? '')) return;
-      attempted.current = true; setError(''); setMode('automatic');
+      attempted.current = true; guideAttempt.current=experienceAttempt();guideShown.current=false; setError(''); setMode('automatic');
     };
     tryOpen();
     const observer = new MutationObserver(tryOpen); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
     document.addEventListener('visibilitychange', tryOpen);
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', tryOpen); };
-  }, [enabled, snapshot, setup?.state]);
-  const open = useCallback(() => { attempted.current = true; setError(''); setMode('manual'); }, []);
-  const close = () => { if (!busy) setMode(null); };
+  }, [enabled, snapshot, setup?.state,preview?.followScreen]);
+  useEmployeeScreenLayer(mode ? {dialog:'guide',guideMode:mode,guideError:!!error,guideBusy:busy,guideReason:snapshot?.qualifier==='Сегодня и завтра не заполнены'?'both':snapshot?.qualifier==='Сегодня не заполнен'?'today':snapshot?.qualifier==='Завтра не заполнен'?'tomorrow':'none'}:null,90);
+  useEffect(()=>{
+    if(preview||!mode)return;
+    const visibility=()=>{if(guideShown.current)auditExperience({target:'guide',stage:document.visibilityState==='visible'?'returned':'hidden',attemptId:guideAttempt.current});};
+    const pageLeft=()=>{if(guideShown.current)auditExperience({target:'guide',stage:'page_left',attemptId:guideAttempt.current});};
+    document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',pageLeft);return()=>{document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',pageLeft);if(modeRef.current&&guideShown.current)auditExperience({target:'guide',stage:'interrupted',attemptId:guideAttempt.current});};
+  },[mode,Boolean(preview)]);
+  const open = useCallback(() => { preview?.setFollowScreen(false); guideAttempt.current=experienceAttempt();guideShown.current=false; attempted.current = true; setError(''); setMode('manual'); }, [preview?.setFollowScreen]);
+  const close = (reason:HelpCloseReason='button') => { if(preview?.followScreen){preview.setFollowScreen(false);setMode(null);return;} if (!busy) {if(!preview && guideShown.current)auditExperience({target:'guide',stage:({button:'close_button',outside:'close_outside',swipe:'close_swipe',escape:'close_escape'} as const)[reason],attemptId:guideAttempt.current});setMode(null);} };
   const acknowledge = async () => {
-    if (preview) { preview.blocked(); setMode(null); return; }
+    if (preview) { preview.blocked();preview.setFollowScreen(false); setMode(null); return; }
     if (busy) return;
+    auditExperience({target:'guide',stage:'acknowledge_clicked',attemptId:guideAttempt.current});
     setBusy(true); setError('');
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
     try {
@@ -78,27 +91,33 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
       if (!response.ok || data?.recorded !== true || !data.acknowledgedAt || data.version !== WORK_HELP_VERSION) throw Error();
       revision.current++; setSnapshot(data); setMode(null);
       try { localStorage.setItem('mobo-work-help-refresh', String(Date.now())); } catch { /* Only a cross-tab refresh signal; the acknowledgement is on the server. */ }
-    } catch { setError('Не удалось сохранить подтверждение. Попробуйте ещё раз.'); }
+    } catch { auditExperience({target:'guide',stage:'acknowledge_failed',attemptId:guideAttempt.current});setError('Не удалось сохранить подтверждение. Попробуйте ещё раз.'); }
     finally { clearTimeout(timer); setBusy(false); }
   };
   const goToSchedule = () => {
     if (!snapshot?.missingDates.length || busy) return;
+    if(!preview)auditExperience({target:'guide',stage:'schedule_clicked',attemptId:guideAttempt.current});
     setMode(null);
     const date = snapshot.missingDates[0], edit = snapshot.missingDates.length === 1;
     if (document.getElementById('pwa-work-help-target')) requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:schedule-open', { detail: { date, edit, source: 'work-help' } })));
     else { const target = scheduleCalendarHref(date, edit); if (preview) { const query = new URL(target,'https://preview.invalid').searchParams; const destination = new URL(preview.href('/employee?tab=schedule'),window.location.origin); query.forEach((value,key)=>{if(key!=='tab')destination.searchParams.set(key,value);}); router.push(destination.pathname+destination.search); } else router.push(target); }
   };
+  const displayMode=preview?.followScreen ? (observedGuide?observed!.runtime!.screen!.guideMode||'manual':null) : mode;
+  const displayError=preview?.followScreen&&observedGuide ? observed?.runtime?.screen?.guideError?'Не удалось сохранить подтверждение. Попробуйте ещё раз.':'' : error;
+  const displayBusy=preview?.followScreen&&observedGuide ? observed?.runtime?.screen?.guideBusy : busy;
+  const displayQualifier=preview?.followScreen&&observedGuide ? ({both:'Сегодня и завтра не заполнены',today:'Сегодня не заполнен',tomorrow:'Завтра не заполнен',none:''}[observed?.runtime?.screen?.guideReason||'none']) : snapshot?.qualifier;
   return <Context.Provider value={enabled ? { open } : null}>{children}
-    {enabled && mode && <HelpSheet title={newGuidePreview ? 'Работа в приложении' : 'Как пользоваться приложением'} close={close}>
-      {mode === 'automatic' && snapshot?.missingDates.length ? <p className={styles.reason}>{snapshot.qualifier}. График нужен, чтобы знать, кто выйдет на работу.</p> : null}
+    {enabled && displayMode && <HelpSheet title={newGuidePreview ? 'Работа в приложении' : 'Как пользоваться приложением'} close={close}>
+      {!preview && <ExperienceShown context={{target:'guide',stage:mode==='automatic'?'automatic_shown':'manual_shown',attemptId:guideAttempt.current}} onShown={()=>{guideShown.current=true;}}/>}
+      {displayMode === 'automatic' && displayQualifier ? <p className={styles.reason}>{displayQualifier}. График нужен, чтобы знать, кто выйдет на работу.</p> : null}
       <ol className={styles.steps}>
         <li><div><strong>График</strong><p>{newGuidePreview ? 'План рабочих дней и выходных. Заполняйте заранее — на завтра, неделю или дольше — и обновляйте при изменении планов.' : 'График — план работы отдела, выходных и замен, а не отметка прихода. Заполнять его нужно заранее и обновлять при изменении планов.'}</p></div></li>
         <li><div><strong>{newGuidePreview ? 'QR-код' : 'Приход'}</strong><p>{newGuidePreview ? 'Подтверждает присутствие на работе и фиксирует время начала дня. Сканируйте при приходе.' : 'QR-код фиксирует присутствие и время начала работы. Сканировать его нужно при приходе.'}</p></div></li>
         {!attendanceOnly && <li><div><strong>Проверки кассы</strong><p>{newGuidePreview ? 'В указанное время каждой проверки пересчитайте деньги и введите остаток для сверки с 1С.' : 'Плановая сверка наличных с 1С. Каждую проверку нужно выполнять в указанное время: пересчитать деньги и ввести остаток.'}</p></div></li>}
         <li><div><strong>{attendanceOnly ? 'Окончание работы' : 'Сдача смены'}</strong><p>{attendanceOnly ? (newGuidePreview ? 'Перед уходом завершите день в приложении для учёта отработанного времени.' : 'Для учёта фактически отработанного времени. Завершать день в приложении нужно перед уходом.') : 'Итоговая сверка кассы и подтверждение остатков на конец смены.'}</p></div></li>
       </ol>
-      {error && <p role='alert' className={styles.error}>{error}</p>}
-      <button type='button' className={`employee-material-primary-action ${styles.understood}`} disabled={busy} onClick={() => void acknowledge()}>{busy ? 'Сохранение…' : 'Понятно'}</button>
+      {displayError && <p role='alert' className={styles.error}>{displayError}</p>}
+      <button type='button' className={`employee-material-primary-action ${styles.understood}`} disabled={displayBusy} onClick={() => void acknowledge()}>{displayBusy ? 'Сохранение…' : 'Понятно'}</button>
       {!!snapshot?.missingDates.length && <button type='button' className={styles.scheduleAction} disabled={busy} onClick={goToSchedule}>{snapshot.missingDates.length === 1 ? 'Отметить день в графике' : 'Заполнить график'}</button>}
     </HelpSheet>}
   </Context.Provider>;

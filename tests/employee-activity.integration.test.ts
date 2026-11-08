@@ -6,7 +6,7 @@ import { employeeActivityReport } from '../lib/employee-activity-report';
 import { buildActivityView } from '../lib/employee-activity-view';
 import { buildProcessView } from '../lib/employee-process-view';
 // Explicitly isolated local database, never run against a restored production database.
-if (!/^postgresql:\/\/postgres:activity-local-only@127\.0\.0\.1:55464\/activity_test(?:\?|$)/.test(process.env.DATABASE_URL || '')) throw new Error('Use the isolated activity_test database on 55464.');
+if (process.env.DATABASE_URL!=='postgresql://activity:local-activity-review-only@127.0.0.1:55508/activity_live_review' && !/^postgresql:\/\/postgres:activity-local-only@127\.0\.0\.1:55464\/activity_test(?:\?|$)/.test(process.env.DATABASE_URL || '')) throw new Error('Use the isolated activity_test database on 55464.');
 const ids: number[] = [];
 test('operation events persist by employee and attempt, never establish financial completion or survive service exclusion', async()=>{
  const now=new Date('2026-10-26T09:00:00Z');

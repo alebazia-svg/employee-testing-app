@@ -5,6 +5,9 @@ import { Bell, BellOff, CalendarDays, ChevronRight, Clock3, QrCode, Share, Smart
 import styles from './EmployeeAppSetupProposal.module.css';
 
 import { EmployeeAppSetupContext as Context, useAppSetupProposal, type SetupProposalState } from './EmployeeAppSetupContext';
+import { auditExperience, experienceAttempt, ExperienceShown } from '../EmployeeExperienceAudit';
+import { useEmployeeScreenLayer } from '../EmployeeScreenObservation';
+import { useEmployeePreview } from '../EmployeePreviewProvider';
 import { HelpSheet } from './EmployeeHelpSheet';
 export { HelpSheet } from './EmployeeHelpSheet';
 export { useAppSetupProposal, type SetupProposalState } from './EmployeeAppSetupContext';
@@ -18,7 +21,10 @@ export function AppSetupProposalProvider({ initialState, currentFinish = false, 
 
 export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolean }) {
   const proposal = useAppSetupProposal();
+  const preview=useEmployeePreview(), attempt=useRef(experienceAttempt());
   const [help, setHelp] = useState<'settings' | null>(null);
+  useEmployeeScreenLayer(help ? {dialog:'push_settings'}:null,80);
+  const closeSettings=()=>{if(!preview&&!proposal?.demo)auditExperience({target:'push_setup',stage:'settings_close',attemptId:attempt.current});setHelp(null);};
   if (!proposal || proposal.state === 'ready' || proposal.state === 'checking') return null;
   const install = proposal.state === 'safari';
   const offline = proposal.state === 'offline';
@@ -39,12 +45,13 @@ export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolea
   </section>;
   return <>
     <section className={`${styles.notice} ${styles.notificationRow} ${compact ? styles.compact : ''}`} aria-label='Настройка уведомлений'>
+      {!preview&&!proposal.demo&&<ExperienceShown context={{target:'push_setup',stage:'shown',attemptId:attempt.current}}/>}
       <span className={styles.icon} aria-hidden='true'>{install ? <Smartphone size={22}/> : proposal.state === 'denied' ? <BellOff size={22}/> : <Bell size={22}/>}</span>
       <div className={styles.copy}><h2>{title}</h2><p>{description}</p></div>
-      {!offline && !unsupported && <button type='button' disabled={proposal.busy} className={`employee-material-secondary-action ${styles.action}`} onClick={() => proposal.state === 'denied' ? setHelp('settings') : proposal.enable()}>{proposal.busy ? 'Подключаем…' : label}<ChevronRight size={16} aria-hidden='true'/></button>}
+      {!offline && !unsupported && <button type='button' disabled={proposal.busy} className={`employee-material-secondary-action ${styles.action}`} onClick={() => proposal.state === 'denied' ? (()=>{if(!preview&&!proposal.demo)auditExperience({target:'push_setup',stage:'settings_open',attemptId:attempt.current});setHelp('settings');})() : proposal.enable()}>{proposal.busy ? 'Подключаем…' : label}<ChevronRight size={16} aria-hidden='true'/></button>}
       {proposal.error && !offline && <p role='alert' className={styles.connectionError}>{proposal.error}</p>}
     </section>
-    {help === 'settings' && <HelpSheet title='Включите уведомления МОБО' close={() => setHelp(null)}>
+    {help === 'settings' && <HelpSheet title='Включите уведомления МОБО' close={closeSettings}>
       <p className={styles.lead}>{iphoneHelp ? 'Разрешите уведомления в настройках телефона.' : 'Уведомления запрещены в настройках браузера.'}</p>
       {iphoneHelp ? <ol className={styles.steps}>
         <li><span>1</span><div><strong>Откройте «Настройки» на телефоне</strong></div></li>
@@ -55,7 +62,7 @@ export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolea
         <li><span>2</span><div><strong>Разрешите уведомления для МОБО</strong><p>Включите допуск уведомлений.</p></div></li>
         <li><span>3</span><div><strong>Вернитесь в МОБО</strong></div></li>
       </ol>}
-      <button type='button' className={`employee-material-primary-action ${styles.done}`} onClick={() => setHelp(null)}>Понятно</button>
+      <button type='button' className={`employee-material-primary-action ${styles.done}`} onClick={closeSettings}>Понятно</button>
     </HelpSheet>}
   </>;
 }

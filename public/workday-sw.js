@@ -1,3 +1,27 @@
+// Receipt reporting is independent of showing, opening and dismissing notifications.
+// The endpoint verifies the signed account, owned notification and this session's subscription.
+function reportEmployeePush(data, stage) {
+  try {
+    const id = Number(data?.notificationId);
+    const target = new URL(data?.url || '/employee', self.location.origin);
+    if (!Number.isSafeInteger(id) || id <= 0 || target.origin !== self.location.origin || !/^\/(employee|procurement)(\/|$)/.test(target.pathname)) return Promise.resolve();
+    const body = JSON.stringify({ key: crypto.randomUUID(), kind: 'push_receipt', notificationId: id, stage });
+    return (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetch('/api/employee/activity', {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body, signal: AbortSignal.timeout(4000),
+          });
+          if ([400, 401, 403].includes(response.status)) return;
+          if (response.ok && (await response.json()).recorded === true) return;
+        } catch { /* A missing receipt never affects delivery or navigation. */ }
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    })();
+  } catch { return Promise.resolve(); }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open('portal-offline-v6').then((cache) => cache.addAll([
@@ -51,32 +75,26 @@ self.addEventListener('push', (event) => {
       actions.push(self.navigator.setAppBadge(0));
     }
   }
-  actions.push(self.registration.showNotification(data.title || 'MOBO', {
+  const display = self.registration.showNotification(data.title || 'MOBO', {
     body: data.body || 'Откройте портал, чтобы продолжить рабочий день.',
     icon: '/portal-app-icon-192.png',
     badge: '/portal-app-icon-192.png',
     data: { url: data.url || '/employee', notificationId: data.notificationId || null },
     tag: data.notificationId ? `${data.tagPrefix || 'workday'}-${data.notificationId}` : (data.tagPrefix || 'workday'),
     renotify: data.tagPrefix === 'admin' && data.renotify === true,
-  }));
+  });
+  actions.push(display);
+  const received = reportEmployeePush(data, 'received');
+  actions.push(received);
+  actions.push(display.then(() => received.then(() => reportEmployeePush(data, 'display_requested')), () => received.then(() => reportEmployeePush(data, 'display_failed'))));
   event.waitUntil(Promise.all(actions));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || '/employee', self.location.origin).href;
-  // Record only an intentional employee push click. Navigation never awaits telemetry.
-  try {
-    const id = event.notification.data?.notificationId;
-    const target = new URL(targetUrl);
-    if (Number.isSafeInteger(id) && id > 0 && target.origin === self.location.origin && /^\/(employee|procurement)(\/|$)/.test(target.pathname)) {
-      event.waitUntil(fetch('/api/employee/activity', {
-        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: crypto.randomUUID(), kind: 'notification_open', notificationId: id }),
-        signal: AbortSignal.timeout(4000),
-      }).catch(() => {}));
-    }
-  } catch { /* Opening the app remains available on devices without telemetry support. */ }
+  // A push tap is distinct from a successfully opened in-app message.
+  event.waitUntil(reportEmployeePush(event.notification.data, 'clicked'));
 
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
     for (const client of windows) {
@@ -100,4 +118,8 @@ self.addEventListener('message', (event) => {
       if (notification.tag.startsWith('admin-attention-')) notification.close();
     }
   }));
+});
+
+self.addEventListener('notificationclose', (event) => {
+  event.waitUntil(reportEmployeePush(event.notification.data, 'closed'));
 });

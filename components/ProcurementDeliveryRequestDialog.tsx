@@ -1,4 +1,6 @@
 'use client';
+import { workflowEvent } from '@/lib/employee-workflow-client';
+import { useEmployeeScreenLayer } from './EmployeeScreenObservation';
 import { EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { DELIVERY_RESERVE } from '@/lib/procurement-delivery-policy';
@@ -8,6 +10,7 @@ export function ProcurementDeliveryRequestDialog({ balance, pending, available, 
   balance: number; pending: boolean; available: boolean; error: string;
   onCancel: () => void; onSubmit: (input: DeliveryRequestInput) => void;
 }) {
+  useEmployeeScreenLayer({dialog:'form'},55);
   const [amount, setAmount] = useState(() => String(Math.max(0, Math.round((DELIVERY_RESERVE.target - balance) * 100) / 100)).replace('.', ','));
   const [comment, setComment] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -15,8 +18,8 @@ export function ProcurementDeliveryRequestDialog({ balance, pending, available, 
   const amountValue = deliveryAmountFromText(amount);
   useEffect(() => {
     const dialog = dialogRef.current;
-    dialog?.showModal();
-    return () => dialog?.close();
+    dialog?.showModal();workflowEvent('procurement_delivery','opened',undefined,undefined,undefined,{operation:'delivery_request'});
+    return () => {workflowEvent('procurement_delivery','closed',undefined,undefined,undefined,{operation:'delivery_request'});dialog?.close();};
   }, []);
   return <dialog ref={dialogRef} aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!pending) onCancel(); }}

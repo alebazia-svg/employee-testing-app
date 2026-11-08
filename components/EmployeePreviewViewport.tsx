@@ -17,8 +17,8 @@ export function EmployeePreviewViewport({ visitId, employeeName }: { visitId: st
       </div>
     </div>
     <div className='overflow-x-auto px-4'>
-      <iframe key={`${device}-${preview?.connectionId ?? ""}`} title={`${device === 'phone' ? 'Мобильный' : 'Компьютерный'} кабинет · ${employeeName}`}
-        src={`/admin/employees/preview/${encodeURIComponent(visitId)}?frame=${device}${preview?.connectionId ? "&connection="+encodeURIComponent(preview.connectionId) : ""}`}
+      <iframe key={`${device}-${preview?.connectionId ?? ""}-${preview?.followScreen}`} title={`${device === 'phone' ? 'Мобильный' : 'Компьютерный'} кабинет · ${employeeName}`}
+        src={`/admin/employees/preview/${encodeURIComponent(visitId)}?frame=${device}${preview?.connectionId ? "&connection="+encodeURIComponent(preview.connectionId) : ""}&follow=${preview?.followScreen?"1":"0"}`}
         width={device === 'phone' ? 390 : 1440}
         className={`mx-auto block min-h-[520px] shrink-0 border border-[#d7c4b1] bg-white shadow-sm ${device === 'phone' ? 'rounded-[28px]' : 'rounded-xl'}`}
         style={{ width: device === 'phone' ? 390 : 1440, maxWidth: 'none', height: `min(844px, calc(100dvh - ${topInset + 110}px))` }} />

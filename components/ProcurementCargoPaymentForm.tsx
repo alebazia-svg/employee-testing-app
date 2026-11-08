@@ -1,4 +1,6 @@
 'use client';
+import {workflowJson,workflowEvent} from '@/lib/employee-workflow-client';
+import { employeeObservedFetch } from '@/lib/employee-observed-fetch';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import {useEffect,useRef,useState} from 'react';
 import {PROCUREMENT_CARGO} from '@/lib/procurement-cargo';
@@ -30,15 +32,15 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
     event.preventDefault();setError('');
     if(inspection){setError('Режим проверки: заявка не отправлена.');return;}
     if(preview){setError('Проверка интерфейса: отправка отключена.');return;}
-    if(blocked||!date||!total||total<=0){setError('Проверьте дату, сумму и доступность данных.');return;}
+    if(blocked||!date||!total||total<=0){workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create'});setError('Проверьте дату, сумму и доступность данных.');return;}
     setSaving(true);
     try{
-      const response=await fetch('/api/procurement/payment-plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      const response=await employeeObservedFetch('/api/procurement/payment-plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         paymentPurpose:'DELIVERY',supplierPartner:PROCUREMENT_CARGO.supplierPartner,orderRefs:[],orderNumbers:[],plannedDate:date,
         plannedAmount:total,paymentMethod:method,currency:fx?method:'RUB',foreignAmount:fx?amount:null,exchangeRate:fx?rate:null,condition:comment,
         fundingSource:null,
       })});
-      const body=await response.json();
+      const body=await workflowJson(response,'procurement_payment',undefined,'payment_create');
       if(!response.ok){setError(body.error||'Не удалось создать заявку.');return;}
       onCreated([body]);
     }catch{setError('Не удалось подтвердить отправку. Проверьте календарь перед повторной попыткой.');}

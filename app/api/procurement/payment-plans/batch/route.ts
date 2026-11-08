@@ -57,11 +57,11 @@ export async function POST(req: Request) {
     hasDebt ? fetchManagerSupplierNames(managerName) : Promise.resolve([]),
     freshEvidence(),
   ]);
-  if (!source.complete) return Response.json({ error: 'Данные 1С получены не полностью. Повторите отправку позже.' }, { status: 503 });
+  if (!source.complete) return Response.json({ error: 'Данные 1С получены не полностью. Повторите отправку позже.' }, { status: 503,headers:{'X-Portal-Activity-Failure':'source'} });
   const managerOrders = ordersForManager(source.rows, managerName);
   const supplierNames = hasDebt ? debtSupplierNames : [...new Set(managerOrders.map(order=>order.supplierPartner))];
   const supplierBalances = settlements ? summarizeSupplierSettlements(settlements.rows, supplierNames) : null;
-  if (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503 });
+  if (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503,headers:{'X-Portal-Activity-Failure':'source'} });
   const allowed = new Map(
     ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]),
   );
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
   if (mixedSuppliers.length) return Response.json({ error: mixedPaymentBasisMessage(mixedSuppliers) }, { status: 409 });
   const needsUsdtRate = checkedRows.some((row) => "data" in row && row.data && !row.data.plannedAmount && row.data.paymentMethod === "USDT" && Boolean(row.data.foreignAmount));
   const rateReference = needsUsdtRate ? await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date())) : null;
-  if (needsUsdtRate && !rateReference?.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
+  if (needsUsdtRate && !rateReference?.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400,headers:{'X-Portal-Activity-Failure':'rate'} });
   for (const row of checkedRows) if ('data' in row && row.data && !row.data.plannedAmount && row.data.paymentMethod === 'USDT') {
     row.data.plannedAmount = plannedFxRubles(row.data.foreignAmount, rateReference?.rate);
     row.data.exchangeRate = rateReference?.rate ?? null;
@@ -199,8 +199,8 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.message === 'DEBT_REQUEST_EXISTS') return null;
     throw error;
   });
-  if (!plans) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку по заказу или долгу поставщика. Измените существующую заявку или дождитесь подтверждения оплаты.' }, { status: 409 });
-  return Response.json({ plans: jsonValue(plans) }, { status: 201 });
+  if (!plans) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку по заказу или долгу поставщика. Измените существующую заявку или дождитесь подтверждения оплаты.' }, { status: 409,headers:{'X-Portal-Activity-Failure':'duplicate'} });
+  return Response.json({ plans: jsonValue(plans) }, { status: 201,headers:{'X-Portal-Activity-Ref':plans[0].id} });
   } catch (error) {
     if(error instanceof Error&&/^[А-ЯЁ]/.test(error.message))return Response.json({error:error.message},{status:409});
     // Do not expose Prisma messages: they can include submitted data and SQL.

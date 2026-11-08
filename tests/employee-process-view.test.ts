@@ -142,3 +142,23 @@ test('acknowledging a duplicate retires its queued problem without inventing ano
  const [row]=buildProcessView(report(audit));assert.equal(row.unresolved,false);assert.equal(row.confirmed,false);assert.equal(row.outcome,'Повторная отправка снята сотрудником');
  assert.match(row.steps.at(-1)?.note||'',/№ 75/);assert.equal(row.steps.some(s=>s.id.startsWith('cash-posted:')),false);
 });
+
+test('schedule summary counts distinct saved dates, preserves repeated changes and uses latest save time',()=>{
+ const fact=(id:number,date:string,s:number)=>({id:`schedule:${id}`,section:'schedule' as const,period:'2026-11',scheduleDate:date,at:at(s).toISOString(),title:`График ${date}`,note:'Сохранено',visit:false});
+ const rows=buildProcessView(report([],{sections:[{id:'schedule',label:'График',visits:0,actions:3,lastAt:at(40).toISOString(),events:[fact(3,'2026-11-10',40),fact(2,'2026-11-09',30),fact(1,'2026-11-09',20)]}]}));
+ assert.equal(rows.length,1);assert.deepEqual(rows[0].scheduleDates,['2026-11-09','2026-11-10']);
+ assert.equal(rows[0].steps.length,3);assert.equal(rows[0].outcomeAt,at(40).toISOString());
+ assert.match(rows[0].summary.join(' '),/Сохранённых изменений: 3/);
+});
+test('legacy schedule text never manufactures structured dates or month completeness',()=>{
+ const rows=buildProcessView(report([],{sections:[{id:'schedule',label:'График',visits:0,actions:1,lastAt:at(20).toISOString(),events:[{id:'schedule:1',section:'schedule',period:'2026-11',at:at(20).toISOString(),title:'График 9 ноября',note:'Сохранено',visit:false}]}]}));
+ assert.equal(rows[0].scheduleDates,undefined);assert.equal(rows[0].steps[0].label,'График 9 ноября');
+});
+test('explicit schedule form month joins saved changes without losing form events',()=>{
+ const workflow=(stage:string,s:number)=>({...event('x','x',s),kind:'experience',context:{target:'workflow',action:'schedule_bulk',stage,attemptId:'workflow-schedule-1',period:'2026-11'}});
+ const audit=buildAuditTimeline([workflow('opened',1),workflow('closed',30)],[],'2026-10-26');
+ const rows=buildProcessView(report(audit,{sections:[{id:'schedule',label:'График',visits:0,actions:1,lastAt:at(20).toISOString(),events:[{id:'schedule:1',section:'schedule',period:'2026-11',scheduleDate:'2026-11-09',at:at(20).toISOString(),title:'График 9 ноября: не указан → рабочий день',note:'Сохранено',visit:false}]}]}));
+ assert.equal(rows.length,1);assert.equal(rows[0].id,'schedule:2026-11');assert.equal(rows[0].confirmed,true);
+ assert.equal(rows[0].steps.length,3);assert.ok(rows[0].steps.some(s=>s.stage==='closed'));assert.equal(rows[0].steps.some(s=>s.stage==='cancelled'),false);
+ assert.deepEqual(rows[0].scheduleDates,['2026-11-09']);
+});

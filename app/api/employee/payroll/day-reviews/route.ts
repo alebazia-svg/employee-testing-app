@@ -12,5 +12,5 @@ export async function POST(req:Request){
  const user=await getCurrentUser();if(!user?.isActive||user.role!=='EMPLOYEE'||user.portalArea!=='WORKDAY')return Response.json({error:'Недостаточно прав.'},{status:user?403:401,headers:dayReviewHeaders});
  const body=await req.json().catch(()=>null);
  if(!body||Object.keys(body).some(k=>!['month','dates'].includes(k))||typeof body.month!=='string')return Response.json({error:'Некорректный запрос.'},{status:400,headers:dayReviewHeaders});
- try {const r=await submitDayReview(user.id,body.month,body.dates);return Response.json({id:r.id,status:r.status},{headers:dayReviewHeaders});}catch(e){return dayReviewFailure(e);}
+ try {const r=await submitDayReview(user.id,body.month,body.dates);return Response.json({id:r.id,status:r.status},{headers:{...dayReviewHeaders,'X-Portal-Activity-Ref':r.id}});}catch(e){return dayReviewFailure(e);}
 }

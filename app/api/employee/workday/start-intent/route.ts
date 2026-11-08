@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       reused: true,
       shiftSelection,
       shiftSelectionHint: workdayShiftSelectionHint(shiftSelection),
-    });
+    },{headers:{'X-Portal-Activity-Ref':existingIntent.id}});
   }
 
   const intent = await prisma.workdayStartIntent.upsert({
@@ -74,5 +74,5 @@ export async function POST(req: Request) {
     reused: false,
     shiftSelection,
     shiftSelectionHint: workdayShiftSelectionHint(shiftSelection),
-  });
+  },{headers:{'X-Portal-Activity-Ref':intent.id}});
 }

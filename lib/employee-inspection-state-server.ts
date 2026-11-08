@@ -1,4 +1,5 @@
 import 'server-only';
+import { readExperience } from './employee-experience-policy';
 import { prisma } from './prisma';
 import { inspectionDeviceSnapshot, type InspectionDeviceSnapshot } from './employee-inspection-state';
 
@@ -11,5 +12,10 @@ export async function loadEmployeeInspectionDevices(userId: number, selectedId: 
     prisma.portalAccessSession.findMany({where:{browserInstanceId:{in:ids},user:{role:'ADMIN'}},select:{browserInstanceId:true},distinct:['browserInstanceId']}),
     prisma.portalAccessBrowserOwner.findMany({where:{browserInstanceId:{in:ids},disabledAt:null,owner:{isActive:true,role:'ADMIN'}},select:{browserInstanceId:true}}),
   ]) : [[],[]];
-  return inspectionDeviceSnapshot(records,userId,selectedId,new Set(admins.flatMap(r=>r.browserInstanceId ? [r.browserInstanceId]:[])),new Set(owners.map(r=>r.browserInstanceId)),now);
+  const visibilityEvents=await prisma.portalActivityEvent.findMany({where:{userId,kind:'experience',createdAt:{gte:new Date(now.getTime()-60000)},context:{path:['action'],equals:'app'}},orderBy:{createdAt:'desc'},take:100});
+  const hidden=new Map<string,Date>();
+  const seen=new Set<string>();for(const e of visibilityEvents){if(seen.has(e.sessionId))continue;seen.add(e.sessionId);const c=readExperience(e.context);if(c?.target==='workflow'&&c.stage==='background')hidden.set(e.sessionId,e.createdAt);}
+  const snapshot=inspectionDeviceSnapshot(records,userId,selectedId,new Set(admins.flatMap(r=>r.browserInstanceId ? [r.browserInstanceId]:[])),new Set(owners.map(r=>r.browserInstanceId)),now);
+  for(const c of snapshot.connections)if(hidden.has(c.id)&&(!c.runtimeAt||hidden.get(c.id)!.getTime()>=Date.parse(c.runtimeAt)))c.live=false;
+  return snapshot;
 }

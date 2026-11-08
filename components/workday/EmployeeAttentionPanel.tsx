@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenLayer } from '../EmployeeScreenObservation';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
 import { useAppSetupProposal } from './EmployeeAppSetupProposal';
 import type { InteractionContext } from '@/lib/employee-interaction-policy';
@@ -98,6 +99,8 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const recordSelected=(stage:InteractionContext['stage'])=>{const target=targetFor(selectedId);if(target)audit({...target,stage});};
   const returnToList = () => {recordSelected('close');setSelectedId(null);};
   const previousFocus = useRef<HTMLElement | null>(null);
+  useEmployeeScreenLayer(open&&selectedId&&/^(issue:|review:|expense:)/.test(selectedId)?{dialog:'attention',attentionId:selectedId}:null,75);
+  useEffect(()=>{if(!preview?.followScreen)return;const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);if(!c?.live||!c.runtime?.screen)return;const screen=c.runtime.screen;if(screen.dialog==='attention'&&screen.attentionId&&allItems.some(i=>i.id===screen.attentionId)){setSelectedId(screen.attentionId);setOpen(true);}else{setSelectedId(null);setOpen(false);}},[preview?.followScreen,preview?.deviceSnapshot,allItems]);
   const selected = items.find(item => item.id === selectedId);
   useEffect(()=>{
     if(open && selectedId?.startsWith('review:') && loadState==='ready' && !refreshing && !selected && items.length===0){setOpen(false);setSelectedId(null);setScope(null);}

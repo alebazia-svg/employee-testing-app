@@ -1,4 +1,6 @@
 "use client";
+import { workflowEvent,workflowJson } from '@/lib/employee-workflow-client';
+import { employeeObservedFetch } from "@/lib/employee-observed-fetch";
 import {ProcurementCalendarRates} from '@/components/ProcurementCalendarRates';
 import {ProcurementCalendarReceiptEntry} from '@/components/ProcurementCalendarReceiptEntry';
 import {procurementListRate} from '@/lib/procurement-history-rate';
@@ -519,6 +521,7 @@ export default function ProcurementPaymentCalendarClient({
     event.preventDefault();
     if (preview) { setMessage("Режим проверки: изменения не сохранены."); return; }
     if (basisPreview || (editingId ? editingBlocked : planningBlocked) || readOnlyPreview) {
+      if(!basisPreview&&!readOnlyPreview)workflowEvent('procurement_payment','validation',undefined,undefined,editingId||undefined,{operation:editingId?'payment_edit':'payment_create'});
       setMessage(basisPreview || readOnlyPreview ? 'Проверка интерфейса: отправка отключена.' : 'Данные не загружены полностью. Обновите страницу перед сохранением.');
       return;
     }
@@ -549,7 +552,7 @@ export default function ProcurementPaymentCalendarClient({
       supplierConfirmation: draft.supplierConfirmation,
     };
     try {
-    const response = await fetch(
+    const response = await employeeObservedFetch(
       editingId
         ? `/api/procurement/payment-plans/${editingId}${dateOnlyEdit ? '/schedule' : ''}`
         : "/api/procurement/payment-plans",
@@ -559,7 +562,7 @@ export default function ProcurementPaymentCalendarClient({
         body: JSON.stringify(dateOnlyEdit ? {action:'RESCHEDULE',date:draft.plannedDate,comment:changeReason,version:editingVersion} : body),
       },
     );
-    const data = await response.json();
+    const data = await workflowJson(response,'procurement_payment',editingId||undefined,editingId?(dateOnlyEdit?'payment_schedule':'payment_edit'):'payment_create');
     setSaving(false);
     if (!response.ok) {
       setMessage(data.error || "Не удалось сохранить заявку.");
@@ -946,7 +949,7 @@ export default function ProcurementPaymentCalendarClient({
       ) : null}
 
 
-      {formOpen ? <ProcurementPaymentDialog editing={Boolean(editingId)} busy={saving || batchDraftState.saving} onClose={requestClosePaymentForm} returnFocus={paymentFormOpener.current}>
+      {formOpen ? <ProcurementPaymentDialog activityRef={editingId||undefined} editing={Boolean(editingId)} busy={saving || batchDraftState.saving} onClose={requestClosePaymentForm} returnFocus={paymentFormOpener.current}>
         {editingId ? (
           <form
             className="procurement-edit-form space-y-3 p-4 sm:px-5"
@@ -1227,7 +1230,7 @@ function SmallBalanceValue({ label, value, critical = false }: { label: string; 
 /** Same request facts/actions; the existing mobile dialog supplies focus, scroll and bottom-sheet behavior. */
 function BuyerPlanDetailSurface({id,mobile,busy,onClose,edit,children}:{id:string;mobile:boolean;busy:boolean;onClose:()=>void;edit:React.ReactNode;children:React.ReactNode}){
   if(!mobile)return <div id={id} data-payment-details className="buyer-plan-detail-inline col-span-full border-t border-slate-200 pt-3 pb-1">{children}</div>;
-  return <ProcurementPaymentDialog editing={false} title="Заявка на оплату" busy={busy} onClose={onClose} className="buyer-plan-detail-dialog" footer={<div className="buyer-plan-detail-footer"><button type="button" disabled={busy} onClick={onClose} className="procurement-receipt-button">Закрыть</button>{edit}</div>}>
+  return <ProcurementPaymentDialog activityRef={id.replace(/^plan-details-/,'')} activityOperation='payment_load' editing={false} title="Заявка на оплату" busy={busy} onClose={onClose} className="buyer-plan-detail-dialog" footer={<div className="buyer-plan-detail-footer"><button type="button" disabled={busy} onClick={onClose} className="procurement-receipt-button">Закрыть</button>{edit}</div>}>
     <div id={id} data-payment-details className="buyer-plan-detail-content">{children}</div>
   </ProcurementPaymentDialog>;
 }

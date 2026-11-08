@@ -1,4 +1,5 @@
 'use client';
+import { auditExperience, experienceAttempt } from '../EmployeeExperienceAudit';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { EmployeeAppSetupContext } from './EmployeeAppSetupContext';
 import { employeeAppSetupState } from '@/lib/employee-app-setup-state';
@@ -20,13 +21,16 @@ export function EmployeeAppSetupProvider({ children, enabled = true }: { childre
   const active = useRef(false), flight = useRef<AbortController | null>(null), knownConnection = useRef(false);
   const connect = useCallback(async (requestPermission: boolean) => {
     if (!active.current || flight.current) return;
+    const attemptId=experienceAttempt();
+    if(requestPermission)auditExperience({target:'push_setup',stage:'enable_clicked',attemptId});
     const controller = new AbortController(); flight.current = controller;
     setBusy(true); setError('');
     try {
-      await connectEmployeePush(requestPermission, controller.signal);
-      if (active.current && !controller.signal.aborted) { knownConnection.current = true; setConnected(true); }
+      await connectEmployeePush(requestPermission, controller.signal,stage=>auditExperience({target:'push_setup',stage,attemptId}));
+      if (active.current && !controller.signal.aborted) { if(requestPermission||!knownConnection.current)auditExperience({target:'push_setup',stage:'connected',attemptId});knownConnection.current = true; setConnected(true); }
     } catch (e) {
-      if (active.current && !controller.signal.aborted) { knownConnection.current = false; setConnected(false); setError(e instanceof Error ? e.message : 'Не удалось подключить уведомления. Повторите попытку.'); }
+      if (active.current && !controller.signal.aborted) { if(requestPermission) { const f=facts();auditExperience({target:'push_setup',stage:'failed',attemptId,reason:!f.online?'offline':!f.supported?'unsupported':f.permission==='denied'?'denied':f.permission==='default'?'default':'request'}); }
+      knownConnection.current = false; setConnected(false); setError(e instanceof Error ? e.message : 'Не удалось подключить уведомления. Повторите попытку.'); }
     } finally {
       if (flight.current === controller) {
         flight.current = null;

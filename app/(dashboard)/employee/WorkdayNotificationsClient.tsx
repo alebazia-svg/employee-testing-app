@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenLayer } from '@/components/EmployeeScreenObservation';
 import { useProcurementMobileNavigation } from '@/components/ProcurementMobileNavigation';
 import { SCHEDULE_NEAR_KIND } from '@/lib/schedule-near-reminder';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
@@ -44,6 +45,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
   const [pushConnected, setPushConnected] = useState(false);
   const [open, setOpen] = useState(false);
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
+  useEmployeeScreenLayer(selected ? {dialog:'notification',notificationId:Number(selected.id)}:open?{dialog:'inbox'}:null,70);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [inboxError,setInboxError]=useState('');
@@ -136,6 +138,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
   }
 
   async function openNotification(notification: WorkdayNotification) {
+    preview?.setFollowScreen(false);
     if (!preview) sendEmployeeActivity({ kind: 'notification_open', notificationId: notification.id });
     setBanner(null);
     if (notification.active === false && employeeNotificationOpening(notification) === 'page') { void dismiss(notification); return; }
@@ -171,9 +174,18 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
     if (notification.kind !== CASH_ISSUE_KIND) void dismiss(notification);
   }
 
+  useEffect(()=>{
+    if(!preview?.followScreen)return;
+    const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+    if(!c?.live||!c.runtime?.screen)return;
+    const screen=c.runtime.screen;
+    setOpen(screen.dialog==='inbox');
+    if(screen.dialog==='notification'&&screen.notificationId){const n=notifications.find(n=>Number(n.id)===screen.notificationId);if(n)setSelected(current=>Number(current?.id)===Number(n.id)?current:{...n,audience:'employee'});}
+    else setSelected(null);
+  },[preview?.followScreen,preview?.deviceSnapshot,notifications]);
   return (
     <div className='relative'>
-      {selected&&<NotificationRecordDialog readOnly={Boolean(preview)} key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
+      {selected&&<NotificationRecordDialog readOnly={Boolean(preview)} key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>{preview?.setFollowScreen(false);setSelected(null);}}/>}
       <button
         type='button'
         onClick={() => { if (!open && !preview) sendEmployeeActivity({ kind: 'visit', section: 'notifications' }); setBanner(null); setOpen(current => !current); void refresh(); }}
@@ -190,7 +202,7 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
       </button>
 
       {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><span className='text-[#a77550]'><EmployeeNoticeIcon kind={employeeInboxIconKind(banner)} /></span><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}><InteractionShown context={{target:'notification',ref:String(banner.id),stage:'shown'}}/>{banner.title}</button><button type="button" onClick={() => {audit({target:'notification',ref:String(banner.id),stage:'banner_hidden'});setBanner(null);}} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
-      {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
+      {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => {preview?.setFollowScreen(false);setOpen(false);}} onChoose={item => void openNotification(item)} permission={<>
 {setupProposal && <EmployeeAppSetupProposal compact />}
 {!setupProposal && !preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>

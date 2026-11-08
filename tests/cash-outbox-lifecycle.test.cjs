@@ -399,3 +399,13 @@ test('a slow photo cannot hold another same-amount intent or clear its newer fin
  assert.equal(money,2);assert.equal(s.context.cashTransferInFlightRef.current,false);
  assert.equal(s.stored.size,0);
 });
+
+
+test('a failing activity observer cannot hold the form or financial lock after a verified money receipt',async()=>{
+ const s=setup({newProtocol:true});
+ s.context.workflowEvent=()=>{throw Error('activity observer unavailable');};
+ await s.submit();
+ assert.equal(s.context.cashOperationDraft.direction,null);assert.equal(s.context.saving,false);
+ assert.equal(s.context.cashTransferInFlightRef.current,false);assert.equal(s.auditStages.at(-1),'completed');
+ assert.equal(s.stored.size,0);
+});

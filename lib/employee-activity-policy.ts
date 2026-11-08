@@ -1,3 +1,5 @@
+import { isEmployeePushReceiptStage, type EmployeePushReceiptStage } from './employee-push-receipt';
+import { readExperience, type ExperienceContext } from './employee-experience-policy';
 import { readInteraction, type InteractionContext } from './employee-interaction-policy';
 import { readOperationContext, type OperationContext } from './employee-operation-policy';
 import { readHandoverContext, type HandoverContext } from './employee-handover-audit-policy';
@@ -7,7 +9,7 @@ export const activitySections = {
   procurement: 'Закупки',
 } as const;
 export type ActivitySection = keyof typeof activitySections;
-export type ActivityInput = { key: string; kind: 'visit'; section: ActivitySection } |
+export type ActivityInput = {key:string;kind:'push_receipt';notificationId:number;stage:EmployeePushReceiptStage} | { key:string; kind:'experience'; context:ExperienceContext } | { key: string; kind: 'visit'; section: ActivitySection } |
   { key: string; kind: 'notification_open'; notificationId: number } |
   { key: string; kind: 'handover'; context: HandoverContext } | { key: string; kind: 'interaction'; context: InteractionContext } | {key:string;kind:'operation';context:OperationContext};
 export const ACTIVITY_RETENTION_DAYS = 90;
@@ -16,6 +18,8 @@ export function parseActivityInput(value: unknown): ActivityInput | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const p = value as Record<string, unknown>;
   if (typeof p.key !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(p.key)) return null;
+  if(p.kind==='push_receipt'&&Object.keys(p).every(k=>['key','kind','notificationId','stage'].includes(k))&&Number.isSafeInteger(p.notificationId)&&Number(p.notificationId)>0&&isEmployeePushReceiptStage(p.stage))return p as ActivityInput;
+  if (p.kind === 'experience' && Object.keys(p).every(k=>['key','kind','context'].includes(k)) && readExperience(p.context)) return p as ActivityInput;
   if (p.kind === 'visit' && Object.keys(p).every(k => ['key','kind','section'].includes(k)) && typeof p.section === 'string' && Object.hasOwn(activitySections, p.section)) return p as ActivityInput;
   if (p.kind === 'notification_open' && Object.keys(p).every(k => ['key','kind','notificationId'].includes(k)) && typeof p.notificationId === 'number' && Number.isSafeInteger(p.notificationId) && p.notificationId > 0) return p as ActivityInput;
   if (p.kind === 'interaction' && Object.keys(p).every(k => ['key','kind','context'].includes(k)) && readInteraction(p.context)) return p as ActivityInput;

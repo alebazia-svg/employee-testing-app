@@ -1,4 +1,5 @@
 'use client';
+import { workflowEvent } from '@/lib/employee-workflow-client';
 import { InteractionShown } from '@/components/EmployeeInteractionAudit';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -24,6 +25,7 @@ export function EmployeeNotificationInbox({ items, onClose, onChoose, permission
   const dialog = useRef<HTMLDialogElement>(null);
   const [history, setHistory] = useState<EmployeeInboxItem | null>(null);
   const [showHistory,setShowHistory]=useState(false);
+  useEffect(()=>{workflowEvent('notification_list',showHistory?'history_open':'new_open');},[showHistory]);
   const sections=employeeInboxSections(items);
   const shown=showHistory?sections.history:sections.fresh;
   const back = () => history ? setHistory(null) : showHistory?setShowHistory(false):onClose();

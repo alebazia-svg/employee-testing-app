@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     where: { workDayEntryId: workDay.id, status: 'pending', reasonCode: { startsWith: 'cash_encashment_' } },
     orderBy: { requestedAt: 'desc' },
   });
-  if (pending) return Response.json({ request: pending, created: false });
+  if (pending) return Response.json({ request: pending, created: false },{headers:{'X-Portal-Activity-Ref':pending.id}});
 
   const now = new Date();
   const request = await prisma.$transaction(async (tx) => {
@@ -69,5 +69,5 @@ export async function POST(req: Request) {
     await queueAdminInboxTelegramDelivery({ db: tx, eventId: event.id });
     return created;
   });
-  return Response.json({ request, created: true });
+  return Response.json({ request, created: true },{headers:{'X-Portal-Activity-Ref':request.id}});
 }

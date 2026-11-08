@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { EmployeePreviewNotice } from '../EmployeePreviewProvider';
 import { X } from 'lucide-react';
 import styles from './EmployeeAppSetupProposal.module.css';
 
-export function HelpSheet({ title, children, close, lockScroll = true }: { title: string; children: ReactNode; close: () => void; lockScroll?: boolean }) {
+export type HelpCloseReason = 'button'|'outside'|'swipe'|'escape';
+export function HelpSheet({ title, children, close, lockScroll = true }: { title: string; children: ReactNode; close: (reason?:HelpCloseReason) => void; lockScroll?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const start = useRef<number | null>(null);
   useEffect(() => {
@@ -15,11 +17,12 @@ export function HelpSheet({ title, children, close, lockScroll = true }: { title
     return () => { node.close(); if (lockScroll) document.body.style.overflow = overflow; };
   }, [lockScroll]);
   return <dialog ref={dialog} className={`employee-material-sheet ${styles.sheet}`} aria-labelledby='app-help-title'
-    onCancel={event => { event.preventDefault(); close(); }} onClick={event => { if (event.target === dialog.current) close(); }}>
+    onCancel={event => { event.preventDefault(); close('escape'); }} onClick={event => { if (event.target === dialog.current) close('outside'); }}>
     <div className={styles.handle} aria-hidden='true' onPointerDown={event => {
       start.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId);
-    }} onPointerUp={event => { if (start.current !== null && event.clientY - start.current > 65) close(); start.current = null; }}><span /></div>
-    <header className={styles.sheetHeading}><h2 id='app-help-title'>{title}</h2><button type='button' className='employee-material-sheet-close' aria-label='Закрыть' onClick={close}><X size={20}/></button></header>
+    }} onPointerUp={event => { if (start.current !== null && event.clientY - start.current > 65) close('swipe'); start.current = null; }}><span /></div>
+    <header className={styles.sheetHeading}><h2 id='app-help-title'>{title}</h2><button type='button' className='employee-material-sheet-close' aria-label='Закрыть' onClick={()=>close('button')}><X size={20}/></button></header>
+    <EmployeePreviewNotice />
     <div className={styles.sheetBody}>{children}</div>
   </dialog>;
 }

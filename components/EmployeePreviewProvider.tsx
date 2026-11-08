@@ -4,14 +4,17 @@ import Link from 'next/link';
 import { ArrowLeft, Eye, RefreshCw } from 'lucide-react';
 import { employeePreviewHref } from '@/lib/employee-navigation';
 import { employeePreviewUrl } from '@/lib/employee-preview-request';
+import { employeeScreenLabel } from '@/lib/employee-screen-state';
 import type { InspectionDeviceSnapshot } from '@/lib/employee-inspection-state';
 import { EmployeeInspectionDevice } from './EmployeeInspectionDevice';
 import { startVisibleSync } from '@/lib/visible-sync';
-type Preview = { connectionId: string; deviceSnapshot: InspectionDeviceSnapshot | null; href: (input: string) => string; readUrl: (input: string) => string; topInset: number; request: (input: string, init?: RequestInit) => Promise<Response>; blocked: () => void };
+type Preview = { followScreen:boolean; setFollowScreen:(next:boolean)=>void; connectionId: string; deviceSnapshot: InspectionDeviceSnapshot | null; href: (input: string) => string; readUrl: (input: string) => string; topInset: number; request: (input: string, init?: RequestInit) => Promise<Response>; blocked: () => void };
 const Context = createContext<Preview | null>(null);
 export const useEmployeePreview = () => useContext(Context);
-export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, children, procurement = false, frame, connection }: { visitId: string; employeeName: string; expiresAt: string; children: ReactNode; procurement?: boolean; frame?: 'phone' | 'desktop'; connection?: string }) {
+export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, children, procurement = false, frame, connection, follow = true }: { visitId: string; employeeName: string; expiresAt: string; children: ReactNode; procurement?: boolean; frame?: 'phone' | 'desktop'; connection?: string;follow?:boolean }) {
   const banner = useRef<HTMLElement>(null);
+  const [followScreen,setFollowScreen]=useState(follow);
+  useEffect(()=>setFollowScreen(follow),[follow]);
   const [topInset, setTopInset] = useState(frame ? 0 : 64);
   useLayoutEffect(() => {
     if (!banner.current) return;
@@ -47,8 +50,8 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
     return()=>{active=false;stop();flight?.abort();};
   },[request,requestedConnection]);
   const selectedConnection=deviceSnapshot?.selectedId ?? requestedConnection;
-  const href=useCallback((input:string)=>employeePreviewHref(visitId,input,{procurement,frame,connection:selectedConnection || undefined}),[visitId,procurement,frame,selectedConnection]);
-  const value = useMemo<Preview>(()=>({topInset,href,readUrl,request,blocked,deviceSnapshot,connectionId:selectedConnection}),[topInset,href,readUrl,request,blocked,deviceSnapshot,selectedConnection]);
+  const href=useCallback((input:string)=>{const target=new URL(employeePreviewHref(visitId,input,{procurement,frame,connection:selectedConnection || undefined}),'https://preview.invalid');target.searchParams.set('follow','0');return target.pathname+target.search;},[visitId,procurement,frame,selectedConnection]);
+  const value = useMemo<Preview>(()=>({topInset,href,readUrl,request,blocked,deviceSnapshot,connectionId:selectedConnection,followScreen,setFollowScreen}),[topInset,href,readUrl,request,blocked,deviceSnapshot,selectedConnection,followScreen]);
   const selectConnection=(id:string)=>{
     setDeviceSnapshot(null);setRequestedConnection(id);
     const url=new URL(window.location.href);url.searchParams.set('connection',id);
@@ -70,6 +73,9 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
   }, [blocked]);
   useEffect(() => { const timer = window.setTimeout(() => setExpired(true), Math.max(0, Date.parse(expiresAt) - Date.now())); return () => window.clearTimeout(timer); }, [expiresAt]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(timer); }, [notice]);
+  const observed=deviceSnapshot?.connections.find(c=>c.id===deviceSnapshot.selectedId);
+  const observedScreen=observed?.runtime?.screen;
+  const supported=Boolean(observed?.live&&observedScreen&&['day','schedule','payroll','notifications','procurement'].includes(observedScreen.section)&&!(observedScreen.dialog==='form'&&!observedScreen.form));
   return <Context.Provider value={value}>
     {!frame && <aside ref={banner} aria-label="Режим проверки сотрудника" className="sticky top-0 z-40 border-b border-[#d7c4b1] bg-[#f8eee3] px-4 py-3 text-[#493829] shadow-sm">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
@@ -77,8 +83,8 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
         <div className="flex gap-2"><button onClick={() => window.location.reload()} className="flex min-h-10 items-center gap-2 rounded-xl border border-[#d7c4b1] bg-white px-3 text-xs font-semibold"><RefreshCw size={15}/>Обновить</button><Link href="/admin/employees" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#313539] px-3 text-xs font-semibold text-white"><ArrowLeft size={15}/>К сотрудникам</Link></div>
       </div>
     </aside>}
-    {!expired && !frame && <EmployeeInspectionDevice snapshot={deviceSnapshot} selectedId={selectedConnection} onSelect={selectConnection} framed={Boolean(frame)} />}
-    {expired ? <section className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="mt-3">Вернитесь к сотрудникам и откройте проверку заново.</p></section> : children}
+    {!expired && !frame && <EmployeeInspectionDevice snapshot={deviceSnapshot} selectedId={selectedConnection} onSelect={selectConnection} framed={Boolean(frame)} followScreen={followScreen} onFollow={setFollowScreen} />}
+    {expired ? <section className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="mt-3">Вернитесь к сотрудникам и откройте проверку заново.</p></section> : followScreen&&!supported ? <section className='mx-auto max-w-xl px-5 py-10 text-center'><Eye className='mx-auto mb-3 text-[#945e3b]' size={28}/><h2 className='text-lg font-semibold text-slate-900'>{!deviceSnapshot?'Получаем сведения с устройства…':observed?.live&&observedScreen?'Этот экран пока не передаётся в проверку':'Нет подтверждения текущего экрана'}</h2><p className='mt-2 text-sm leading-6 text-slate-600'>{observedScreen?employeeScreenLabel(observedScreen)+'. ':''}{observed?.live?'Доступные события сохраняются в активности.':'Показ последнего состояния не означает, что приложение открыто сейчас.'} Для самостоятельной проверки интерфейса отключите «По данным сотрудника».</p></section> : children}
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[200] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl bg-[#313539] px-5 py-4 text-sm font-semibold text-white shadow-xl">{notice}</div>}
   </Context.Provider>;
 }
@@ -87,5 +93,5 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
 /** Repeated inside native dialogs, whose top layer hides the page banner. */
 export function EmployeePreviewNotice() {
   const preview = useEmployeePreview();
-  return preview ? <p role="note" className="border-b border-[#d7c4b1] bg-[#f8eee3] px-4 py-2 text-xs font-semibold text-[#493829]">Режим проверки · можно заполнять поля, сохранение отключено</p> : null;
+  return preview ? <p role="note" className="border-b border-[#d7c4b1] bg-[#f8eee3] px-4 py-2 text-xs font-semibold text-[#493829]">Режим проверки · сохранение отключено. Несохранённый ввод сотрудника не передаётся.</p> : null;
 }

@@ -1,3 +1,4 @@
+import { readExperience } from './employee-experience-policy';
 import 'server-only';
 import { readOperationContext, operationSection } from './employee-operation-policy';
 import { cashIssueRef } from './procurement-cash-issue-policy';
@@ -6,6 +7,7 @@ import { readHandoverContext, type HandoverContext } from './employee-handover-a
 import { prisma } from './prisma';
 import { ACTIVITY_DAILY_LIMIT, ACTIVITY_RETENTION_DAYS, type ActivityInput } from './employee-activity-policy';
 
+import { DELIVERY_PERSON,DELIVERY_SOURCE } from './procurement-delivery-policy';
 let nextCleanup = 0;
 /** Independent, best effort telemetry; no business mutation depends on its success. */
 export async function writeEmployeeActivity(userId: number, sessionHash: string, input: ActivityInput | { key: string; kind: 'handover_check'; context: HandoverContext }, now = new Date()) {
@@ -17,7 +19,8 @@ export async function writeEmployeeActivity(userId: number, sessionHash: string,
       if (!lock[0]?.acquired) return false;
       const since = new Date(+now - 86400000);
       if (await tx.portalActivityEvent.count({ where: { userId, createdAt: { gte: since } } }) >= ACTIVITY_DAILY_LIMIT) return false;
-      if (input.kind === 'notification_open' && !await tx.workdayNotification.findFirst({ where: { id: input.notificationId, userId, sentAt: { not: null } }, select: { id: true } })) return false;
+      if ((input.kind === 'notification_open'||input.kind==='push_receipt') && !await tx.workdayNotification.findFirst({ where: { id: input.notificationId, userId, sentAt: { not: null } }, select: { id: true } })) return false;
+      if(input.kind==='push_receipt'&&!await tx.workdayPushSubscription.findFirst({where:{userId,disabledAt:null,accessSessions:{some:{id:session.id}}},select:{id:true}}))return false;
       const interaction = input.kind === 'interaction' ? readInteraction(input.context) : null;
       if (input.kind === 'interaction') {
         if (!interaction) return false;
@@ -28,14 +31,30 @@ export async function writeEmployeeActivity(userId: number, sessionHash: string,
           : (await tx.workdayNotification.findMany({ where: { userId, sentAt: { not: null }, fingerprint: { contains: ref } }, select: { fingerprint: true, kind: true }, take: 30 })).some(n => cashIssueRef(n.fingerprint) === ref || n.kind === 'employee_expense_payable' && n.fingerprint.split(':')[3] === ref);
         if (!owned) return false;
         // Visible renders may repeat; intentional later openings remain separate.
-        const prior = await tx.portalActivityEvent.findFirst({ where: { userId, kind: 'interaction', createdAt: { gte: new Date(+now-1500) }, context: { equals: interaction } } });
+        const prior = await tx.portalActivityEvent.findFirst({ where: { userId, sessionId:session.id, kind: 'interaction', createdAt: { gte: new Date(+now-1500) }, context: { equals: interaction } } });
         if (prior) return true;
       }
       const handover = input.kind === 'handover' || input.kind === 'handover_check' ? readHandoverContext(input.context, input.kind === 'handover_check') : null;
       if ((input.kind === 'handover' || input.kind === 'handover_check') && (!handover || !await tx.shiftControlTask.findFirst({ where: { id: handover.taskId, category: 'handover', run: { userId } }, select: { id: true } }))) return false;
+      const experience = input.kind === 'experience' ? readExperience(input.context) : null;
+      if(input.kind === 'experience' && !experience)return false;
+      if(experience?.target==='workflow'&&experience.taskId&&!await tx.shiftControlTask.findFirst({where:{id:experience.taskId,run:{userId}},select:{id:true}}))return false;
+      if(experience?.target==='workflow'&&experience.ref){
+        const {action,ref}=experience;
+        const owned=action==='learning'?await tx.attestation.findFirst({where:{id:Number(ref),OR:[{status:'ACTIVE'},{progresses:{some:{userId}}},{results:{some:{userId}}}]},select:{id:true}})
+          :['procurement_payment','procurement_receipt'].includes(action)?await tx.supplierPaymentPlan.findFirst({where:{id:ref,managerUserId:userId},select:{id:true}})
+          :action==='salary_review'?await tx.payrollDayReview.findFirst({where:{id:ref,employeeId:userId},select:{id:true}})
+          :action==='qr'?await tx.workdayStartIntent.findFirst({where:{id:ref,userId},select:{id:true}}):action==='shift_change'?await tx.workDayEntry.findFirst({where:{id:Number(ref),userId},select:{id:true}}):action==='deviation'?await tx.workdayDeviation.findFirst({where:{id:ref,userId},select:{id:true}}):['close_request','encashment_request'].includes(action)?await tx.workdayCloseExceptionRequest.findFirst({where:{id:ref,employeeId:userId},select:{id:true}}):action==='procurement_delivery'?await tx.adminInboxEvent.findFirst({where:{id:ref,sourceType:DELIVERY_SOURCE,sourceId:DELIVERY_PERSON.ref},select:{id:true}}):true;
+        if(!owned)return false;
+        if(action==='procurement_delivery'){
+          const mapped=await tx.user.findMany({where:{isActive:true,role:'EMPLOYEE',portalArea:'PROCUREMENT',oneCManagerName:DELIVERY_PERSON.name},select:{id:true},take:2});
+          if(mapped.length!==1||mapped[0].id!==userId)return false;
+        }
+      }
+      if(experience?.target==='push_setup' && experience.stage==='connected' && !await tx.workdayPushSubscription.findFirst({where:{userId,disabledAt:null,accessSessions:{some:{id:session.id}}},select:{id:true}}))return false;
       const operation = input.kind === 'operation' ? readOperationContext(input.context) : null;
       if (input.kind === 'operation' && !operation) return false;
-      const section = input.kind === 'visit' ? input.section : operation ? operationSection(operation.action) : handover ? 'day' : interaction && interaction.target !== 'notification' ? interaction.target === 'cash' ? 'cash' : 'receipts' : 'notifications';
+      const section = input.kind === 'visit' ? input.section : experience ? 'notifications' : operation ? operationSection(operation.action) : handover ? 'day' : interaction && interaction.target !== 'notification' ? interaction.target === 'cash' ? 'cash' : 'receipts' : 'notifications';
       // One transition per attempt. Automatic KKM polls never produce repeated rows.
       if (handover) {
         const previous = await tx.portalActivityEvent.findFirst({ where: { userId, kind: input.kind, context: { path: ['taskId'], equals: handover.taskId } }, orderBy: { createdAt: 'desc' } });
@@ -44,13 +63,13 @@ export async function writeEmployeeActivity(userId: number, sessionHash: string,
       }
       // Suppress reloads, StrictMode and duplicate tabs; retain intentional later returns.
       if (input.kind === 'visit') {
-        const previous = await tx.portalActivityEvent.findFirst({ where: { userId, kind: 'visit' }, orderBy: { createdAt: 'desc' } });
+        const previous = await tx.portalActivityEvent.findFirst({ where: { userId, sessionId:session.id, kind: 'visit' }, orderBy: { createdAt: 'desc' } });
         if (previous?.section === section && +now - +previous.createdAt < 30000) return true;
       }
       await tx.portalActivityEvent.createMany({ skipDuplicates: true, data: [{ userId, sessionId: session.id, section, kind: input.kind,
-        eventKey: input.kind === 'notification_open' ? `notification:${input.notificationId}` : operation ? `op:${operation.attemptId}:${operation.stage}` : handover ? `${handover.attemptId}:${handover.stage}` : input.key,
-        ...(operation ? {context:{...operation}} : handover ? { context: { ...handover } } : interaction ? { context: { ...interaction } } : {}),
-        notificationId: input.kind === 'notification_open' ? input.notificationId : null, createdAt: now }, ...(input.kind === 'notification_open' ? [{userId,sessionId:session.id,section:'notifications',kind:'interaction',eventKey:`open:${input.key}`,context:{target:'notification',ref:String(input.notificationId),stage:'open'},notificationId:input.notificationId,createdAt:now}] : [])] });
+        eventKey: input.kind === 'notification_open' ? `notification:${input.notificationId}` : experience ? `experience:${input.key}` : operation ? `op:${operation.attemptId}:${operation.stage}` : handover ? `${handover.attemptId}:${handover.stage}` : input.key,
+        ...(input.kind==='push_receipt'?{context:{stage:input.stage}}:experience ? {context:{...experience}} : operation ? {context:{...operation}} : handover ? { context: { ...handover } } : interaction ? { context: { ...interaction } } : {}),
+        notificationId: input.kind === 'notification_open'||input.kind==='push_receipt' ? input.notificationId : null, createdAt: now }, ...(input.kind === 'notification_open' ? [{userId,sessionId:session.id,section:'notifications',kind:'interaction',eventKey:`open:${input.key}`,context:{target:'notification',ref:String(input.notificationId),stage:'open'},notificationId:input.notificationId,createdAt:now}] : [])] });
       return true;
     }, { maxWait: 500, timeout: 2000 });
     // Bounded retention maintenance, at most hourly per process. Never scans business tables.

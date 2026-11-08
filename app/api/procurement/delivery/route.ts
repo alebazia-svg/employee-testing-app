@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     } catch { return Response.json({ error: 'Укажите сумму пополнения.' }, { status: 400 }); }
     const input = parseDeliveryRequest(payload);
     if (!input) return Response.json({ error: 'Укажите положительную сумму с точностью до копеек и комментарий до 500 символов.' }, { status: 400 });
-    return Response.json(await syncDeliveryReminder(true, input), { headers: { 'Cache-Control': 'no-store' } });
+    const view=await syncDeliveryReminder(true,input);
+    return Response.json(view, { headers: { 'Cache-Control': 'no-store',...(view.requestId?{'X-Portal-Activity-Ref':view.requestId}:{}) } });
   } catch { return Response.json({ error: 'Не удалось подтвердить отправку. Обновите блок: повторный запрос не создаст дубль.' }, { status: 503 }); }
 }

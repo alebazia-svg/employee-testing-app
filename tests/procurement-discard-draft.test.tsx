@@ -25,12 +25,13 @@ test('all form exits share the guard; empty drafts close directly and saving can
   const calendar = readFileSync('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');
   const batch = readFileSync('app/(dashboard)/procurement/ProcurementPaymentBatchForm.tsx','utf8');
   assert.doesNotMatch(calendar, /window\.confirm/);
-  assert.equal((calendar.match(/onClick=\{requestClosePaymentForm\}/g) || []).length, 2);
+  assert.equal((calendar.match(/onClick=\{requestClosePaymentForm\}/g) || []).length, 1);
+  assert.match(calendar, /<ProcurementPaymentDialog[\s\S]*?onClose=\{requestClosePaymentForm\}/);
   assert.match(calendar, /onCancel=\{requestClosePaymentForm\}/);
   assert.match(calendar, /if \(saving \|\| batchDraftState\.saving\) return/);
   assert.match(calendar, /if \(hasChanges\) setDiscardOpen\(true\);\s*else closePaymentForm\(\)/);
   assert.match(calendar, /JSON\.stringify\(draft\) !== JSON\.stringify\(originalEditDraft\)/);
   assert.match(batch, /const hasDraft = selected\.length > 0 \|\| Boolean\(plannedDate\)/);
-  assert.match(batch, /onDraftStateChange\?\.\(\{ hasDraft, saving \}\)/);
+  assert.match(batch, /onDraftStateChange\?\.\(\{ hasDraft:hasDraft\|\|cargoDraft\.hasDraft, saving:saving\|\|cargoDraft\.saving \}\)/);
   assert.match(batch, /addEventListener\('beforeunload'/);
 });

@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 function setup({hidden=false,throws=false}={}){
  let now=0;const events=[];
- const context={exports:{},document:{visibilityState:hidden?'hidden':'visible'},performance:{now:()=>now},crypto:{randomUUID:()=> 'attempt-test-123'},require:name=>name==='react'?{}:name.includes('Tracker')?{sendEmployeeActivity:e=>{if(throws)throw Error('collector unavailable');events.push(e);}}:{}};
+ const context={exports:{},document:{visibilityState:hidden?'hidden':'visible'},performance:{now:()=>now},crypto:{randomUUID:()=> 'attempt-test-123'},require:name=>name.includes('EmployeeScreenObservation')?{useEmployeeScreenSection:()=>{}}:name==='react'?{}:name.includes('Tracker')?{sendEmployeeActivity:e=>{if(throws)throw Error('collector unavailable');events.push(e);}}:{}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('components/EmployeeOperationAudit.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
  return {events,start:context.exports.beginEmployeeOperation,tick:n=>{now=n;}};
 }
@@ -12,7 +12,7 @@ test('collector failure never breaks an action or its result callback',()=>{cons
 function periodPage({preview=null,visible=true}={}){
  let now=100000,effect,cleanup,id=0;const events=[],timers=new Map(),listeners=new Map();
  const document={visibilityState:visible?'visible':'hidden',addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
- const context={exports:{},document,Date:{now:()=>now},performance:{now:()=>now},crypto:{randomUUID:()=>`attempt-${++id}`},window:{setTimeout:(fn,delay)=>{const key=++id;timers.set(key,{fn,due:now+delay});return key;},clearTimeout:key=>timers.delete(key)},require:name=>name==='react'?{useEffect:fn=>{effect=fn;}}:name.includes('Tracker')?{sendEmployeeActivity:e=>events.push(e)}:name.includes('PreviewProvider')?{useEmployeePreview:()=>preview}:{}};
+ const context={exports:{},document,Date:{now:()=>now},performance:{now:()=>now},crypto:{randomUUID:()=>`attempt-${++id}`},window:{setTimeout:(fn,delay)=>{const key=++id;timers.set(key,{fn,due:now+delay});return key;},clearTimeout:key=>timers.delete(key)},require:name=>name.includes('EmployeeScreenObservation')?{useEmployeeScreenSection:()=>{}}:name==='react'?{useEffect:fn=>{effect=fn;}}:name.includes('Tracker')?{sendEmployeeActivity:e=>events.push(e)}:name.includes('PreviewProvider')?{useEmployeePreview:()=>preview}:{}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('components/EmployeeOperationAudit.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
  return {events,mount:(period,enabled=true)=>{cleanup?.();context.exports.useEmployeePeriodView('payroll_view',period,enabled);cleanup=effect();},advance:ms=>{now+=ms;for(const [key,t] of [...timers])if(t.due<=now){timers.delete(key);t.fn();}},visibility:value=>{document.visibilityState=value?'visible':'hidden';listeners.get('visibilitychange')?.();},unmount:()=>cleanup?.()};
 }

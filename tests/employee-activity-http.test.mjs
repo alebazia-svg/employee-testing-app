@@ -22,8 +22,18 @@ test('real HTTP auth and actor isolation', async()=>{
  assert.equal((await send(employee,op)).status,200);
  const readback=await (await get(admin)).json();
  assert.ok(readback.audit.some(episode=>episode.steps.some(step=>step.attemptId===op.context.attemptId&&step.stage==='completed'&&step.durationMs===1200)));
+ const experience={key:`http-experience-${Date.now()}`,kind:'experience',expectedUserId:id,context:{target:'guide',stage:'manual_shown',attemptId:`http-guide-${Date.now()}`}};
+ assert.equal((await send(employee,{...experience,expectedUserId:id+999})).status,403);
+ const accepted=await send(employee,experience);assert.equal(accepted.status,200);assert.equal((await accepted.json()).recorded,true);
+ assert.equal((await send(employee,{...experience,context:{...experience.context,stage:'acknowledged'}})).status,400);
  assert.equal((await send(employee,{...op,context:{...op.context,amount:90000}})).status,400);
  assert.equal((await send(employee,{...op,context:{...op.context,stage:'posted_1c'}})).status,400);
+ const receipt={kind:'push_receipt',key:'http-push-receipt-'+Date.now(),notificationId:999999,stage:'received'};
+ assert.equal((await send(admin,receipt)).status,403);
+ assert.equal((await send(employee,receipt,{'sec-fetch-site':'cross-site'})).status,403);
+ assert.equal((await send(employee,{...receipt,stage:'read'})).status,400);
+ const unavailableReceipt=await send(employee,receipt);assert.equal(unavailableReceipt.status,200);assert.equal((await unavailableReceipt.json()).recorded,false);
+
  assert.equal((await fetch(`${base}/api/admin/employees/${id}/activity?date=2026-02-30`,{headers:{cookie:admin}})).status,400);
  assert.equal((await fetch(`${base}/api/admin/employees/999999/activity?date=${date}`,{headers:{cookie:admin}})).status,404);
 });

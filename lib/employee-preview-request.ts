@@ -39,5 +39,5 @@ export function employeePreviewResources(user: { portalArea: string; department:
   const workday = ['work-help', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
   return user.portalArea === 'PROCUREMENT'
     ? ['app-setup', 'notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery', ...(user.department === 'procurement' ? workday : [])]
-    : ['app-setup', 'notifications', ...workday, 'payroll', 'payroll-days'];
+    : ['app-setup', 'notifications', 'notification-detail', ...workday, 'payroll', 'payroll-days'];
 }

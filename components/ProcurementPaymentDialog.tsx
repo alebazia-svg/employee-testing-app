@@ -1,11 +1,14 @@
 'use client';
+import { workflowEvent } from '@/lib/employee-workflow-client';
+import { useEmployeeScreenLayer } from './EmployeeScreenObservation';
 import { EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 /** Native modal keeps the calendar inert and supports the existing discard dialog. */
-export function ProcurementPaymentDialog({editing,busy,onClose,returnFocus,children,title,footer,className=""}:{editing:boolean;busy:boolean;onClose:()=>void;returnFocus?:HTMLElement|null;children:ReactNode;title?:string;footer?:ReactNode;className?:string}) {
+export function ProcurementPaymentDialog({editing,busy,onClose,returnFocus,children,title,footer,className="",activityRef,activityOperation}:{editing:boolean;busy:boolean;onClose:()=>void;returnFocus?:HTMLElement|null;children:ReactNode;title?:string;footer?:ReactNode;className?:string;activityRef?:string;activityOperation?:'payment_load'|'payment_edit'|'payment_create'}) {
+  useEmployeeScreenLayer({dialog:'form'},55);
   const dialogRef=useRef<HTMLDialogElement>(null);
   const headingRef=useRef<HTMLHeadingElement>(null);
   const titleId=useId();
@@ -14,11 +17,11 @@ export function ProcurementPaymentDialog({editing,busy,onClose,returnFocus,child
     if(!dialog)return;
     const opener=returnFocus??(document.activeElement instanceof HTMLElement?document.activeElement:null);
     const overflow=document.body.style.overflow;
-    dialog.showModal();
+    dialog.showModal();workflowEvent('procurement_payment','opened',undefined,undefined,activityRef,{operation:activityOperation||(activityRef?'payment_edit':'payment_create')});
     document.body.style.overflow='hidden';
     headingRef.current?.focus({preventScroll:true});
     return ()=>{
-      dialog.close();
+      workflowEvent('procurement_payment','closed',undefined,undefined,activityRef,{operation:activityOperation||(activityRef?'payment_edit':'payment_create')});dialog.close();
       document.body.style.overflow=overflow;
       // A nested discard dialog closes in the same commit and can otherwise
       // restore focus to this removed dialog after our cleanup has run.

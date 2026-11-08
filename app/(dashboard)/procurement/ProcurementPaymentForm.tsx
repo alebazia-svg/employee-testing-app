@@ -1,4 +1,6 @@
 'use client';
+import {employeeObservedFetch} from '@/lib/employee-observed-fetch';
+import {workflowEvent,workflowJson} from '@/lib/employee-workflow-client';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import React,{useEffect,useId,useRef,useState,type ComponentProps} from 'react';
@@ -88,13 +90,13 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
   async function submit(event:React.FormEvent){
     event.preventDefault();setMessage('');
     if(inspection){setMessage('Режим проверки: заявка не отправлена.');return;}
-    if(!first||!date||!validAmount||selectionInvalid||submissionBlocked){setMessage('Проверьте дату, сумму и доступность выбранной оплаты.');return;}
+    if(!first||!date||!validAmount||selectionInvalid||submissionBlocked){workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create'});setMessage('Проверьте дату, сумму и доступность выбранной оплаты.');return;}
     if(basisPreview){setMessage('Проверка интерфейса: заявка не отправляется.');return;}
     setSaving(true);
     try{
       const request=singlePaymentRequest(selected,{...draft,plannedDate:date});
-      const response=await fetch(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.body)});
-      const body=await response.json();
+      const response=await employeeObservedFetch(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.body)});
+      const body=await workflowJson(response,'procurement_payment',undefined,'payment_create');
       if(!response.ok){setMessage(body.error||'Не удалось отправить заявку.');return;}
       onCreated(Array.isArray(body.plans)?body.plans:[body]);
     }catch{setMessage('Отправка не подтверждена. Проверьте календарь перед повторной попыткой. Введённые данные сохранены.');}

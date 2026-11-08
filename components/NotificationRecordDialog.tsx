@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenLayer } from './EmployeeScreenObservation';
 import { PayrollDayReviewDecision } from './PayrollDayReviewDecision';
 import { InteractionShown, useInteractionAudit } from './EmployeeInteractionAudit';
 import {FiscalNotificationDialog} from './FiscalNotificationDialog';
@@ -24,20 +25,25 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
   const [detail,setDetail]=useState<NotificationDetail|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [state,setState]=useState({dirty:false,busy:false}),[discard,setDiscard]=useState(false);
   const [decision,setDecision]=useState(''),[reason,setReason]=useState(''),[message,setMessage]=useState('');
+  useEmployeeScreenLayer(item.audience==='employee'?{dialog:'notification',notificationId:Number(item.id),noticeState:error?'error':detail?'ready':'loading'}:null,85);
+  const observed=inspection?.deviceSnapshot?.connections.find(c=>c.id===inspection.deviceSnapshot?.selectedId);
+  const remoteState=readOnly&&inspection?.followScreen&&observed?.live&&observed.runtime?.screen?.notificationId===Number(item.id)?observed.runtime.screen.noticeState:undefined;
   const [saving,setSaving]=useState(false);
   const [receiptPreview,setReceiptPreview]=useState(false);
   const viewed=useRef(false),viewCallback=useRef(onViewed);viewCallback.current=onViewed;
   const busy=state.busy||saving;
   const close=()=>{if(busy)return;if(state.dirty||reason.trim())setDiscard(true);else {record("close");onClose();}};
   useEffect(()=>{
+    if(readOnly&&remoteState==='error'){setDetail(null);setError('Не удалось загрузить актуальные данные. Повторите попытку — уведомление сохранено.');return;}
+    if(readOnly&&remoteState==='loading'){setDetail(null);setError('');return;}
     if(readOnly&&!inspectRecord)return;
     const abort=new AbortController();setError('');
     (inspection?.request ?? fetch)(`/api/notification-details/${item.audience}/${encodeURIComponent(item.id)}`,{cache:'no-store',signal:abort.signal})
       .then(async r=>{const body=await r.json();if(!r.ok)throw Error(body.error||'Не удалось открыть запись.');return body;})
       .then(body=>{if(!abort.signal.aborted){setDetail(body);if(!readOnly&&!viewed.current){viewed.current=true;viewCallback.current?.();}}})
-      .catch(()=>{if(!abort.signal.aborted)setError('Не удалось загрузить актуальные данные. Повторите попытку — уведомление сохранено.');});
+      .catch(()=>{if(!abort.signal.aborted)setError(readOnly&&remoteState==='ready'?'Не удалось получить данные для проверки. Устройство сотрудника сообщило об успешном открытии.':'Не удалось загрузить актуальные данные. Повторите попытку — уведомление сохранено.');});
     return()=>abort.abort();
-  },[item.audience,item.id,retry,readOnly,inspectRecord,inspection]);
+  },[item.audience,item.id,retry,readOnly,inspectRecord,inspection,remoteState]);
   const expense=detail?.kind==='expense';
   useEffect(()=>{
     if(expense)return;

@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeScreenLayer } from './EmployeeScreenObservation';
 import { sendEmployeeActivity } from './EmployeeActivityTracker';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { savePushSubscription } from '@/lib/push-subscription-client';
@@ -27,6 +28,7 @@ export function ProcurementNotificationsButton() {
   const failedRead=useRef<ProcurementNotification|null>(null);
   const [open, setOpen] = useState(false);
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
+  useEmployeeScreenLayer(selected?{dialog:'notification',notificationId:Number(selected.id)}:open?{dialog:'inbox'}:null,70);
   const [items, setItems] = useState<ProcurementNotification[]>([]);
   const [pushConnected, setPushConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -90,6 +92,7 @@ export function ProcurementNotificationsButton() {
   }, [connectPush, refresh, preview]);
 
   async function openItem(item: ProcurementNotification) {
+    preview?.setFollowScreen(false);
     if (!preview) sendEmployeeActivity({ kind: 'notification_open', notificationId: item.id });
     if(item.active===false&&employeeNotificationOpening(item)==='page'){void dismiss(item);return;}
     setOpen(false);
@@ -113,9 +116,18 @@ export function ProcurementNotificationsButton() {
     });
   }
 
+  useEffect(()=>{
+    if(!preview?.followScreen)return;
+    const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);
+    if(!c?.live||!c.runtime?.screen)return;
+    const screen=c.runtime.screen;
+    setOpen(screen.dialog==='inbox');
+    if(screen.dialog==='notification'&&screen.notificationId){const n=items.find(n=>Number(n.id)===screen.notificationId);if(n)setSelected(current=>Number(current?.id)===Number(n.id)?current:{...n,audience:'employee'});}
+    else setSelected(null);
+  },[preview?.followScreen,preview?.deviceSnapshot,items]);
   return (
     <div className="relative">
-      {selected&&<NotificationRecordDialog key={selected.id} item={selected} readOnly={!!preview} onViewed={()=>{const item=items.find(n=>n.id===Number(selected.id));if(item)void dismiss(item);}} onClose={()=>setSelected(null)}/>}
+      {selected&&<NotificationRecordDialog key={selected.id} item={selected} readOnly={!!preview} onViewed={()=>{const item=items.find(n=>n.id===Number(selected.id));if(item)void dismiss(item);}} onClose={()=>{preview?.setFollowScreen(false);setSelected(null);}}/>}
       <button
         type="button"
         onClick={() => {if (!open && !preview) sendEmployeeActivity({ kind: 'visit', section: 'notifications' });setOpen(true);void refresh();}}

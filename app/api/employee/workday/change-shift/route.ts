@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       shiftControlEnabled: usesWorkdayShiftControl(user),
       enforceEmployeeWindow: true,
     });
-    return Response.json({ ok: true, workDay });
+    return Response.json({ ok: true, workDay },{headers:{'X-Portal-Activity-Ref':String(workDay.id)}});
   } catch (error) {
     if (error instanceof WorkdayShiftChangeError) {
       const status = error.code === 'SHIFT_NOT_AVAILABLE' ? 409 : 400;

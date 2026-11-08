@@ -1,4 +1,6 @@
 "use client";
+import {employeeObservedFetch} from "@/lib/employee-observed-fetch";
+import {workflowEvent,workflowJson} from "@/lib/employee-workflow-client";
 
 import React, { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
@@ -236,9 +238,10 @@ export function ProcurementPaymentBatchForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if(walletInvalid){setMessage('Для выбранных оплат недостаточно остатка кассы USDT. Выберите наличные для обмена.');return;}
-    if (submissionBlocked) { setMessage('Данные не загружены полностью. Обновите страницу перед отправкой.'); return; }
+    if(walletInvalid){workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create',failure:'balance'});setMessage('Для выбранных оплат недостаточно остатка кассы USDT. Выберите наличные для обмена.');return;}
+    if (submissionBlocked) { workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create',failure:'source'});setMessage('Данные не загружены полностью. Обновите страницу перед отправкой.'); return; }
     if (mixedBasisSuppliers.length) {
+      workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create',failure:'validation'});
       setMessage(mixedPaymentBasisMessage(mixedBasisSuppliers));
       return;
     }
@@ -247,13 +250,14 @@ export function ProcurementPaymentBatchForm({
       return;
     }
     if (!plannedDate || !selected.length) {
+      workflowEvent('procurement_payment','validation',undefined,undefined,undefined,{operation:'payment_create'});
       setMessage("Укажите дату и добавьте хотя бы одну оплату.");
       return;
     }
     setSaving(true);
     setMessage("");
     try {
-    const response = await fetch("/api/procurement/payment-plans/batch", {
+    const response = await employeeObservedFetch("/api/procurement/payment-plans/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -271,7 +275,7 @@ export function ProcurementPaymentBatchForm({
         })),
       }),
     });
-    const data = await response.json();
+    const data = await workflowJson(response,'procurement_payment',undefined,'payment_create');
     setSaving(false);
     if (!response.ok) {
       setMessage(data.error || "Не удалось сохранить список оплат.");

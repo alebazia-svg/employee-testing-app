@@ -1,4 +1,5 @@
 'use client';
+import {workflowEvent} from '@/lib/employee-workflow-client';
 
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Download,Minus,Plus,Maximize,RefreshCw} from 'lucide-react';
@@ -7,7 +8,7 @@ import {useReceiptPdf} from './useReceiptPdf';
 import {receiptPreviewMime,receiptFittedWidth} from '@/lib/procurement-receipt-viewer';
 
 /** Uses the existing authenticated attachment route; does not modify documents. */
-export function ProcurementReceiptViewer({url,name,onBack,request}:{url:string;name:string;onBack:()=>void;request?:typeof fetch}) {
+export function ProcurementReceiptViewer({url,name,onBack,request,activityRef}:{url:string;name:string;onBack:()=>void;request?:typeof fetch;activityRef?:string}) {
  const [source,setSource]=useState('');
  const [mime,setMime]=useState('');
  const [error,setError]=useState('');
@@ -18,6 +19,7 @@ export function ProcurementReceiptViewer({url,name,onBack,request}:{url:string;n
  const viewport=useRef<HTMLDivElement>(null);
  const [page,setPage]=useState(1);
  const pdf=useReceiptPdf(source,mime==='application/pdf',page);
+
 
  useEffect(()=>{
   const abort=new AbortController();let objectUrl='';let timedOut=false;let disposed=false;
@@ -52,6 +54,7 @@ export function ProcurementReceiptViewer({url,name,onBack,request}:{url:string;n
  const imageSource=mime==='application/pdf'?pdf.image:source;
  const visibleError=error||pdf.error;
  const imageReady=!!imageSource&&!visibleError;
+ useEffect(()=>{if(!activityRef)return;if(visibleError)workflowEvent('procurement_receipt','error_shown',undefined,undefined,activityRef,{operation:'receipt_load',failure:'response'});else if(imageReady)workflowEvent('procurement_receipt','response_received',undefined,undefined,activityRef,{operation:'receipt_load'});},[activityRef,visibleError,imageReady]);
  const width=receiptFittedWidth(natural,space,zoom);
  const changeZoom=(next:number)=>{setZoom(next);if(next===1)viewport.current?.scrollTo({top:0,left:0});};
  const shape=mime==='application/pdf'?'pdf':natural.width>natural.height?'landscape':'portrait';
@@ -64,7 +67,7 @@ export function ProcurementReceiptViewer({url,name,onBack,request}:{url:string;n
     <button type="button" title="Увеличить" aria-label="Увеличить чек" onClick={()=>changeZoom(Math.min(3,zoom+.25))} disabled={zoom===3}><Plus size={17}/></button>
     <button type="button" title="Показать целиком" aria-label="Чек по размеру окна" onClick={()=>changeZoom(1)}><Maximize size={17}/></button>
    </div>:null}
-   <a className="procurement-receipt-button receipt-view-download" href={url} download={name}><Download size={16}/>Скачать</a>
+   <a className="procurement-receipt-button receipt-view-download" href={url} download={name} onClick={()=>{if(activityRef)workflowEvent('procurement_receipt','download_requested',undefined,undefined,activityRef,{operation:'receipt_load'});}}><Download size={16}/>Скачать</a>
   </div>
   {mime==='application/pdf'&&pdf.pageCount>1?<div className="receipt-view-pages"><button className="procurement-receipt-button" disabled={page===1} onClick={()=>{setPage(p=>p-1);changeZoom(1);}}>Предыдущая</button><span aria-live="polite">{page} из {pdf.pageCount}</span><button className="procurement-receipt-button" disabled={page===pdf.pageCount} onClick={()=>{setPage(p=>p+1);changeZoom(1);}}>Следующая</button></div>:null}
   <div ref={viewport} className="receipt-view-document" aria-busy={!imageSource&&!visibleError}>

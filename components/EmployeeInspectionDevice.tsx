@@ -1,7 +1,8 @@
+import { employeeScreenLabel } from '@/lib/employee-screen-state';
 import type { InspectionDeviceSnapshot } from '@/lib/employee-inspection-state';
 
 /** Inspection-only source note, outside the reused employee interface. */
-export function EmployeeInspectionDevice({snapshot,selectedId,onSelect,framed}:{snapshot:InspectionDeviceSnapshot|null;selectedId:string;onSelect:(id:string)=>void;framed:boolean}) {
+export function EmployeeInspectionDevice({snapshot,selectedId,onSelect,framed,followScreen,onFollow}:{snapshot:InspectionDeviceSnapshot|null;selectedId:string;onSelect:(id:string)=>void;framed:boolean;followScreen?:boolean;onFollow?:(next:boolean)=>void}) {
   const selected=snapshot?.connections.find(c=>c.id===snapshot.selectedId);
   const when=selected?.checkedAt ? new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(selected.checkedAt)):null;
   return <aside aria-label='Устройство сотрудника' className={`border-b border-[#d7c4b1] bg-[#f8eee3] px-4 py-2 text-xs text-[#493829] ${framed?'':'mx-auto'}`}>
@@ -10,8 +11,12 @@ export function EmployeeInspectionDevice({snapshot,selectedId,onSelect,framed}:{
         {!selected && <option value={selectedId}>Устройство недоступно</option>}
         {snapshot.connections.map(c=><option key={c.id} value={c.id}>{c.label} · {new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(c.lastSeenAt))}</option>)}
       </select></label> : <strong>{selected?.label ?? (snapshot ? 'Устройство не определено':'Проверяем устройство сотрудника…')}</strong>}
-      {selected?.runtime && <span>{selected.live ? 'PWA на связи' : 'Последнее состояние PWA'} · {new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(selected.runtimeAt ?? selected.runtime.sampledAt))} МСК</span>}
-      {selected ? <span>{selected.pushLabel}{when ? ` · проверено ${when} МСК`:''}</span> : snapshot && <span>{snapshot.unavailable ? 'Сведения временно недоступны':'Нет свежих данных об уведомлениях'}</span>}
+      {selected?.runtime && <span>{selected.live ? 'Свежие сведения из приложения' : 'Последние сведения из приложения'} · {new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(selected.runtimeAt ?? selected.runtime.sampledAt))} МСК</span>}
+      {selected?.runtime?.screen&&<strong>{selected.live?'Экран: ':'Последний известный экран: '}{employeeScreenLabel(selected.runtime.screen)}</strong>}
+      {onFollow&&<label className='flex min-h-9 items-center gap-2 font-medium'><input type='checkbox' checked={followScreen} onChange={e=>onFollow(e.target.checked)}/>По данным сотрудника</label>}
+      {onFollow&&!followScreen&&<span className='font-semibold'>Ручная проверка интерфейса · экран сотрудника сейчас не воспроизводится.</span>}
+      {followScreen&&<span>{selected?.live&&selected.runtime?.screen?'Раздел и поддерживаемые окна обновляются автоматически.':'Последние сведения не подтверждают, что этот экран открыт сейчас.'}</span>}
+      {selected ? <span>Настройка уведомлений: {selected.pushLabel}{when ? ` · проверено ${when} МСК`:''}</span> : snapshot && <span>{snapshot.unavailable ? 'Сведения временно недоступны':'Нет свежих данных об уведомлениях'}</span>}
       {selected && (selected.runtime ? !selected.live : !selected.fresh) && <span>Настройки обновятся при открытии приложения сотрудником.</span>}
     </div>
   </aside>;

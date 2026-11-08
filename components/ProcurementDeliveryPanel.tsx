@@ -1,4 +1,6 @@
 'use client';
+import {workflowJson} from '@/lib/employee-workflow-client';
+import { employeeObservedFetch } from '@/lib/employee-observed-fetch';
 import {ProcurementMobileAction,useProcurementMobilePresentation} from './ProcurementMobilePresentation';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -35,9 +37,9 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
     setPending(method); setNow(Date.now());
     if (method === 'POST') setError('');
     try {
-      const response = await (preview?.request ?? fetch)('/api/procurement/delivery', { method, cache: 'no-store', signal: controller.signal,
+      const response = await (preview?.request ?? employeeObservedFetch)('/api/procurement/delivery', { method, cache: 'no-store', signal: controller.signal,
         ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) } : {}) });
-      const data = await response.json();
+      const data = await workflowJson(response,'procurement_delivery',view.requestId,method==='POST'?'delivery_request':'delivery_load');
       if (!response.ok) throw Error('DELIVERY_UNAVAILABLE');
       if (activeRequest.current !== controller) return;
       setView(data); setNow(Date.now());

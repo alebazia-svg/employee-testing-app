@@ -7,6 +7,7 @@ import { EmployeeActionReminder, EmployeeActionReminderProvider } from './workda
 import { EmployeeAppSetupProposal, useAppSetupProposal } from './workday/EmployeeAppSetupProposal';
 import { EmployeeExperienceProvider } from './workday/EmployeeExperienceProvider';
 import { EmployeeNavigation } from './EmployeeNavigation';
+import { useEmployeePreview } from './EmployeePreviewProvider';
 import { useEmployeeActivityVisit } from './EmployeeActivityTracker';
 import { ProcurementMobileNavigationContext as Context } from './ProcurementMobileNavigation';
 import { procurementMobileSection, type ProcurementMobileSection } from '@/lib/procurement-mobile-navigation';
@@ -23,6 +24,7 @@ export function ProcurementMobileCabinet({ name, workday, children }: { name: st
 
 function ProcurementMobileCabinetViews({ name, workday, children }: { name: string; workday: ReactNode; children: ReactNode }) {
   const query = useSearchParams();
+  const preview=useEmployeePreview();
   const sectionFromUrl = procurementMobileSection(query.get('tab'));
   const [active, setActive] = useState<ProcurementMobileSection>(sectionFromUrl);
   const [navigationHidden, setNavigationHidden] = useState(false);
@@ -44,6 +46,7 @@ function ProcurementMobileCabinetViews({ name, workday, children }: { name: stri
     const frame = requestAnimationFrame(() => window.scrollTo({ top: positions.current[active], behavior: 'instant' }));
     return () => cancelAnimationFrame(frame);
   }, [active]);
+  useEffect(()=>{if(!preview?.followScreen)return;const c=preview.deviceSnapshot?.connections.find(c=>c.id===preview.deviceSnapshot?.selectedId);const next=c?.live?c.runtime?.screen?.section:null;if(next==='day'||next==='schedule'||next==='procurement')select(next,true);},[preview?.followScreen,preview?.deviceSnapshot,select]);
   useEmployeeActivityVisit(active === 'procurement' ? 'procurement' : null);
   const value = useMemo(() => ({ active, select, setNavigationHidden }), [active, select]);
   return <Context.Provider value={value}>
