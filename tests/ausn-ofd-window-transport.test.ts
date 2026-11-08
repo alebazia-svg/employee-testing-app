@@ -102,3 +102,30 @@ test('only the timed-out day is split, all half-day receipts are required and ma
     }
   } finally {globalThis.fetch=savedFetch;if(savedBase===undefined)delete process.env.PLATFORMA_OFD_PROXY_BASE_URL;else process.env.PLATFORMA_OFD_PROXY_BASE_URL=savedBase;}
 });
+
+test('cancellation aborts active reads and stops queued windows without claiming completeness', async () => {
+  const savedFetch = globalThis.fetch, savedBase = process.env.PLATFORMA_OFD_PROXY_BASE_URL;
+  process.env.PLATFORMA_OFD_PROXY_BASE_URL = 'http://ofd.test';
+  const controller = new AbortController();
+  let reads = 0, aborted = 0;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith('/kkts')) return Response.json({ data: { kkts: [{ registrationNumber: '111' }, { registrationNumber: '222' }] } });
+    reads++;
+    return new Promise<Response>((resolve, reject) => {
+      const signal = init!.signal!;
+      const cancel = () => { aborted++; reject(new DOMException('cancelled', 'AbortError')); };
+      signal.addEventListener('abort', cancel, { once: true });
+      if (reads === 2) queueMicrotask(() => controller.abort());
+    });
+  };
+  try {
+    const result = await loadPlatforma('2026-11-01', '2026-11-30', controller.signal);
+    assert.equal(reads, 2); assert.equal(aborted, 2);
+    assert.equal(result.complete, false); assert.equal(result.receipts.length, 0);
+    assert.ok(result.errors.some((error: string) => error.includes('cancelled')));
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedBase === undefined) delete process.env.PLATFORMA_OFD_PROXY_BASE_URL;
+    else process.env.PLATFORMA_OFD_PROXY_BASE_URL = savedBase;
+  }
+});

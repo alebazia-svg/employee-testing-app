@@ -147,9 +147,9 @@ export function mergeOfdReceipts(saby: AusnOfdReceipt[], platforma: AusnOfdRecei
   };
 }
 
-async function getJson(url: string) {
+async function getJson(url: string, signal?: AbortSignal) {
   try {
-    const response = await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
     const body = await response.json().catch(() => null);
     return { response, body: record(body) };
   } catch {
@@ -157,9 +157,10 @@ async function getJson(url: string) {
   }
 }
 
-async function getCompletePlatformaPage(url: string) {
-  let last = await getJson(url);
+async function getCompletePlatformaPage(url: string, signal?: AbortSignal) {
+  let last = await getJson(url, signal);
   for (let attempt = 1; attempt < 3; attempt += 1) {
+    if (signal?.aborted) return last;
     const meta = record(last.body?.meta);
     if (last.response.ok && meta?.complete === true) return last;
     // Repeating the same oversized window does not repair a provider timeout.
@@ -167,7 +168,7 @@ async function getCompletePlatformaPage(url: string) {
     if (last.response.status === 504 && record(last.body?.error)?.code === 'OFD_PROVIDER_TIMEOUT'
       && record(last.body?.error)?.retryable === true) return last;
     await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
-    last = await getJson(url);
+    last = await getJson(url, signal);
   }
   return last;
 }
@@ -193,10 +194,10 @@ export function platformaExportWindows(dateFrom: string, dateTo: string) {
   return windows;
 }
 
-export async function loadPlatforma(dateFrom: string, dateTo: string) {
+export async function loadPlatforma(dateFrom: string, dateTo: string, signal?: AbortSignal) {
   const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
   if (!baseUrl) return { complete: false, receipts: [] as AusnOfdReceipt[], errors: ['Platforma OFD proxy is not configured'], kkts: 0 };
-  const list = await getJson(`${baseUrl}/api/v1/ofd/platforma/kkts`);
+  const list = await getJson(`${baseUrl}/api/v1/ofd/platforma/kkts`, signal);
   const kktRoot = record(list.body?.data);
   const kkts = rows(kktRoot?.kkts);
   if (!list.response.ok || !list.body || kkts.length === 0) {
@@ -214,14 +215,14 @@ export async function loadPlatforma(dateFrom: string, dateTo: string) {
   const results: { receipts: AusnOfdReceipt[]; error?: string }[] = new Array(jobs.length);
   let cursor = 0;
   async function worker() {
-    while (cursor < jobs.length) {
+    while (cursor < jobs.length && !signal?.aborted) {
       const index = cursor++;
       const job = jobs[index];
       const { receipts, complete } = await readPlatformaReceiptWindow({
         from: `${job.from}T00:00:00+03:00`, toExclusive: `${job.toExclusive}T00:00:00+03:00`,
         read: async (from, to) => {
           const query = new URLSearchParams({ kktRegNumber: job.registrationNumber, from, to });
-          const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
+          const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, signal);
           const receiptRows = record(result.body?.data)?.receipts;
           const sourceRows = rows(receiptRows);
           const normalized = sourceRows.map(normalizePlatformaReceipt).filter(Boolean) as AusnOfdReceipt[];
@@ -236,6 +237,7 @@ export async function loadPlatforma(dateFrom: string, dateTo: string) {
   // Two requests bound upstream load; output order remains KKT/window order.
   await Promise.all(Array.from({ length: Math.min(2, jobs.length) }, worker));
   errors.push(...results.flatMap(result => result.error ? [result.error] : []));
+  if (signal?.aborted) errors.push('Platforma OFD export cancelled; the requested period is incomplete');
   return { complete: errors.length === 0, receipts: results.flatMap(result => result.receipts), errors, kkts: kkts.length };
 }
 
@@ -253,11 +255,12 @@ export async function exportUnifiedAusnOfdReceipts(options: {
   dateTo: string;
   queryLimit?: number;
   maxDocuments?: number;
+  signal?: AbortSignal;
 }) {
   const sabyPeriod = sabyExportPeriod(options.dateFrom, options.dateTo);
   const [sabyResult, platformaResult] = await Promise.all([
     sabyPeriod ? exportSabyOfdReceipts({ ...options, ...sabyPeriod }).catch(() => ({ ok: false, receipts: [], completeness: { complete: false }, errors: ['Saby OFD export did not complete'] })) : Promise.resolve({ ok: true, receipts: [], completeness: { complete: true }, errors: [] }),
-    loadPlatforma(options.dateFrom, options.dateTo),
+    loadPlatforma(options.dateFrom, options.dateTo, options.signal),
   ]);
   const sabyRows = rows(sabyResult.receipts);
   const sabyReceipts = sabyRows.map(normalizeSabyReceipt).filter(Boolean) as AusnOfdReceipt[];

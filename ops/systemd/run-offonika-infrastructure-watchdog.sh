@@ -76,7 +76,10 @@ for unit in "${units[@]}"; do
   timer_state=$(systemctl is-active "$unit.timer" 2>/dev/null || true)
   service_state=$(systemctl is-active "$unit.service" 2>/dev/null || true)
   service_result=$(systemctl show "$unit.service" -p Result --value 2>/dev/null || true)
-  if [[ "$timer_state" == active && ( "$service_state" == active || "$service_state" == activating ) ]]; then
+  if [[ "$unit" == ausn-report-cache-refresh && "$timer_state" == active && ( "$service_state" == active || "$service_state" == activating ) ]]; then
+    # Starting/retrying a tax refresh is not evidence of source recovery.
+    add_check "unit.$unit" "${unit_labels[$unit]}" false "Обновление АУСН выполняется; успешное завершение ещё не подтверждено"
+  elif [[ "$timer_state" == active && ( "$service_state" == active || "$service_state" == activating ) ]]; then
     add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, проверка выполняется сейчас"
   elif [[ "$unit" == offonika-terminal-fiscal-final && "$timer_state" == active && "$service_result" == success ]]; then
     last_exit=$(systemctl show "$unit.service" -p ExecMainExitTimestamp --value 2>/dev/null || true)

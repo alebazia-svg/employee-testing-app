@@ -74,6 +74,9 @@ export async function GET(req: Request) {
     dateTo,
     queryLimit,
     maxDocuments,
+    // Finish before the background client's600s ceiling. Abort active Platforma
+    // reads and queued windows so a retry cannot overlap a discarded export.
+    signal: AbortSignal.any([req.signal, AbortSignal.timeout(540_000)]),
   });
 
   return Response.json(result, { status: result.ok ? 200 : 503 });
