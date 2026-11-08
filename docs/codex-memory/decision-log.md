@@ -1567,3 +1567,276 @@ passed through the live broker without message sends. Broker/bot are active;
 primary core runner and snapshot identity are unchanged. No migrations or FNS/1C
 writes. Owner authorized this release, narrow service restarts and unused build
 cache cleanup. Native release/follow-up exit 0; current and two reserves verified.
+
+## 2026-11-08 — Owner approved portal reliability work after November audit
+
+- Classification: APPROVED CHANGE. Bela approved the described reliability,
+  performance, PWA navigation and safe recovery work with “Приступай”, then
+  explicitly required regression control. Preserve agreed processes, formulas
+  and interfaces; a process change still requires its exact separate approval.
+- Start from current deployment branch, not the dirty historical main checkout.
+  Isolated branch: `codex/portal-reliability-20261108`, base `4b20300` (1.21.49).
+- First local changes isolate tax upload results per submission, distinguish an
+  unconfirmed long-running result from failure, and reject an unrecognized sales
+  import before replacing the current payroll source. Read/format errors retain
+  the prior source. Recognized empty reports and manual calculations remain valid.
+- Local checks: 80 payroll tests and 19 targeted regression tests pass;
+  TypeScript and production build pass. Original tax forms before submission
+  were compared against the base and rendered identically. This is not device
+  acceptance or verification of durable server recovery.
+- Still open: server attempt ordering/restart recovery, wider performance work,
+  installed-iPhone navigation, monitoring and remaining audit findings. Existing
+  audit evidence must be rechecked against subsequent releases before fixing it.
+- No production deployment, migrations, production data changes or external
+  messages authorized by this implementation step. No version reserved.
+- Files in this local step:
+  - `app/(dashboard)/admin/taxes/TaxDocumentUpload.tsx`
+  - `lib/tax-upload-state.ts`, `lib/tax-upload-monitor.ts`
+  - `app/(dashboard)/admin/payroll/PayrollClient.tsx`
+  - `tests/tax-upload-state.test.ts`, `tests/tax-upload-monitor.test.ts`,
+    `tests/tax-upload-render.test.ts`
+  - `tests/payroll-import-preservation.test.ts`,
+    `tests/payroll-calculation.test.ts`
+  - this decision log (phase start, separate from product code).
+
+
+### 2026-11-08 — Reliability continuation, local verification only
+
+- Existing persistent AUSN intake now records a document's processing attempt in
+  `portal-jobs/<sha256(documentId)>.json`. PostgreSQL transaction advisory locks
+  serialize attempt registration and result application across web processes.
+  Runner request/result formats and payroll formulas are unchanged; no schema
+  migration or additional queue service is introduced.
+- Upload acceptance waits for durable queuing or explicit validation outcome.
+  Lost transport confirmation remains unconfirmed, rather than asserting failure.
+  The status endpoint, reopening Taxes and the existing tax-reminder script can
+  reconcile saved results after a restart. Older attempts and late transport
+  callbacks cannot demote the latest completed attempt. This does not resubmit
+  financial actions or promise automatic recovery of every external failure.
+- ADMIN attention/push-configuration GETs share concurrent reads without a data
+  cache. Attention/history remain separate. Stalled reads abort after 15 seconds
+  and release the shared request for retry. Visible sync serializes async reads,
+  retaining one trailing update. Existing bells, badges and notification rules
+  remain visible and unchanged.
+- Workday starts date-dependent 1C/Google reads alongside the existing DB snapshot;
+  all checks remain awaited. A specific Workday loading boundary and a common
+  ADMIN fallback expose navigation progress. No production speed/SLA claim yet;
+  the expensive per-realization chain remains a further optimization target.
+- Mobile dock checks geometry only after scroll settles, reconstructing a displaced
+  dock without resetting list position. Correct geometry does not trigger rebuild.
+  Keyboard, modal, zoom and cleanup guards are retained. Installed-iPhone finger
+  inertia acceptance is still required; desktop emulation cannot prove that fix.
+- Passed: 49 targeted tests, 304 Workday tests, 80 payroll tests, 47 Workday/team
+  tests, 14 tax regressions, isolated PostgreSQL integration, TypeScript and final
+  production build. Counts include overlapping groups, not unique test totals.
+- Real local application: 390px Workday geometry/dock, menu close and three tabs
+  verified. A 12-second lock on the disposable Workday table showed the immediate
+  loading screen, followed by normal content after release.
+- Fault drill: real local upload returned 202/UPLOADED while a fake non-network
+  SSH process held processing. Web process was killed; a synthetic runner result
+  was written, then web restarted. Reopening Taxes recovered PROCESSED in DB and
+  “Учтён в сверке” in the actual history. This verifies status recovery, not a real
+  tax calculation. One client navigation after the crash stalled until direct
+  reopen; cause/baseline comparison is still open. Do not call full recovery done.
+- Temporary servers and the isolated audit PostgreSQL container were stopped.
+  Synthetic fixtures remain for continued verification. No production access,
+  deployment, migrations, release version allocation or external messages.
+- Evidence: external audit folder `reliability-20261108/` beside `portal-audit.html`.
+  Main checkout's 192 unrelated dirty paths were left untouched.
+
+Files in the local reliability candidate (including the previous step):
+- `app/(dashboard)/admin/loading.tsx`
+- `app/(dashboard)/admin/payroll/PayrollClient.tsx`
+- `app/(dashboard)/admin/taxes/TaxDocumentUpload.tsx`
+- `app/(dashboard)/admin/taxes/page.tsx`
+- `app/(dashboard)/admin/workday/loading.tsx`
+- `app/(dashboard)/admin/workday/page.tsx`
+- `app/api/admin/taxes/documents/route.ts`
+- `app/api/admin/taxes/documents/status/route.ts`
+- `components/AdminInboxBell.tsx`
+- `docs/codex-memory/decision-log.md`
+- `lib/admin-inbox-client.ts`
+- `lib/ausn-processing.ts`
+- `lib/mobile-navigation-viewport.ts`
+- `lib/tax-processing-jobs.ts`
+- `lib/tax-processing-recovery.ts`
+- `lib/tax-upload-monitor.ts`
+- `lib/tax-upload-state.ts`
+- `lib/visible-sync.ts`
+- `scripts/reprocess-tax-documents.ts`
+- `scripts/sync-tax-document-reminders.ts`
+- `tests/admin-inbox-client.test.ts`
+- `tests/ausn-processing.test.ts`
+- `tests/mobile-navigation-viewport.test.ts`
+- `tests/payroll-calculation.test.ts`
+- `tests/payroll-import-preservation.test.ts`
+- `tests/tax-processing-background.test.ts`
+- `tests/tax-processing-jobs.test.ts`
+- `tests/tax-processing-recovery.integration.test.ts`
+- `tests/tax-upload-monitor.test.ts`
+- `tests/tax-upload-render.test.ts`
+- `tests/tax-upload-state.test.ts`
+- `tests/visible-sync.test.ts`
+
+
+### 2026-11-08 — Remaining source delays and navigation failure drill
+
+- Owner continued the approved reliability work, explicitly retaining processes.
+  Candidate fast-forwarded to current deployment base `8b4c751` (1.22.0,
+  Next.js 15.5.29), preserving all prior local reliability edits. No unrelated
+  main-checkout work was included and no release version was reserved.
+- Workday keeps the complete day realization list, fetching fiscal details only
+  for documents actually used by completed credit tasks, with the same manager,
+  date and cutoff rules. Actual old/new check outputs match in eight scenarios:
+  matched, absent receipt, wrong amount, ambiguity, unavailable fiscal source,
+  incomplete task, no realizations and invalid date. Read concurrency remains four;
+  a free worker no longer waits for its slow batch partner. Wrong-reference fiscal
+  answers fail closed. A final empty probe distinguishes exactly 1000 rows from
+  truncated input; a failed/incomplete read cannot be called complete.
+- Synthetic fiscal-stage benchmark (not production page timing): 32 reads in
+  original batches 121 ms; same reads in worker pool 85 ms; two needed documents
+  61 ms. This is evidence of request reduction, not an SLA or live speed result.
+- Google snapshot preserves the existing 12-second deadline and 30-second cache.
+  The deadline now cancels OAuth/metadata/data HTTP reads; optional signals leave
+  other callers unchanged. Concurrent snapshot reads reuse the existing in-flight
+  helper, retaining no additional settled cache. Seven cancellation checks plus
+  five attendance-date regressions pass; no live Google credentials or calls used.
+- ADMIN links expose navigation progress immediately. After ten seconds a native
+  GET retry bypasses a stalled client-router read. The shared layout retains this
+  state when the mobile menu closes; choosing the current section clears it.
+  No automatic reload, form submission or financial retry is introduced. Existing
+  cancellation callbacks and before-unload protection are retained. Eager full
+  tax prefetch is disabled; data is loaded on demand with the shared fallback.
+- Real local fault proxy held a route read for 18 seconds. Verified immediate
+  progress, delayed retry and successful native GET opening of Taxes on desktop.
+  Fixed explicit test viewports after a responsive resize hid desktop links;
+  absence of a click on an invisible link is not a product hang diagnosis.
+- iOS standalone dock now also rebuilds once after finger scrolling/inertia ends,
+  because stale paint may report a correct DOM rect. Tap, ordinary browser scroll,
+  active touch, keyboard, modal, zoom, current list position and cleanup safeguards
+  remain covered. No busy loop or persistent redraw timer is introduced.
+- Physical installed production MOBO was inspected through iPhone Mirroring:
+  Workday scroll retained the bottom dock and Home return worked; app left at Home
+  and Mirroring closed. These were the deployed baseline and remote scrolling,
+  not acceptance of the local candidate under real finger inertia.
+- Current checks: 71 targeted tests, 304 Workday tests, 80 payroll tests,
+  57 Home/Workday tests, PostgreSQL recovery integration, TypeScript and build pass.
+  Counts overlap and are not a unique total.
+- Owner approval requested for a temporary Cloudflare HTTPS preview and separate
+  “MOBO — проверка” icon using only the isolated synthetic DB. No tunnel or public
+  preview was created without that response. Device acceptance of the candidate
+  remains pending; do not describe it as fully verified or released.
+
+Additional candidate files:
+- `app/(dashboard)/admin/layout.tsx`
+- `app/(dashboard)/admin/loading.tsx`
+- `app/(dashboard)/admin/payroll/PayrollClient.tsx`
+- `app/(dashboard)/admin/taxes/TaxDocumentUpload.tsx`
+- `app/(dashboard)/admin/taxes/page.tsx`
+- `app/(dashboard)/admin/workday/loading.tsx`
+- `app/(dashboard)/admin/workday/page.tsx`
+- `app/api/admin/taxes/documents/route.ts`
+- `app/api/admin/taxes/documents/status/route.ts`
+- `components/AdminInboxBell.tsx`
+- `components/AdminNavigationFeedback.tsx`
+- `components/AdminSectionLink.tsx`
+- `components/AdminShell.tsx`
+- `docs/codex-memory/decision-log.md`
+- `lib/admin-inbox-client.ts`
+- `lib/ausn-processing.ts`
+- `lib/google-sheets.ts`
+- `lib/mobile-navigation-viewport.ts`
+- `lib/tax-processing-jobs.ts`
+- `lib/tax-processing-recovery.ts`
+- `lib/tax-upload-monitor.ts`
+- `lib/tax-upload-state.ts`
+- `lib/team-control-source.ts`
+- `lib/team-source-deadline.ts`
+- `lib/visible-sync.ts`
+- `lib/workday-credit-source.ts`
+- `scripts/reprocess-tax-documents.ts`
+- `scripts/sync-tax-document-reminders.ts`
+- `tests/admin-inbox-client.test.ts`
+- `tests/admin-section-link.test.ts`
+- `tests/ausn-processing.test.ts`
+- `tests/mobile-navigation-viewport.test.ts`
+- `tests/payroll-calculation.test.ts`
+- `tests/payroll-import-preservation.test.ts`
+- `tests/tax-processing-background.test.ts`
+- `tests/tax-processing-jobs.test.ts`
+- `tests/tax-processing-recovery.integration.test.ts`
+- `tests/tax-upload-monitor.test.ts`
+- `tests/tax-upload-render.test.ts`
+- `tests/tax-upload-state.test.ts`
+- `tests/team-google-cancellation.test.ts`
+- `tests/visible-sync.test.ts`
+- `tests/workday-credit-preservation.test.ts`
+- `tests/workday-credit-source.test.ts`
+
+
+Local continuation verification completed on the same candidate:
+- Final 71 targeted tests pass (including the exact-1000-row completeness probe),
+  along with the previously listed 304 Workday / 80 payroll / 57 Home checks,
+  isolated PostgreSQL integration, TypeScript and production build.
+- Verified at 390×844: mobile menu closes immediately and progress remains in the
+  persistent ADMIN layout; choosing the current section cancels that notice.
+  With a local route configured to delay its response for 60 seconds, the ten-second native retry
+  opened Taxes successfully without waiting for that read. No automatic reload
+  or command replay occurs. Temporary viewport reset after checks.
+- Real local Workday candidate left open for owner review at
+  `http://portal-reliability.localhost:3286/admin/workday`, using only synthetic
+  users/data and no production integration credentials. Its isolated server and
+  PostgreSQL container remain running for that review; this supersedes the
+  earlier cleanup note for the preceding test step.
+- Fault proxy evidence saved as `mobile-transition-recovery.json` beside other
+  local test logs. The proxy is stopped after verification. No Cloudflare tunnel
+  or test Home Screen icon created pending the requested separate authorization.
+- Additional implementation files: `components/AdminNavigationFeedback.tsx`,
+  `components/AdminSectionLink.tsx`, `app/(dashboard)/admin/layout.tsx`,
+  `lib/workday-credit-source.ts`, `lib/google-sheets.ts`,
+  `lib/team-control-source.ts`, `lib/team-source-deadline.ts`;
+  test files: `tests/admin-section-link.test.ts`,
+  `tests/workday-credit-source.test.ts`, `tests/workday-credit-preservation.test.ts`,
+  `tests/team-google-cancellation.test.ts`.
+
+
+### 2026-11-08 — Authorized temporary device preview, finger check pending
+
+- Bela explicitly authorized a temporary Cloudflare HTTPS preview and separate
+  “MOBO — проверка” icon on iPhone. Permission remains specific to the isolated
+  synthetic application, not production deployment or production data changes.
+- Direct Mac connector failed through current DNS/network path in HTTP/2 and QUIC;
+  no VPN, DNS, TLS validation or security settings changed. A temporary SSH
+  loopback relay on 127.0.0.1:33288 carries only the Mac test proxy at port 3288.
+  Cloudflared 2026.10.7 was downloaded from the official release to VPS /tmp and
+  verified against its published SHA256. It runs as Bela, without sudo and with
+  an empty environment/config. No production service/container/config/DB changed.
+- Preview-only proxy supplies the distinct manifest/name; product source is not
+  changed for installation. Fixed its HTML compression handling before use.
+  Preview URL and exact cleanup PIDs/paths are in external audit evidence
+  `iphone-candidate-verification.json`; no tunnel/account secrets recorded.
+- Created only synthetic users in the isolated local schema. Safari's existing
+  500 tabs were retained; one new “mobo qa” group contains the test page. Existing
+  installed MOBO remains separate. Declined saving the synthetic login password.
+- Observed actual installed standalone candidate: login, immediate Workday loading
+  screen, populated long synthetic list, wheel scrolling, menu open/close without
+  list-position change and return from app switcher with dock at bottom.
+- Owner was asked to unlock and scroll by finger, then close “Ещё” and report the
+  result. This cannot be substituted by remote wheel scrolling. While awaiting
+  that response, keep the test tunnel available; do not mark device acceptance
+  complete. After completion stop the exact tunnel/SSH/proxy resources and
+  verify the public URL no longer serves the app. No release has been made.
+
+### 2026-11-08 — Device check completed; temporary access closed
+
+- Owner confirmed “Да, оставалась внизу” after the requested physical finger
+  scrolling and More open/close in installed “MOBO — проверка”. This closes that
+  specific reproduction check; it does not prove every possible iOS scenario.
+- Mirroring remained unavailable afterward (“iPhone используется”), so no final
+  post-gesture screenshot was observed. The result is explicitly owner-reported.
+- Stopped exact owned Cloudflare PID 380857, reverse SSH PID 18730 and local
+  preview proxy PID 19453. Verified processes gone, remote loopback 33288 closed
+  and public manifest returns HTTP 530 rather than the app. Test icon and Safari
+  group remain, pointing at the inactive preview. Original MOBO untouched.
+- Product code unchanged during this device-check completion; earlier candidate
+  test/build evidence remains applicable. No production release/deploy performed.
