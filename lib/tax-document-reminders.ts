@@ -1,6 +1,9 @@
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
+import { prisma } from './prisma';
+import { loadTaxManagementReview } from './tax-management-review-source';
+import { confirmedAusnEndForYear } from './tax-management-review';
 import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from './ausn-report-cache';
 import { queueAdminInboxTelegramDelivery } from './admin-inbox';
 import { buildTaxDocumentPlan } from './tax-document-plan';
@@ -17,8 +20,22 @@ export function taxLimitReminderEventKey(input: { level: string; dataCutoff?: st
   return `tax_limit:${year}:${input.level}`;
 }
 
+export async function taxLimitRegimeEnded(db: Pick<PrismaClient, 'taxControlDocument'>, now: Date, year: string) {
+  try {
+    const documents = await db.taxControlDocument.findMany({ select: {
+      id: true, documentType: true, status: true, originalName: true,
+      storageKey: true, sha256: true, createdAt: true,
+    } });
+    return confirmedAusnEndForYear(await loadTaxManagementReview(documents), year, now);
+  } catch {
+    // Unavailable evidence cannot retire an existing reminder.
+    return false;
+  }
+}
+
 export async function syncTaxLimitReminder(db: PrismaClient, now = new Date()) {
   const report = await loadCurrentAusnReport();
+  if (await taxLimitRegimeEnded(db, now, report.dataCutoff?.slice(0, 4) || now.getUTCFullYear().toString())) return { state: 'regime_ended' as const };
   const risk = assessTaxLimitRisk(report);
   if (risk.level === 'unknown' || risk.level === 'normal') return { state: risk.level as 'unknown' | 'normal' };
   const eventKey = taxLimitReminderEventKey({ level: risk.level, dataCutoff: report.dataCutoff });
@@ -58,13 +75,14 @@ export async function syncTaxControlReminders(db: PrismaClient, now = new Date()
 // Stale/unavailable figures and the limit decision date go only to the person
 // responsible for tax documents (TAX_CONTROL_ALERT_LOGINS, comma-separated), in the
 // portal inbox and web push — never to Telegram and never to other admins.
-export async function currentTaxAttentionReminders(now = new Date()): Promise<TaxReminder[]> {
+export async function currentTaxAttentionReminders(now = new Date(), db: Pick<PrismaClient, 'taxControlDocument'> = prisma): Promise<TaxReminder[]> {
   const reports = await loadPortalReports();
   const year = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(now).slice(0, 4);
   const full = reports.find((report) => report.kind === 'full' && report.year === year);
   const freshness = taxFreshnessReminder(reports, now);
   // A decision date computed from stale figures would be misleading.
-  const decision = freshness ? undefined : taxDecisionReminder(full?.available ? full : undefined, now);
+  const ended = await taxLimitRegimeEnded(db, now, year);
+  const decision = freshness ? undefined : taxDecisionReminder(full?.available ? full : undefined, now, 14, ended);
   return [freshness, decision].filter((item): item is TaxReminder => Boolean(item));
 }
 
@@ -75,7 +93,7 @@ export function taxAlertLogins(env: Record<string, string | undefined> = process
 export async function syncTaxAttentionReminders(db: PrismaClient, now = new Date()) {
   const logins = taxAlertLogins();
   if (!logins.length) return { state: 'no_recipient' as const };
-  const reminders = await currentTaxAttentionReminders(now);
+  const reminders = await currentTaxAttentionReminders(now, db);
   const recipients = await db.user.findMany({ where: { login: { in: logins }, role: 'ADMIN', isActive: true }, select: { id: true } });
   if (!recipients.length) return { state: 'no_recipient' as const };
   for (const reminder of reminders) {

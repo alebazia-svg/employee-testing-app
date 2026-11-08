@@ -32,7 +32,7 @@ import { prisma } from '@/lib/prisma';
 import {isPaymentReceipt} from './procurement-document-policy';
 import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from './ausn-report-cache';
 import { buildTaxDocumentPlan } from './tax-document-plan';
-import { currentTaxAttentionReminders, taxDocumentReminderEventKey, taxLimitReminderEventKey } from './tax-document-reminders';
+import { taxLimitRegimeEnded, currentTaxAttentionReminders, taxDocumentReminderEventKey, taxLimitReminderEventKey } from './tax-document-reminders';
 
 export type AdminInboxViewItem = {
   id: string;
@@ -92,7 +92,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     return next ? taxDocumentReminderEventKey(next) : undefined;
   }) : undefined;
   const hasTaxLimitReminder = rows.some((row) => row.event.sourceType === 'tax_limit');
-  const currentTaxLimitEventKey = hasTaxLimitReminder ? await loadCurrentAusnReport().then((report) => {
+  const currentTaxLimitEventKey = hasTaxLimitReminder ? await loadCurrentAusnReport().then(async (report) => {
+    if (await taxLimitRegimeEnded(prisma, now, report.dataCutoff?.slice(0, 4) || now.getUTCFullYear().toString())) return undefined;
     const risk = assessTaxLimitRisk(report);
     return risk.level === 'unknown' || risk.level === 'normal' ? undefined : taxLimitReminderEventKey({ level: risk.level, dataCutoff: report.dataCutoff });
   }) : undefined;

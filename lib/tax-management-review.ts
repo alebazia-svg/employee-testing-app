@@ -82,3 +82,10 @@ export function accountingSnapshot(review: TaxManagementReview, report?: { avail
   }
   return review.accountingIncome ? { cents: baseline + review.accountingIncome.incomeCents, incomeCents: review.accountingIncome.incomeCents, through: review.accountingIncome.through, runTimeUtc: undefined, sourceName: review.accountingIncome.sourceName } : undefined;
 }
+
+// Only a validated, archive-backed review may end forward-looking reminders.
+export function confirmedAusnEndForYear(review: TaxManagementReview | undefined, year: string, now: Date) {
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(now);
+  return Boolean(review?.regimeStatus && review.cutoff.slice(0, 4) === year
+    && review.regimeStatus.ausnEndedOn <= today && review.regimeStatus.checkedAt <= today);
+}

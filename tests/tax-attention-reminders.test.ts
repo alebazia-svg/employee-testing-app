@@ -30,3 +30,20 @@ test('decision reminder: silent far ahead, "до даты" within two weeks, "с
   assert.equal(now.eventKey, 'tax_limit_decision:2026:now');
   assert.match(now.body, /10 декабря/);
 });
+
+
+test('confirmed termination retires forward predictions, preserving stale-data warnings and reports', () => {
+  const original = structuredClone(full);
+  const now = new Date('2026-10-29T12:00:00Z');
+  assert.ok(taxDecisionReminder(full, now));
+  assert.equal(taxDecisionReminder(full, now, 14, true), undefined);
+  assert.equal(taxDecisionReminder(full, new Date('2026-10-20T12:00:00Z'), 14, true), undefined);
+  assert.ok(taxFreshnessReminder([full], now));
+  assert.deepEqual(full, original);
+});
+
+
+test('termination does not suppress an existing exceeded-limit fact warning', () => {
+  const exceeded = { ...full, remaining: -1 };
+  assert.equal(taxDecisionReminder(exceeded, new Date('2026-11-08T12:00:00Z'), 14, true)?.eventKey, 'tax_limit_decision:2026:exceeded');
+});

@@ -23,12 +23,13 @@ export function taxFreshnessReminder(reports: PortalReport[], now: Date): TaxRem
   return { eventKey: `tax_figures_stale:${latest.sourceFile}`, type: 'tax.figures_stale', sourceType: 'tax_freshness', title: 'Цифры по налогам не обновились', body: `Последние данные — по ${ruDate(latest.dataCutoff)}, пересчёт не проходит. Проверьте, что Mac (через него приходят чеки Платформы ОФД) включён и в сети, затем в «Налогах» нажмите «Обновить цифры сейчас». Если не поможет — сообщите разработчику.` };
 }
 
-export function taxDecisionReminder(full: PortalReport | undefined, now: Date, leadDays = 14): TaxReminder | undefined {
+export function taxDecisionReminder(full: PortalReport | undefined, now: Date, leadDays = 14, regimeEnded = false): TaxReminder | undefined {
   const today = moscowDay(now);
   const outlook = limitOutlook(full, today);
   if (!outlook || outlook.state === 'enough' || !full?.year) return undefined;
   const base = { type: 'tax.limit_decision', sourceType: 'tax_limit_decision' };
   if (outlook.state === 'exceeded') return { ...base, eventKey: `tax_limit_decision:${full.year}:exceeded`, title: 'Лимит АУСН превышен', body: 'Срочно к бухгалтеру: до 15 числа следующего месяца нужно уведомить налоговую и выбрать режим.' };
+  if (regimeEnded) return undefined;
   const tail = `Лимит может закончиться около ${ruDate(outlook.cautious.date)}.${outlook.safeMonthly !== undefined ? ` Чтобы дотянуть до 31 декабря — не больше ${mln(outlook.safeMonthly)} дохода в месяц.` : ''}`;
   if (outlook.state === 'decide_now') return { ...base, eventKey: `tax_limit_decision:${full.year}:now`, title: 'Решение по лимиту АУСН нужно сейчас', body: tail };
   const daysLeft = Math.round((Date.parse(`${outlook.decisionDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);

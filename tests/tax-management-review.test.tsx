@@ -7,7 +7,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { accountingSnapshot, managementTotals, parseTaxManagementReview, type TaxManagementReview } from '../lib/tax-management-review';
+import { confirmedAusnEndForYear, accountingSnapshot, managementTotals, parseTaxManagementReview, type TaxManagementReview } from '../lib/tax-management-review';
 import { loadTaxManagementReview } from '../lib/tax-management-review-source';
 import { detectTaxDocumentCoverage } from '../lib/tax-document-upload';
 import { TaxAccountingMonths, TaxManagementOverview, TaxManagementIncome, TaxManagementReconciliation, TaxManagementDocuments, TaxManagementAccounting } from '../components/taxes/TaxManagementReview';
@@ -151,4 +151,20 @@ test('FNS termination proof does not certify USN acceptance; status requires an 
   }
   review.regimeStatus.sourceName = 'missing.pdf';
   assert.equal(parseTaxManagementReview(JSON.stringify(review)), undefined);
+});
+
+
+test('termination applies only to its documented year after the effective and confirmation dates', () => {
+  const review = fixture();
+  const now = new Date('2026-06-03T10:00:00Z');
+  assert.equal(confirmedAusnEndForYear(review, '2026', now), false);
+  review.regimeStatus = { checkedAt: '2026-06-03', ausnEndedOn: '2026-05-01', certificateNumber: '101551', sourceName: 'source.zip', usnStatus: 'not_confirmed' };
+  const validated = parseTaxManagementReview(JSON.stringify(review))!;
+  assert.ok(validated);
+  assert.equal(confirmedAusnEndForYear(validated, '2026', now), true);
+  assert.equal(confirmedAusnEndForYear(validated, '2027', now), false);
+  assert.equal(confirmedAusnEndForYear(validated, '2026', new Date('2026-06-02T10:00:00Z')), false);
+  assert.equal(confirmedAusnEndForYear(undefined, '2026', now), false);
+  review.regimeStatus.sourceName = 'missing.pdf';
+  assert.equal(confirmedAusnEndForYear(parseTaxManagementReview(JSON.stringify(review)), '2026', now), false);
 });
