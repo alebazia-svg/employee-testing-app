@@ -32,7 +32,7 @@ export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolea
   const reconnect = proposal.state === 'reconnect';
   const iphoneHelp = proposal.isIos ?? proposal.isPhone !== false;
   // Approved 2026-11-08: «off» and «denied» stay at the top but take one line.
-  const oneLine = proposal.state === 'notifications' || proposal.state === 'denied';
+  const oneLine = proposal.state === 'notifications' || proposal.state === 'denied' || proposal.state === 'reconnect';
   const title = unsupported ? 'Уведомления недоступны на этом устройстве' : install ? 'Установите МОБО на телефон' : offline ? 'Проверка уведомлений после подключения' : reconnect ? 'Уведомления не подключены' : proposal.state === 'denied' ? 'Уведомления запрещены' : 'Уведомления выключены';
   const description = unsupported ? 'Продолжайте работать в приложении. Подключить уведомления можно на поддерживаемом телефоне.' : install ? 'Открывайте с иконки на экране «Домой».' : offline ? 'Нет связи. Настройки не изменены.' : reconnect ? 'Разрешение есть. Подключение нужно повторить.' : 'Чтобы не пропускать задания и напоминания.';
   const label = proposal.state === 'denied' ? 'Как включить' : reconnect ? 'Подключить' : 'Включить';
