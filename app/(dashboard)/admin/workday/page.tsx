@@ -1508,8 +1508,15 @@ export default async function AdminWorkdayPage(
   const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
   const googleSnapshot = await googleRead;
+  // Operational work remains visible when an active employee belongs to a department
+  // outside the attendance pilot. Use the same batched reads as the daily controls.
+  const employeesWithOpenWork = new Set([
+    ...requiredIssues.map(issue=>issue.userId),
+    ...cashOperations.filter(operation=>openCashControl(operation.status)).map(operation=>operation.userId),
+    ...shiftControlRuns.filter(run=>run.status==='active'&&run.tasks.some(task=>task.status==='pending')).map(run=>run.userId),
+  ]);
   const employeeControlRows = employees
-    .filter(employee => employee.department === 'retail' || employee.department === 'wholesale' || employee.department === 'procurement')
+    .filter(employee => employeesWithOpenWork.has(employee.id) || employee.department === 'retail' || employee.department === 'wholesale' || employee.department === 'procurement')
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
       const vacation = vacationByUser.get(employee.id) ?? null;
@@ -1664,13 +1671,20 @@ export default async function AdminWorkdayPage(
         terminalFiscalRecords,
         requiredIssues: employeeRequiredIssues.map((issue) => {
           const view = workdayIssueView(issue);
+          const transfer = issue.ruleKey==='warehouse_transfer' && issue.sourceData && typeof issue.sourceData==='object' && !Array.isArray(issue.sourceData) ? issue.sourceData : null;
+          const waitMinutes=Math.max(0,Math.floor((Date.now()-issue.lastDetectedAt.getTime())/60_000));
+          const waiting=waitMinutes<60 ? waitMinutes+' мин' : Math.floor(waitMinutes/60)+' ч '+waitMinutes%60+' мин';
           const lifecycle = `${issue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(issue.originDate)}`} · ${getMoscowDateKey(issue.lastDetectedAt) === today ? `автопроверка сегодня в ${formatTime(issue.lastDetectedAt)}` : `автопроверка ${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} в ${formatTime(issue.lastDetectedAt)}`}`;
           return {
             id: issue.id,
             originDate: issue.originDate,
             title: view.summaryTitle,
             state: creditHelpIssueIds.has(String(issue.id)) ? 'Нужна помощь' : view.verificationPending ? 'Не удалось проверить' : 'Открыто',
-            meta: [view.summaryMeta,issue.originDate&&issue.originDate!==selectedDate?formatDateLabel(issue.originDate):''].filter(Boolean).join(' · '),
+            meta: [transfer
+              ? [transfer.stage==='ВПути'?'В пути':transfer.stage==='НаСборке'?'На сборке':transfer.stage==='Отправлена'?'Ожидает сборки':'',
+                  [transfer.senderName,transfer.receiverName].filter(v=>typeof v==='string').join(' → '),
+                  'с '+formatTime(issue.lastDetectedAt)+' МСК',selectedDate===today?'ожидание '+waiting:''].filter(Boolean).join(' · ')
+              : view.summaryMeta,issue.originDate&&issue.originDate!==selectedDate?formatDateLabel(issue.originDate):''].filter(Boolean).join(' · '),
             lifecycle,
             href: `/admin/workday?date=${selectedDate}&control=all&view=attention&issue=${issue.id}#employees-control`,
           };
@@ -1741,8 +1755,10 @@ export default async function AdminWorkdayPage(
   const extensionProposal = selectedDate === today ? deriveExtensionProposal(workDays) : null;
   const showTechnical = searchParams?.technical === '1';
 
+  const warehouseExceptions = process.env.WAREHOUSE_BASE ? await prisma.$queryRaw<{ref:string;number:string;exception:string}[]>`SELECT ref,event->>'number' AS number,exception FROM warehouse_transfer_state WHERE base=${process.env.WAREHOUSE_BASE || ''} AND NOT closed AND exception IS NOT NULL ORDER BY ref` : [];
   return (
     <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
+      {warehouseExceptions.length>0 && <section aria-label="Перемещения без дежурного"><h2>Требуют внимания по складу</h2><ul>{warehouseExceptions.map(e=><li key={e.ref}>Перемещение № {e.number} · {e.exception}</li>)}</ul></section>}
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
         {extensionProposal && <WorkdayExtensionProposal proposal={extensionProposal} name={employees.find(e=>e.id===extensionProposal.userId)?.name??'Сотрудник'} departedName={employees.find(e=>e.id===workDays.find(d=>d.id===extensionProposal.departedId)?.userId)?.name??'Коллега'} />}
@@ -1793,7 +1809,7 @@ export default async function AdminWorkdayPage(
             });
             for (const operation of cashOperations.filter(o=>o.userId===row.employee.id && openCashControl(o.status))) {
               const status = operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'ожидается проведение в 1С' : 'документы 1С не проведены';
-              const text = `Инкассация ${formatMoney(operation.amount)} · внесена ${formatTime(operation.createdAt)} · ${status}`;
+              const text = `Инкассация ${formatMoney(operation.amount)} · № ${operation.id} · внесена ${formatTime(operation.createdAt)} · ${status}`;
               alerts.push(text);
               alertTargets[text] = `shift-cash-${operation.id}`;
             }
@@ -1830,7 +1846,11 @@ export default async function AdminWorkdayPage(
               state:row.attendance?.state ?? teamShiftState(selectedDate,today,start!=='—',Boolean(row.workDay&&!row.workDay.endedAt),end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:row.attendance?.active ?? (app&&row.activeWorkDay),late:row.attendance?.late ?? (app?row.workDay?.lateMinutes??0:google.lateMinutes),missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
-              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||hasAppControl&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
+              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||hasAppControl&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues,
+              openTasks:row.run?.status==='active' ? row.run.tasks.filter(t=>t.status==='pending').map(t=>({
+                id:t.id,title:t.title,when:t.plannedTimeMinutes===null?'Открытая задача смены':
+                  (selectedDate===today && t.plannedTimeMinutes<nowMinutes?'Срок прошёл · ':'По плану · ')+clockLabel(t.plannedTimeMinutes)+' МСК'
+              })) : []};
           })}
           planControls={employeeControlRows.map(row => (
                       <AdminWorkdayCorrectionButton

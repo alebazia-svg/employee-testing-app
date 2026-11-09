@@ -1,24 +1,28 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { TeamOpenWork } from './TeamOpenWork';
+import { teamOpenWork, type ShiftWork } from '@/lib/team-open-work';
 import { openWorkdayCard } from '@/lib/workday-card-navigation';
 import { compareTeamRows, teamRowStatus, teamStatusFilters } from '@/lib/team-control-order';
 import { ArrowRight, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-react';
 import { TeamSourceRefresh } from './TeamSourceRefresh';
 import { teamControlSummary, teamControlHref, controlCountLabel, controlCompositionLabel, type DepartmentControlAction, type OwnerQueueAction } from '@/lib/team-control-summary';
 export type TeamDayRow = {
- id:number;detailAvailable:boolean;sourceUnavailable:boolean;name:string;department:string;source:string;plan:string;planState:string;shift:string;start:string;end:string;state:string;active:boolean;late:number;missing:boolean;review:string;next:string;issueCount:number;needsReview:boolean;alertTargets:Record<string,string>;alerts:string[];timing:string[];issues:Array<{id:number;state?:string;title:string;originDate?:string;meta:string;lifecycle:string;href:string}>;
+ id:number;openTasks?:ShiftWork[];detailAvailable:boolean;sourceUnavailable:boolean;name:string;department:string;source:string;plan:string;planState:string;shift:string;start:string;end:string;state:string;active:boolean;late:number;missing:boolean;review:string;next:string;issueCount:number;needsReview:boolean;alertTargets:Record<string,string>;alerts:string[];timing:string[];issues:Array<{id:number;state?:string;title:string;originDate?:string;meta:string;lifecycle:string;href:string}>;
 };
 export function TeamDailyControl({rows,controls,planControls=[],departmentActions=[],ownerActions=[],date,readAt,sourceWarning,initialTab='overview'}:{ownerActions?:OwnerQueueAction[];departmentActions?:DepartmentControlAction[];rows:TeamDayRow[];controls:ReactNode[];planControls?:ReactNode[];date:string;readAt:string;sourceWarning:string;initialTab?:string}) {
  const [tab,setTab]=useState(initialTab);const [filter,setFilter]=useState('all');
  useEffect(()=>{setTab(initialTab);},[initialTab]);
+ const [grouping,setGrouping]=useState<'employee'|'action'>('employee');
+ const openWork=teamOpenWork(rows,ownerActions,departmentActions,date);
  const summaries=rows.map(row=>teamControlSummary(row,date));
  const ownCount=ownerActions.length+departmentActions.filter(action=>action.kind!=='employee').length+summaries.reduce((sum,summary)=>sum+summary.breakdown.decision+summary.breakdown.check,0);
  const decisionCount=ownerActions.filter(action=>action.kind==='decision').length+departmentActions.filter(action=>action.kind==='decision').length+summaries.reduce((sum,summary)=>sum+summary.breakdown.decision,0);
  const matches=(r:TeamDayRow)=>filter==='all'||filter==='attention'&&(teamControlSummary(r,date,ownerActions).items.length>0||r.timing.length>0)||filter==='started'&&r.start!=='—'||filter==='late'&&r.late>0||teamRowStatus(r)===filter;
  const visibleRows=['wholesale','retail','procurement'].flatMap(department=>rows.filter(row=>row.department===department&&matches(row)).sort(compareTeamRows));
  const navigation=visibleRows.map(row=>({employeeId:row.id,name:row.name}));
- const hasAttention=ownerActions.length>0||departmentActions.length>0||summaries.some(summary=>summary.items.length>0||summary.timing.length>0);
+ const hasAttention=openWork.length>0||ownerActions.length>0||departmentActions.length>0||summaries.some(summary=>summary.items.length>0||summary.timing.length>0);
  return <section className="team-control" id="employees-control"><TeamSourceRefresh/>
   <div className="admin-section-tabs" role="tablist" aria-label="Контроль дня">{[['overview','Обзор дня'],['attention','Нужно действие'],['audit','События и сверка']].map(([id,label])=><button key={id} type="button" role="tab" aria-selected={tab===id} className={`admin-section-tab ${tab===id?'is-active':''}`} onClick={()=>{setTab(id);const url=new URL(window.location.href);url.searchParams.set('view',id);window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);}}>{label}{id==='attention'&&hasAttention?<span className={`admin-section-tab-count ${decisionCount?'needs-decision':''}`} title={ownCount?`Для вас: ${ownCount} нерешённых вопросов`:'Есть замечания'} aria-label={ownCount?`Требуют вашего участия: ${ownCount}`:'Есть замечания'}>{ownCount||'!'}</span>:null}</button>)}</div>
   <div className="team-context-line"><Link href={`/admin/attendance?date=${date}`}>График команды <ArrowRight aria-hidden="true"/></Link>{sourceWarning?<details className="team-source-details"><summary><AlertTriangle aria-hidden="true"/>Данные Google неполные<ChevronDown aria-hidden="true" className="team-source-chevron"/></summary><p>{sourceWarning} Отсутствие данных не считается невыходом. Последняя проверка: {readAt} МСК.</p></details>:<span>Google · {readAt} МСК</span>}</div>
@@ -48,7 +52,12 @@ export function TeamDailyControl({rows,controls,planControls=[],departmentAction
    {!rows.some(matches)&&<p className="team-empty">Сотрудников по этому фильтру нет.</p>}
    </section>
   </>}
-  {tab==='attention'&&<div className="team-action-queue">
+  {tab==='attention'&&<div className="team-filters team-filters-compact" role="group" aria-label="Группировка задач">
+    <button type="button" aria-pressed={grouping==='employee'} onClick={()=>setGrouping('employee')}>По сотрудникам</button>
+    <button type="button" aria-pressed={grouping==='action'} onClick={()=>setGrouping('action')}>По действиям</button>
+  </div>}
+  {tab==='attention'&&grouping==='employee'&&<div className="team-action-queue"><div hidden>{controls}</div><TeamOpenWork items={openWork} date={date}/></div>}
+  {tab==='attention'&&grouping==='action'&&<div className="team-action-queue">
     <div hidden>{controls}</div>
     {[
       ...(['decision','check','employee'] as const).map(kind=>({

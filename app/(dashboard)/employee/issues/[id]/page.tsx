@@ -1,3 +1,4 @@
+import { warehouseTransferHref } from '@/lib/warehouse-transfer-link';
 import { portalPersonName } from '@/lib/portal-person';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -28,6 +29,17 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
   const open = issue.status === 'open' && issue.employeeActionRequired;
   const view = workdayIssueView(issue);
   const isKkmCloseIssue = issue.ruleKey === 'kkm_shift_not_closed';
+  if (issue.ruleKey === 'warehouse_transfer') {
+    const url = warehouseTransferHref(issue.sourceData);
+    const source = issue.sourceData as {enteredAt?:string} | null;
+    return <main className="mx-auto max-w-xl space-y-4 p-5">
+      <Link href="/employee">← Рабочий день</Link>
+      <h1 className="text-xl font-bold">{issue.title}</h1>
+      <p>{issue.detail}</p>
+      {source?.enteredAt && <p>Время перехода: {new Date(source.enteredAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})}</p>}
+      {url && <a className="font-bold underline" href={url}>Открыть перемещение в 1С</a>}
+    </main>;
+  }
   const isCreditIssue = issue.ruleKey === 'credit_realization_mismatch';
   const showConversation = !isKkmCloseIssue || issue.messages.length > 0;
   const today = getMoscowDateKey();

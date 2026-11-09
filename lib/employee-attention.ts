@@ -1,7 +1,7 @@
 /** Current work, independent of notification read/delivery state. */
 export type EmployeeAttentionItem = {
   expenseRef?: string; expenseCashboxRef?: string; expenseMode?: 'execute' | 'coordinate';
-  id: string; title: string; listTitle?: string; listSubtitle?: string; kind: 'receipt' | 'cash' | 'encashment' | 'closing' | 'cash_issue' | 'schedule';
+  id: string; title: string; listTitle?: string; listSubtitle?: string; kind: 'transfer' | 'receipt' | 'cash' | 'encashment' | 'closing' | 'cash_issue' | 'schedule';
   state: 'action' | 'waiting'; status: string; priority: number; date: string;
   detail: string; closingScope?: 'encashment' | 'closing'; facts?: Array<[string, string]>; reply?: string; replyAuthor?: { name: string; at: string }; shared?: boolean;
   notificationIds?: number[];

@@ -30,6 +30,10 @@ export async function loadEmployeeAttention(user: { id: number }) {
       return {id:`issue:${issue.id}`,kind:'receipt' as const,receiptProblem:'extra' as const,title:copy.title,date:issue.detectedAt.toISOString(),priority:1,state:answered?'waiting' as const:'action' as const,status:choosing?'Укажите оплату второй продажи':answered?'Ответ передан руководителю':'Нужно проверить',detail:copy.detail,facts:[],
         endpoint:`/api/employee/extra-receipts/${issue.id}/response`,actions:choosing?[{label:'Наличными',action:'second_cash'},{label:'Картой или СБП',action:'second_terminal'},{label:'Другим способом',action:'second_other'}]:answered?[]:[{label:'Это дубль',action:'duplicate'},{label:'Была вторая продажа',action:'second_sale'},{label:'Нужна помощь',action:'help'}]};
     }
+    if (issue.ruleKey === 'warehouse_transfer') return {
+      id: 'issue:'+issue.id, kind: 'transfer' as const, title: issue.title, detail: issue.detail,
+      status: 'Требует проверки', state: 'action' as const, priority: 1, date: issue.detectedAt.toISOString()
+    };
     const view = workdayIssueView(issue);
     const reply = issue.messages.find(m => m.author.role === 'ADMIN');
     const response = events.find(e => e.sourceId === String(issue.id) && e.eventKey.endsWith(`:${user.id}`));

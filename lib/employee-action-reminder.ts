@@ -23,7 +23,7 @@ export function employeeActionReminder(workday: ReminderWorkday | null, attentio
   if (issue?.kind==='closing' && issue.id.startsWith('issue:')) return {id:issue.id,title:'Подтвердите закрытие кассы',href:'/employee#pwa-current-action',target:'checklist',...(issue.date===getMoscowDateKey(now)?{remindAfterMs:15*60_000}:{})};
   if (issue) return {
     id: issue.id, title: issue.kind === 'receipt' ? 'Проверьте чеки' : issue.kind === 'cash' ? 'Оформите расходники в 1С' : issue.title,
-    href: issue.kind === 'cash_issue' ? `/employee?cashIssue=${encodeURIComponent(issue.id.slice('cash-issue:'.length))}` : `/employee?attention=${issue.kind}&item=${encodeURIComponent(issue.id)}`,
+    href: issue.kind === 'transfer' ? '/employee/issues/'+issue.id.slice(6) : issue.kind === 'cash_issue' ? `/employee?cashIssue=${encodeURIComponent(issue.id.slice('cash-issue:'.length))}` : `/employee?attention=${issue.kind}&item=${encodeURIComponent(issue.id)}`,
     target: issue.kind === 'cash_issue' ? 'cash_issue' : 'attention',
   };
   const today = getMoscowDateKey(now);

@@ -142,6 +142,12 @@ export function WorkdayNotificationsClient({ procurement = false }: { procuremen
     if (!preview) sendEmployeeActivity({ kind: 'notification_open', notificationId: notification.id });
     setBanner(null);
     if (notification.active === false && employeeNotificationOpening(notification) === 'page') { void dismiss(notification); return; }
+    if (notification.kind === 'warehouse_transfer' && notification.issueId) {
+      setOpen(false);
+      await dismiss(notification);
+      if (!preview) window.location.assign('/employee/issues/' + notification.issueId);
+      return;
+    }
     if (notification.kind === EMPLOYEE_EXPENSE_KIND || notification.issueId || notification.reviewId) {
       setOpen(false); void dismiss(notification);
       const kind = notification.kind === EMPLOYEE_EXPENSE_KIND ? 'cash' : notification.attentionKind ?? 'receipt';

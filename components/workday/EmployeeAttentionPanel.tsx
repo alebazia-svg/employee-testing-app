@@ -208,6 +208,10 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
       </button>}
       {[...new Set(inlineItems.map(item => item.kind))].map(kind => {
       const rows = inlineItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
+      if (kind === 'transfer') return rows.map(row =>
+        <a key={row.id} className="employee-attention-row" href={'/employee/issues/'+row.id.slice(6)}>
+          <span className="min-w-0 flex-1"><strong>{row.title}</strong><small className="employee-attention-caption">{row.detail}</small></span><ChevronRight size={16}/>
+        </a>);
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? rows.length === 1 ? rows[0].title : rows.some(row => row.state === 'action' && row.expenseMode === 'execute') ? 'Оформите расходники в 1С' : rows.some(row => row.state === 'action') ? 'Уточните выдачу по заявке' : 'Заявки к оплате' : kind === 'schedule' && rows.length > 1 ? 'Вопросы по графику' : rows[0].title;
       const count = kind === 'cash' ? new Set(rows.map(row => row.expenseRef || row.id)).size : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup={rows.length===1 && rows[0].scheduleAction==='week' && !rows[0].scheduleOpenEditor ? undefined : 'dialog'} className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>

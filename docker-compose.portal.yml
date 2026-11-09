@@ -38,6 +38,7 @@ services:
       - ${PORTAL_ENV_FILE:-.env}
     environment:
       NODE_ENV: production
+      WAREHOUSE_BASE: ${WAREHOUSE_BASE:-Teleinvest_UT11}
       NEXT_TELEMETRY_DISABLED: "1"
       # Verified VPS ingress: Traefik overwrites client X-Real-IP; app has no
       # published port. Re-audit before changing ingress or exposing app ports.

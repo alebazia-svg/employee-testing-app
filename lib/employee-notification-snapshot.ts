@@ -92,7 +92,7 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
         active: activeIds.has(notification.id),
         actionRequired: activeIds.has(notification.id) && employeeNotificationRequiresAction(notification),
         ...(issue ? { attentionKind: issue.ruleKey === 'kkm_shift_not_closed' ? 'closing' as const : 'receipt' as const } : {}),
-        title: replyCopy?.title || (notification.kind === 'workday_closed_by_admin' ? 'Смена завершена' : '') || (activeIds.has(notification.id) ? scheduleCopy?.title || copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title),
+        title: notification.kind === 'warehouse_transfer' ? notification.title : replyCopy?.title || (notification.kind === 'workday_closed_by_admin' ? 'Смена завершена' : '') || (activeIds.has(notification.id) ? scheduleCopy?.title || copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title),
         body: replyCopy?.body || (activeIds.has(notification.id) ? scheduleCopy?.body || copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body).replace(/^Администратор завершил рабочий день за (\d{4}-\d{2}-\d{2})\./u, 'Смена за $1 завершена.'),
         href: scheduleCopy?.active ? scheduleCalendarHref(scheduleCopy.missing[0],scheduleCopy.missing.length===1) : workdayNotificationHref(notification),
       };

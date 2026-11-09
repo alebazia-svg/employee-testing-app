@@ -1,4 +1,5 @@
 import 'server-only';
+import { warehouseTransferHref } from './warehouse-transfer-link';
 import { prisma } from './prisma';
 import { issueSource, workdayIssueView } from './workday-control-issue-view';
 import { formatDateLabel, formatTime, getMoscowDateKey } from './workday';
@@ -8,6 +9,7 @@ export async function getAdminWorkdayIssueDetail(id: number) {
   const issue = await prisma.workdayControlIssue.findUnique({where:{id},include:{user:{select:{name:true}},task:{select:{handoverData:true}},messages:{orderBy:{createdAt:'asc'},include:{author:{select:{id:true,name:true,role:true}}}},notifications:{where:{kind:'workday_issue_reply'},orderBy:{createdAt:'desc'},take:5}}});
   if (!issue) return null;
   const view = workdayIssueView(issue), kkm = issue.ruleKey === 'kkm_shift_not_closed',extra=issue.ruleKey==='terminal_extra_receipt';
+  const general = !kkm && !extra && issue.ruleKey!=='credit_realization_mismatch';
   const open = issue.status === 'open' && (kkm || extra || issue.employeeActionRequired);
   const siblings = await prisma.workdayControlIssue.findMany({where:{userId:issue.userId,status:'open',employeeActionRequired:true},orderBy:{detectedAt:'asc'}});
   const data=issueSource(issue.sourceData),handover=issueSource(issue.task?.handoverData),photos=issueSource(handover.photos),photo=issueSource(photos.zReport);
@@ -15,11 +17,11 @@ export async function getAdminWorkdayIssueDetail(id: number) {
   const amount=view.amount || (fallbackAmount ? `${Number(fallbackAmount[1].replace(/\s/g,'' )).toLocaleString('ru-RU')} ₽` : '');
   const useful=/[А-Яа-яЁё]/.test(instruction) && instruction!==`${view.documentNumber} · ${view.amount}` && instruction!==view.summaryMeta;
   return {
-    id:issue.id,extra,extraFacts:extra&&Array.isArray(data.facts)?data.facts.filter((f):f is [string,string]=>Array.isArray(f)&&f.length===2&&f.every(v=>typeof v==='string')):[],extraResponse:extra?String(data.response||''):'',title:kkm||extra?issue.title:'Чек по кредитной продаже', userName:issue.user.name, open, kkm,
-    state:open&&extra?'Уточнение по сверке':open?kkm&&!issue.employeeActionRequired?'Ожидает сверки ОФД':view.verificationPending?'Не удалось проверить':'Исправляет сотрудник':'Закрыто',
+    id:issue.id,general,documentHref:issue.ruleKey==='warehouse_transfer'?warehouseTransferHref(issue.sourceData):null,extra,extraFacts:extra&&Array.isArray(data.facts)?data.facts.filter((f):f is [string,string]=>Array.isArray(f)&&f.length===2&&f.every(v=>typeof v==='string')):[],extraResponse:extra?String(data.response||''):'',title:general||kkm||extra?issue.title:'Чек по кредитной продаже', userName:issue.user.name, open, kkm,
+    state:general?(open?'Ожидает действия сотрудника':'Завершено'):open&&extra?'Уточнение по сверке':open?kkm&&!issue.employeeActionRequired?'Ожидает сверки ОФД':view.verificationPending?'Не удалось проверить':'Исправляет сотрудник':'Закрыто',
     siblings:siblings.map(item=>({id:item.id,label:workdayIssueView(item).documentNumber||`Замечание ${item.id}`})),
     document:kkm?String(data.cashRegisterName||'Не определена'):view.documentNumber||'Номер не указан', amount:amount||'Сумма не указана',
-    instruction:kkm&&data.confirmationMethod?issue.detail:view.verificationPending?'Повторная проверка не завершена. Предыдущее замечание остаётся на контроле.':kkm?issue.detail:useful?instruction:'Причина не указана. Проверьте чек в 1С.',
+    instruction:general?issue.detail:kkm&&data.confirmationMethod?issue.detail:view.verificationPending?'Повторная проверка не завершена. Предыдущее замечание остаётся на контроле.':kkm?issue.detail:useful?instruction:'Причина не указана. Проверьте чек в 1С.',
     photoHref:typeof photo.storagePath==='string'?`/api/admin/workday/shift-control-photo?path=${encodeURIComponent(photo.storagePath)}`:'',
     origin:formatDateLabel(issue.originDate), checked:`${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} · ${formatTime(issue.lastDetectedAt)}`,
     receiptCashierName:view.receiptCashierName, receiptDelayMinutes:view.receiptDelayMinutes,
