@@ -1,8 +1,11 @@
 # Notification lifetime — owner-approved change, 8 November 2026
 
-Status: implemented locally on `codex/notification-lifetime-20261108` from
-`899fd16` (deployment branch after verified 1.22.2). Not deployed. No release
-version reserved; determine the version again immediately before an approved release.
+Status: released and verified **1.22.5**, 9 November 2026. Server/runtime source
+`875ac8c27ca7ba2d3fc5406acbc4d439f645fdfa`; public build time
+`2026-11-09T10:08:12.818Z` (13:08 MSK). Implemented originally from `899fd16`, then
+rebased without conflicts onto the live 1.22.4 source `d72fc57`. The notification
+implementation files had no intervening changes. Owner explicitly authorised
+installation on 9 November after the local acceptance report.
 
 Owner decision: informational messages move to History after 24 hours; actionable
 notifications remain current until completion or withdrawal of the requirement.
@@ -84,8 +87,66 @@ recent-history query/output limits, preserving chronological order.
   the end-reminder producer isolation, sent status/date and current source import.
   Fixtures updated to the existing production contract; assertions retained,
   including one morning delivery / one badge and exact read cutoff.
-- Type checking and production build passed locally. No production installation.
+- Type checking and production build passed locally and in the server image.
+  Rebased candidate: 117 focused tests, two PostgreSQL integration scenarios and
+  five release-metadata/version tests passed.
 
-Release gate: recheck current origin/live version; merge only this coherent scope,
-increment patch version, then deploy only with release authorization. Verify public
-release metadata/server commit and actual employee/ADMIN inbox after installation.
+## Installation and independent readback — 9 November
+
+- Native macOS Terminal launched the reviewed narrow transient systemd worker;
+  owner entered the server password there. Detached worker/log monitoring continued
+  through installation and final registration. `RELEASE_EXIT=0`, service result
+  success; running app healthy. No other chat was messaged.
+- Existing release/storage flock, exact source/file allowlist, migration identity,
+  available disk and all three prior verified images checked. Previous 1.22.4
+  image independently booted with no network, production mounts or production env.
+  Only `portal-app` built/recreated. No source service interruption, migrations,
+  environment changes, notification timer changes or cleanup commands.
+- Public metadata, exact server SHA and authenticated ADMIN footer confirmed
+  1.22.5 / 9 November 13:08 MSK. Protected ADMIN/employee/procurement routes returned
+  200; this was supplemented by authenticated UI checks, not treated as sufficient
+  business evidence alone.
+- Before/after/final preservation checks retained all 51 payment-plan business
+  projections, all 31 receipt/requisites rows, original notification identity/copy
+  for 1,634 rows and all 1,634 existing read markers unchanged. All 328 mature upload
+  contents retained identical SHA-256 hashes and sizes. Tax-warning text/dates
+  retained for four existing events. Source evidence/cache fields were not used
+  to claim whole-row immutability of payment plans.
+- Configuration/payroll hashes unchanged: users10, templates9, cashbox mappings5,
+  payroll runs10, manual inputs79, classification rules79, supplier rules49,
+  adjustments15, saved employee results136. Workdays164 and cash operations107
+  before/after. Applied migrations, server.env and mount parameters unchanged.
+- ADMIN retained four unresolved FNS document requests. Astemir's authenticated
+  read-only preview retained New0 and the existing last-30-days History (including
+  approval and receipt-added messages). No employee notification was acknowledged,
+  business task completed, or synthetic push sent during production verification.
+  Physical iPhone PWA was not operated for this release.
+- The System section still reports pre-existing Platforma OFD timeout (9 November
+  13:04, before this install at13:14) and AUSN update warning (8 November13:06).
+  This notification-only release does not claim those sources recovered or hide
+  their warnings. App startup diagnostics contained zero uncaught/Prisma/network/
+  server500 signals in the captured post-start window.
+- Verified-image registration completed after independent UI/public checks and
+  release of the parent lock. Current plus two verified reserves exist. Current
+  image `sha256:9e505019325f1da68727a1413c3b5eff20dfb77cf5428bf3765dbf28797ea048`.
+  Free disk15.32GiB at completion. No unfinished installation/registration step.
+
+Private verification scripts/logs and hash-only facts are under
+`/tmp/mobo-notification-1.22.5` locally and `/home/bela/mobo-notification-1.22.5`
+on the server; not committed. Root preservation directory:
+`/root/mobo-notification-1.22.5-20261109`.
+
+## Exact changed files versus live 1.22.4
+
+- `components/workday/EmployeeNotificationInbox.tsx`
+- `lib/employee-inbox-view.ts`
+- `lib/employee-notification-snapshot.ts`
+- `lib/notification-lifetime.ts`
+- `lib/workday-notifications.ts`
+- `package.json`, `package-lock.json`
+- `tests/notification-lifetime.integration.test.ts`
+- `tests/notification-lifetime.test.ts`
+- `tests/procurement-morning-notifications.test.ts`
+- `tests/procurement-paid-notification-regression.test.ts`
+- `tests/workday-notification-lifecycle.test.ts`
+- This scoped operations record (subsequent installation notes are docs-only).

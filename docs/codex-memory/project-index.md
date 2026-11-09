@@ -30,6 +30,14 @@ project from scratch.
 
 ## Read First By Task
 
+- Employee notification lifetime: `../ops/notification-lifetime-20261108.md` —
+  released/verified1.22.5 /875ac8c on9November. Explicit informational kinds expire
+  after24h; primary source-backed actions remain current after reading until
+  completed/withdrawn. History/read evidence, paid-plan lifecycle, ADMIN attention,
+  quiet hours and financial/file links preserved. No migration; all51plans,
+  31receipt/requisites rows,328upload hashes and1,634read markers preserved.
+  Existing OFD/AUSN warnings are outside this change and remain visible.
+
 - Employee Activity release 1.22.1: `../ops/employee-activity-release-20261108.md` —
   approved installation, source-backed outcomes and readable chronology; see
   preservation checks and current installation status before continuing.
