@@ -1,6 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { syncSubscribedAccess } from '@/lib/push-access-sync';
+import { cookies } from 'next/headers';
+import { accessBrowserCookie } from '@/lib/portal-access-identity';
+import { isOwnerInspectionBrowser, ownerInspectionBrowserMap } from '@/lib/push-owner-inspection';
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -22,6 +25,16 @@ export async function POST(req: Request) {
   const p256dh = readString(payload?.keys?.p256dh);
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
+
+  // The owner's phone signed in as an employee for an inspection must not take
+  // over the employee's notifications (decision 2026-11-08).
+  const browserId = (await cookies()).get(accessBrowserCookie)?.value;
+  if (browserId) {
+    const owner = await prisma.portalAccessBrowserOwner.findFirst({ where: { browserInstanceId: browserId, disabledAt: null }, select: { browserInstanceId: true, ownerUserId: true } });
+    if (owner && isOwnerInspectionBrowser(browserId, user.id, ownerInspectionBrowserMap([owner]))) {
+      return Response.json({ ok: true, active: false, ownerInspection: true });
+    }
+  }
 
   try {
     const result = await prisma.$transaction(async tx => {

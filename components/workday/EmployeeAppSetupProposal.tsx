@@ -31,7 +31,9 @@ export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolea
   const unsupported = proposal.state === 'unsupported';
   const reconnect = proposal.state === 'reconnect';
   const iphoneHelp = proposal.isIos ?? proposal.isPhone !== false;
-  const title = unsupported ? 'Уведомления недоступны на этом устройстве' : install ? 'Установите МОБО на телефон' : offline ? 'Проверка уведомлений после подключения' : reconnect ? 'Уведомления не подключены' : 'Включите уведомления';
+  // Approved 2026-11-08: «off» and «denied» stay at the top but take one line.
+  const oneLine = proposal.state === 'notifications' || proposal.state === 'denied';
+  const title = unsupported ? 'Уведомления недоступны на этом устройстве' : install ? 'Установите МОБО на телефон' : offline ? 'Проверка уведомлений после подключения' : reconnect ? 'Уведомления не подключены' : proposal.state === 'denied' ? 'Уведомления запрещены' : 'Уведомления выключены';
   const description = unsupported ? 'Продолжайте работать в приложении. Подключить уведомления можно на поддерживаемом телефоне.' : install ? 'Открывайте с иконки на экране «Домой».' : offline ? 'Нет связи. Настройки не изменены.' : reconnect ? 'Разрешение есть. Подключение нужно повторить.' : 'Чтобы не пропускать задания и напоминания.';
   const label = proposal.state === 'denied' ? 'Как включить' : reconnect ? 'Подключить' : 'Включить';
   if (install) return <section className={`${styles.notice} ${styles.install}`} aria-label='Как добавить приложение на телефон'>
@@ -43,13 +45,14 @@ export function EmployeeAppSetupProposal({ compact = false }: { compact?: boolea
       <li><span>3</span><p>Нажмите <strong>«Добавить»</strong> и откройте МОБО с новой иконки.</p></li>
     </ol>
   </section>;
+  const activate = () => { if (proposal.busy) return; if (proposal.state === 'denied') { if(!preview&&!proposal.demo)auditExperience({target:'push_setup',stage:'settings_open',attemptId:attempt.current});setHelp('settings'); } else proposal.enable(); };
   return <>
-    <section className={`${styles.notice} ${styles.notificationRow} ${compact ? styles.compact : ''}`} aria-label='Настройка уведомлений'>
+    <section className={`${styles.notice} ${styles.notificationRow} ${oneLine ? styles.oneLine : ''} ${compact ? styles.compact : ''}`} aria-label='Настройка уведомлений' onClick={!offline && !unsupported ? activate : undefined} data-tappable={!offline && !unsupported ? 'true' : undefined}>
       {!preview&&!proposal.demo&&<ExperienceShown context={{target:'push_setup',stage:'shown',attemptId:attempt.current}}/>}
       <span className={styles.icon} aria-hidden='true'>{install ? <Smartphone size={22}/> : proposal.state === 'denied' ? <BellOff size={22}/> : <Bell size={22}/>}</span>
-      <div className={styles.copy}><h2>{title}</h2><p>{description}</p></div>
-      {!offline && !unsupported && <button type='button' disabled={proposal.busy} className={`employee-material-secondary-action ${styles.action}`} onClick={() => proposal.state === 'denied' ? (()=>{if(!preview&&!proposal.demo)auditExperience({target:'push_setup',stage:'settings_open',attemptId:attempt.current});setHelp('settings');})() : proposal.enable()}>{proposal.busy ? 'Подключаем…' : label}<ChevronRight size={16} aria-hidden='true'/></button>}
-      {proposal.error && !offline && <p role='alert' className={styles.connectionError}>{proposal.error}</p>}
+      <div className={styles.copy}><h2>{title}</h2>{!oneLine && <p>{description}</p>}</div>
+      {!offline && !unsupported && <button type='button' disabled={proposal.busy} className={`${oneLine ? '' : 'employee-material-secondary-action '}${styles.action}`} onClick={event => { event.stopPropagation(); activate(); }}>{proposal.busy ? 'Подключаем…' : label}<ChevronRight size={16} aria-hidden='true'/></button>}
+      {proposal.error && !offline && !oneLine && <p role='alert' className={styles.connectionError}>{proposal.error}</p>}
     </section>
     {help === 'settings' && <HelpSheet title='Включите уведомления МОБО' close={closeSettings}>
       <p className={styles.lead}>{iphoneHelp ? 'Разрешите уведомления в настройках телефона.' : 'Уведомления запрещены в настройках браузера.'}</p>

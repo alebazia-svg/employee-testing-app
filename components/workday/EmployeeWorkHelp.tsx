@@ -14,6 +14,7 @@ import { WORK_HELP_VERSION, type WorkHelpSnapshot } from '@/lib/employee-work-he
 import styles from './EmployeeWorkHelp.module.css';
 
 type Help = { open: () => void };
+const AUTOMATIC_GUIDE = false;
 const Context = createContext<Help | null>(null);
 
 /** One shared guide and server-confirmed daily acknowledgement across mobile tabs. */
@@ -59,6 +60,9 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
     return () => { stop(); revision.current++; flight.current?.abort(); flight.current = null; window.removeEventListener('mobo:attention-refresh', sourceChanged); window.removeEventListener('storage', storageChanged); document.removeEventListener('visibilitychange', returned); };
   }, [enabled, refresh]);
   useEffect(() => {
+    // Approved 2026-11-08: the guide no longer opens by itself; a missing schedule is
+    // asked with the weekly sheet instead. The guide stays available from «?».
+    if (!AUTOMATIC_GUIDE) return;
     if (preview?.followScreen || !enabled || !snapshot?.due || setup?.state === 'safari' || setup?.state === 'checking') return;
     const tryOpen = () => {
       if (attempted.current || modeRef.current || document.visibilityState !== 'visible' || !window.matchMedia('(max-width: 767px)').matches) return;

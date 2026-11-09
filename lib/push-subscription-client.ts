@@ -9,6 +9,7 @@ export async function savePushSubscription(url: string, subscription: PushSubscr
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription), signal: controller.signal });
     const result = await response.json().catch(() => null);
+    if (response.ok && result?.ownerInspection === true) throw new Error('Это телефон проверяющего: уведомления сотрудника на него не приходят.');
     if (!response.ok || result?.ok !== true || result?.active !== true || !Number.isSafeInteger(result?.id) || result.id <= 0) {
       throw new Error('Подключение не подтверждено. Нажмите «Подключить уведомления» ещё раз.');
     }

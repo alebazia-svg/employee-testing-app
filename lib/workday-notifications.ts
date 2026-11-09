@@ -9,6 +9,7 @@ import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
 import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef, loadScheduleNearReminders } from './work-schedule-notifications';
 import { scheduleWeekNoticeRef, SCHEDULE_WEEK_KIND } from './schedule-week-reminder';
+import { ownerInspectionBrowserMap, withoutOwnerInspectionSubscriptions } from './push-owner-inspection';
 import { getMoscowDateKey } from './workday';
 import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
 import { EMPLOYEE_EXPENSE_KIND, expensePushTtl } from './employee-expense-policy';
@@ -437,11 +438,15 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       task: { include: { run: { select: { status: true } } } },
       issue: true,
       review: true,
-      user: { include: { pushSubscriptions: { where: { disabledAt: null } } } },
+      user: { include: { pushSubscriptions: { where: { disabledAt: null }, include: { accessSessions: { select: { browserInstanceId: true } } } } } },
     },
     orderBy: { scheduledAt: 'asc' },
     take: 200,
   });
+  // An owner's phone that inspected an employee keeps that employee's endpoint;
+  // it must not receive the employee's pushes (decision 2026-11-08).
+  const ownerBrowsers = ownerInspectionBrowserMap(await prisma.portalAccessBrowserOwner.findMany({ where: { disabledAt: null }, select: { browserInstanceId: true, ownerUserId: true } }));
+  for (const notification of due) notification.user.pushSubscriptions = withoutOwnerInspectionSubscriptions(notification.user.pushSubscriptions, ownerBrowsers);
   const pushConfigured = configureWebPush();
   const results: Array<{ id: number; status: string; pushStatus: string }> = [];
   const activeDue = await filterActiveWorkdayNotifications(prisma, due, dispatchTime());

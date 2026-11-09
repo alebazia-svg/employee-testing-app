@@ -28,21 +28,3 @@ export function scheduleWeekAllowsDate(weekStart: string, date: string, today: s
   return isValidScheduleDateKey(weekStart) && [scheduleWeekStart(today), schedulePlanningWeek(today)].includes(weekStart)
     && date >= today && date <= shiftScheduleDate(weekStart, 6);
 }
-export function scheduleWeekReminder(input: {
-  today: string; weekStart: string;
-  entries: Array<{ date: string; status: string }>;
-  vacations: Array<{ dateFrom: string; dateTo: string }>;
-}) {
-  const target = schedulePlanningWeek(input.today), through = shiftScheduleDate(target, 6);
-  const dates = input.weekStart === target ? requiredScheduleWeekDates(input.today) : [];
-  const saved = new Set(input.entries.filter(e => ['working', 'off'].includes(e.status)).map(e => e.date));
-  const missing = dates.filter(date => !saved.has(date) && !input.vacations.some(v => v.dateFrom <= date && v.dateTo >= date));
-  const todayMissing = missing.includes(input.today), tomorrowMissing = missing.includes(shiftScheduleDate(input.today, 1));
-  const qualifier = todayMissing ? 'Сегодня не отмечено' : tomorrowMissing ? 'Завтра не отмечено' : '';
-  const label = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long' }).format(new Date(`${through}T12:00:00+03:00`));
-  return { active: missing.length > 0, missing, todayMissing, tomorrowMissing, qualifier, weekStart: target, through,
-    title: 'Заполните график', body: `${qualifier ? qualifier + '. ' : ''}Отметьте рабочие дни и выходные по ${label} включительно.` };
-}
-export function scheduleWeekHref(date: string, weekStart = schedulePlanningWeek(date)) {
-  return `/employee?tab=schedule&date=${date}&week=${weekStart}`;
-}

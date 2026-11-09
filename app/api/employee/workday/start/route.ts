@@ -1,4 +1,5 @@
 import { needsWorkdayEndReminder, attendanceWorkdayDefinition } from '@/lib/workday-end-policy';
+import { markTodayWorkingAfterQrStart } from '@/lib/workday-qr-schedule';
 import { Prisma, type WorkDayEntry } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
@@ -174,7 +175,8 @@ export async function POST(req: Request) {
         }
         return created;
       });
-      return Response.json({ workDay: employeeWorkDayResponse(workDay), alreadyStarted: false });
+      const scheduleMarked = await markTodayWorkingAfterQrStart(user, date);
+      return Response.json({ workDay: employeeWorkDayResponse(workDay), alreadyStarted: false, scheduleMarked });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
@@ -242,7 +244,8 @@ export async function POST(req: Request) {
     });
 
     await ensureTaskNotifications(user.id, workDay.date, shiftControlRun.tasks);
-    return Response.json({ workDay: employeeWorkDayResponse(workDay), shiftControlRun, alreadyStarted: false });
+    const scheduleMarked = await markTodayWorkingAfterQrStart(user, date);
+    return Response.json({ workDay: employeeWorkDayResponse(workDay), shiftControlRun, alreadyStarted: false, scheduleMarked });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });

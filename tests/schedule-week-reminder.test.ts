@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {requiredScheduleWeekDates,schedulePlanningWeek,scheduleWeekReminder,scheduleWeekNoticeRef,scheduleWeekAllowsDate,SCHEDULE_WEEK_KIND} from '../lib/schedule-week-reminder';
+import {requiredScheduleWeekDates,schedulePlanningWeek,scheduleWeekNoticeRef,scheduleWeekAllowsDate,SCHEDULE_WEEK_KIND} from '../lib/schedule-week-reminder';
 import {scheduleAttentionItems} from '../lib/employee-schedule-attention';
 import {employeeActionReminder} from '../lib/employee-action-reminder';
 import {employeeReminderIconKind} from '../lib/employee-notice-icons';

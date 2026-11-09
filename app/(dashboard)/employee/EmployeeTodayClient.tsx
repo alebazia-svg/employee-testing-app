@@ -100,6 +100,8 @@ import {
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
 import { EmployeeActionReminder, usePublishWorkdayReminder } from '@/components/workday/EmployeeActionReminder';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
+import { EmployeeWeekScheduleSheet } from '@/components/workday/EmployeeWeekScheduleSheet';
+import { pushAskAllowed, weekSheetAutoAllowed, weekSheetChanges, weekSheetDays, weekSheetLastWeek, weekSheetRequests, weekSheetThroughLabel, type WeekSheetStatus } from '@/lib/schedule-week-sheet';
 import { EmployeeAppSetupProposal, EmployeeFinishDayIcon, useAppSetupProposal } from '@/components/workday/EmployeeAppSetupProposal';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
@@ -1385,6 +1387,12 @@ export function EmployeeTodayClient({
   const scheduleAuditSeen = useRef('');
   useEffect(() => { if (activeTab !== 'schedule') scheduleAuditSeen.current = ''; }, [activeTab]);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
+  // Approved 2026-11-08: one weekly question replaces the month calendar as the reminder target.
+  const [weekSheetOpen, setWeekSheetOpen] = useState(false);
+  const [weekSheetSaving, setWeekSheetSaving] = useState(false);
+  const [weekSheetError, setWeekSheetError] = useState('');
+  const [pendingMonthBulk, setPendingMonthBulk] = useState(false);
+  const [pushAskOpen, setPushAskOpen] = useState(false);
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkOriginalStatuses, setBulkOriginalStatuses] = useState<Record<string, BulkScheduleStatus | null>>({});
   const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
@@ -1632,20 +1640,13 @@ export function EmployeeTodayClient({
   const ownVacationForDate = useCallback((date: string) => vacationOnDate(ownVacationsState, date, user.id), [ownVacationsState, user.id]);
   const departmentVacationForDate = useCallback((date: string, userId: number) => vacationOnDate(departmentVacationsState, date, userId), [departmentVacationsState]);
 
-  const openScheduleReminder = useCallback((requestedDate: string, editSingleDay = false) => {
-    // A push/link may outlive a saved day. Recheck the current plan before
-    // opening the editor; two missing dates still belong in the full calendar.
-    const near = scheduleNearReminder({ today, entries: ownScheduleState, vacations: ownVacationsState });
-    const date = editSingleDay ? near.missing[0] ?? requestedDate : requestedDate;
-    setScheduleMode('month');
-    setCalendarMonth(monthKeyFromDate(date));
-    setSelectedScheduleDate(date);
-    if (editSingleDay && near.missing.length === 1) {
-      setEditingScheduleDate(date);
-    } else {
-      setActiveTab('schedule');
-    }
-  }, [today, ownScheduleState, ownVacationsState]);
+  const openScheduleReminder = useCallback((requestedDate: string, _editSingleDay = false) => {
+    // Approved 2026-11-08: every schedule reminder (plashka, bell, push, guide) opens
+    // the weekly sheet. The month stays one tap away inside it.
+    void requestedDate;
+    setWeekSheetError('');
+    setWeekSheetOpen(true);
+  }, []);
   const openedScheduleQuery = useRef<string | null>(null);
   useEffect(() => {
     if (searchParams.get('tab') !== 'schedule') { openedScheduleQuery.current = null; return; }
@@ -2171,6 +2172,87 @@ export function EmployeeTodayClient({
   const bulkReducedCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'reduced').length;
   const bulkEmptyCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'empty').length;
 
+  // «Ваши дни на неделю» (approved 2026-11-08).
+  const weekDays = useMemo(() => weekSheetDays({ today, entries: ownScheduleState, vacations: ownVacationsState, includeToday: !workDay }), [today, ownScheduleState, ownVacationsState, workDay]);
+  const weekThrough = weekSheetThroughLabel(weekDays);
+  const weekLastWeek = useMemo(() => weekSheetLastWeek(weekDays, ownScheduleState), [weekDays, ownScheduleState]);
+  // Automatic openings only care about today and tomorrow; later days never trigger the sheet.
+  const weekHasMissing = weekDays.some((day) => (day.highlight || day.date === today) && !day.vacation && !day.status);
+  const weekCoverageWarning = useCallback((draft: Record<string, WeekSheetStatus | null>) => {
+    const states = weekSheetChanges(weekDays, draft)
+      .filter((change) => change.previousStatus === 'working' && change.status === 'off')
+      .map((change) => {
+        const workingBefore = (departmentScheduleByDate.get(change.date) ?? [])
+          .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working' && !departmentVacationForDate(change.date, entry.userId)).length;
+        return scheduleCoverage(user.department, scheduleWorkingCountAfterChange({ workingBefore, previousStatus: change.previousStatus, nextStatus: change.status })).state;
+      });
+    const reduced = states.filter((state) => state === 'reduced').length, empty = states.filter((state) => state === 'empty').length;
+    return [reduced > 0 ? `Сокращённый состав — ${reduced} дн.` : '', empty > 0 ? `Никто не выходит — ${empty} дн.` : ''].filter(Boolean).join(' · ');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekDays, departmentScheduleByDate, departmentVacationForDate, user.department]);
+  useEffect(() => {
+    if (!pendingMonthBulk || activeTab !== 'schedule' || !scheduleMonthLoaded || bulkScheduleMode) return;
+    setPendingMonthBulk(false);
+    startBulkSchedule();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMonthBulk, activeTab, scheduleMonthLoaded, bulkScheduleMode]);
+  // Automatic openings: after the QR start, after leaving / handing over the shift,
+  // or on a marked day off. At most twice a day; never on top of another dialog.
+  const weekAutoRef = useRef<{ timer: ReturnType<typeof setInterval> | null }>({ timer: null });
+  const openWeekSheetAuto = useCallback(() => {
+    if (preview || !weekHasMissing) return;
+    const key = `mobo-week-sheet-auto:${today}`;
+    let shown = 0;
+    try { shown = Number(localStorage.getItem(key) || '0') || 0; } catch { /* per-device convenience only */ }
+    if (!weekSheetAutoAllowed(shown)) return;
+    if (weekAutoRef.current.timer) clearInterval(weekAutoRef.current.timer);
+    let tries = 0;
+    const attempt = () => {
+      tries += 1;
+      const busy = document.querySelector('dialog[open], [role=dialog][aria-modal=true]') || document.visibilityState !== 'visible';
+      if (busy && tries < 60) return;
+      if (weekAutoRef.current.timer) clearInterval(weekAutoRef.current.timer);
+      weekAutoRef.current.timer = null;
+      if (busy) return;
+      try { localStorage.setItem(key, String(shown + 1)); } catch { /* ignore */ }
+      setWeekSheetError('');
+      setWeekSheetOpen(true);
+    };
+    weekAutoRef.current.timer = setInterval(attempt, 500);
+    attempt();
+  }, [preview, weekHasMissing, today]);
+  useEffect(() => () => { if (weekAutoRef.current.timer) clearInterval(weekAutoRef.current.timer); }, []);
+  const afterStartHandled = useRef(false);
+  useEffect(() => {
+    if (afterStartHandled.current || preview) return;
+    if (appSetupProposal?.state === 'checking') return; // wait until the notification status is known
+    let marker: { date?: string; marked?: boolean } | null = null;
+    try { marker = JSON.parse(sessionStorage.getItem('mobo-after-start') || 'null'); sessionStorage.removeItem('mobo-after-start'); } catch { marker = null; }
+    if (!marker || marker.date !== today || !workDay) {
+      afterStartHandled.current = true;
+      // A marked day off without a QR start: ask once when the app opens.
+      if (!workDay && !unfinished && ownScheduleByDate.get(today)?.status === 'off') openWeekSheetAuto();
+      return;
+    }
+    afterStartHandled.current = true;
+    if (marker.marked) setMessage('День начат · сегодня отмечен в графике');
+    let askedDays: string[] = [];
+    try { askedDays = JSON.parse(localStorage.getItem('mobo-push-ask-days') || '[]'); if (!Array.isArray(askedDays)) askedDays = []; } catch { askedDays = []; }
+    if (appSetupProposal?.state === 'notifications' && pushAskAllowed(askedDays, today)) {
+      try { localStorage.setItem('mobo-push-ask-days', JSON.stringify([...askedDays, today].slice(-10))); } catch { /* ignore */ }
+      setPushAskOpen(true);
+      return;
+    }
+    openWeekSheetAuto();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, workDay, appSetupProposal?.state]);
+  const closePushAsk = () => { setPushAskOpen(false); openWeekSheetAuto(); };
+  const wasCompleted = useRef(isCompleted);
+  useEffect(() => {
+    if (!wasCompleted.current && isCompleted) openWeekSheetAuto();
+    wasCompleted.current = isCompleted;
+  }, [isCompleted, openWeekSheetAuto]);
+
   function getColleagueRows(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
@@ -2542,6 +2624,48 @@ export function EmployeeTodayClient({
     }
   }
 
+  async function saveWeekSheet(draft: Record<string, WeekSheetStatus | null>) {
+    if (preview) { preview.blocked(); return; }
+    const requests = weekSheetRequests(weekSheetChanges(weekDays, draft));
+    if (requests.length === 0) { setWeekSheetOpen(false); return; }
+    const finishAudit = beginEmployeeOperation('schedule_save', { period: requests[0].weekStart });
+    setWeekSheetError('');
+    setWeekSheetSaving(true);
+    try {
+      for (const item of requests) {
+        const response = await request('/api/employee/workday/schedule/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ monthKey: item.monthKey, weekStart: item.weekStart, mode: 'plan', changes: item.changes, confirmed: true }),
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok) {
+          if (response.status === 409) await syncScheduleState();
+          throw new Error(isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить график');
+        }
+      }
+      finishAudit('completed');
+      await syncScheduleState();
+      setWeekSheetOpen(false);
+      setMessage('График сохранён');
+    } catch (reason) {
+      finishAudit('failed', navigator.onLine ? 'request' : 'network');
+      setWeekSheetError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
+    } finally {
+      setWeekSheetSaving(false);
+    }
+  }
+
+  function openMonthFromWeekSheet() {
+    setWeekSheetOpen(false);
+    const first = weekDays.find((day) => !day.vacation && !day.status)?.date ?? weekDays[0]?.date ?? today;
+    setActiveTab('schedule');
+    setScheduleMode('month');
+    setCalendarMonth(monthKeyFromDate(first));
+    setSelectedScheduleDate(first);
+    setPendingMonthBulk(true);
+  }
+
   async function declineScheduleReplacement(date: string) {
     if (preview) { preview.blocked(); return; }
     const finishAudit = beginEmployeeOperation('schedule_save',{period:date});
@@ -2729,6 +2853,7 @@ export function EmployeeTodayClient({
       // after the workday response is applied. Use the same full reload that
       // reliably refreshes these values when the employee does it manually.
       finishAudit('completed');
+      try { sessionStorage.setItem('mobo-after-start', JSON.stringify({ date: today, marked: payload.scheduleMarked === true })); } catch { /* the weekly question is optional */ }
       window.location.reload();
       return;
     } catch (reason) {
@@ -4915,6 +5040,43 @@ export function EmployeeTodayClient({
             </div>
           )}
 
+          {weekSheetOpen && !editingScheduleDate && !pendingScheduleChange && (
+            <EmployeeWeekScheduleSheet
+              key={weekDays.map((day) => `${day.date}:${day.status ?? ''}`).join('|')}
+              days={weekDays}
+              through={weekThrough}
+              lastWeek={weekLastWeek}
+              saving={weekSheetSaving}
+              error={weekSheetError}
+              coverageWarning={weekCoverageWarning}
+              onSave={(draft) => void saveWeekSheet(draft)}
+              onClose={() => { setWeekSheetOpen(false); setWeekSheetError(''); }}
+              onOpenMonth={openMonthFromWeekSheet}
+            />
+          )}
+
+          {pushAskOpen && (
+            <div className='employee-workday-sheet-overlay fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Включите уведомления'
+              onClick={(event) => { if (event.target === event.currentTarget) closePushAsk(); }}>
+              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <BottomSheetDragHandle onDismiss={() => closePushAsk()} />
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-slate-600'>Уведомления</p>
+                  <button type='button' className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100' aria-label='Не сейчас' onClick={() => closePushAsk()}>
+                    <X className='h-5 w-5' />
+                  </button>
+                </div>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Включите уведомления</h2>
+                <p className='mt-2 text-sm font-semibold text-slate-600'>Задания и напоминания будут приходить на телефон.</p>
+                <ol className='mt-4 space-y-2.5'>
+                  <li className='flex items-center gap-3 text-[15px] font-semibold text-slate-900'><span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f6ece1] text-[13px] font-black text-[#996135]'>1</span>Нажмите «Включить»</li>
+                  <li className='flex items-center gap-3 text-[15px] font-semibold text-slate-900'><span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f6ece1] text-[13px] font-black text-[#996135]'>2</span>iPhone спросит — нажмите «Разрешить»</li>
+                </ol>
+                <button type='button' className='employee-material-primary-action mt-5 h-12 w-full rounded-xl text-base font-black' onClick={() => { closePushAsk(); appSetupProposal?.enable(); }}>Включить</button>
+              </div>
+            </div>
+          )}
+
           {editingScheduleDate && !pendingScheduleChange && (
             <div
               className='employee-workday-sheet-overlay fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
@@ -5726,7 +5888,11 @@ export function EmployeeTodayClient({
                           type='button'
                           onClick={() => {
                             if (bulkScheduleMode) toggleBulkWorkingDate(cell.date);
-                            else if (cell.inMonth) setSelectedScheduleDate(cell.date);
+                            else if (cell.inMonth) {
+                              setSelectedScheduleDate(cell.date);
+                              // Approved 2026-11-08: a tap on an editable day opens «Изменить мой день» at once.
+                              if (canEditOwnScheduleDate(cell.date) && !ownVacation) setEditingScheduleDate(cell.date);
+                            }
                           }}
                           aria-label={`${formatDateLabel(cell.date)}${isToday ? ', сегодня' : ''}, ${!scheduleMonthLoaded ? 'загрузка графика' : bulkScheduleMode && !bulkEligible ? 'недоступно для изменения' : bulkEligible ? bulkWorking ? 'рабочий день' : 'выходной' : ownVacation ? 'отпуск' : ownEntry?.status === 'working' ? 'рабочий день' : ownEntry?.status === 'off' ? 'выходной' : 'график не отмечен'}`}
                           aria-pressed={bulkScheduleMode ? bulkEligible ? bulkWorking : undefined : selected}
