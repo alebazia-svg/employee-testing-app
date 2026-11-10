@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { buildLatenessShadowSnapshot } from './attendance-shadow';
-import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment } from './workday';
+import { getMoscowMinutes, getShiftOption, getShiftOptionsForDepartment, isShiftSupportedForDepartment, supportedShiftCodesByDepartment } from './workday';
 import { WorkdayShiftChangeError } from './workday-shift-change';
 
 export type RepairTask = { id: number; title: string; category: string; plannedTimeMinutes: number | null };
@@ -26,7 +26,8 @@ export function adminShiftRepairPlan(current: RepairTask[], target: Omit<RepairT
 /** ADMIN factual correction uses existing records, unlike the employee's guarded
  * empty-run rebuild. All updates and history commit atomically. */
 export async function repairAdminWorkdayShift(db: PrismaClient, input: {
-  adminId: number; userId: number; department: string; date: string; toShiftCode: string; now?: Date;
+  /** Omitted = the employee changes their own live shift (extra guards, own inbox wording). */
+  adminId?: number; userId: number; department: string; date: string; toShiftCode: string; now?: Date;
 }) {
   const now = input.now ?? new Date();
   const shift = getShiftOption(input.toShiftCode);
@@ -36,7 +37,9 @@ export async function repairAdminWorkdayShift(db: PrismaClient, input: {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await db.$transaction(async tx => {
-        const admin = await tx.user.findFirst({ where: { id: input.adminId, role: 'ADMIN', isActive: true }, select: { id: true, name: true } });
+        const own = input.adminId === undefined;
+        if (own && !supportedShiftCodesByDepartment[input.department]) throw new WorkdayShiftChangeError('SHIFT_UNSUPPORTED', 'Для этого отдела смену изменить нельзя.');
+        const admin = own ? { id: 0, name: '' } : await tx.user.findFirst({ where: { id: input.adminId, role: 'ADMIN', isActive: true }, select: { id: true, name: true } });
         if (!admin) throw new WorkdayShiftChangeError('ADMIN_REQUIRED', 'Нет доступа.');
         // Same row lock as completion/extension; concurrent task updates also
         // participate in the serializable transaction.
@@ -46,7 +49,11 @@ export async function repairAdminWorkdayShift(db: PrismaClient, input: {
           throw new WorkdayShiftChangeError('WORKDAY_NOT_ACTIVE', 'Активный рабочий день не найден.');
         }
         if (day.shiftCode === shift.code) return day;
+        if (own && shift.startMinutes !== day.shiftStartMinutes) throw new WorkdayShiftChangeError('SHIFT_NOT_AVAILABLE', 'Можно изменить только время окончания смены.');
         const run = day.shiftControlRun;
+        if (own && run?.tasks.some(t => ['closing', 'handover'].includes(t.category) && (t.status !== 'pending' || t.completedAt))) {
+          throw new WorkdayShiftChangeError('SHIFT_ALREADY_IN_PROGRESS', 'Сдача смены уже началась: изменить смену может администратор.');
+        }
         if (run) {
           const template = await tx.shiftControlTemplate.findFirst({ where: { department: input.department, shiftCode: shift.code, isActive: true }, include: { tasks: true }, orderBy: { version: 'desc' } });
           if (!template?.tasks.length) throw new WorkdayShiftChangeError('SHIFT_TEMPLATE_MISSING', 'Для этой смены нет чек-листа. Изменения не сохранены.');
@@ -64,13 +71,15 @@ export async function repairAdminWorkdayShift(db: PrismaClient, input: {
           lateMinutes: shadow.lateMinutes, latenessPolicyVersion: shadow.policyVersion, latenessShadowPointsX2: shadow.pointsX2,
         } });
         const change = await tx.workdayShiftChange.create({ data: {
-          workDayEntryId: day.id, userId: day.userId, source: 'admin_repair', fromShiftCode: day.shiftCode, fromShiftLabel: day.shiftLabel,
+          workDayEntryId: day.id, userId: day.userId, source: own ? 'employee_change' : 'admin_repair', fromShiftCode: day.shiftCode, fromShiftLabel: day.shiftLabel,
           toShiftCode: shift.code, toShiftLabel: shift.label, fromLateMinutes: day.lateMinutes, toLateMinutes: shadow.lateMinutes,
           fromShadowPointsX2: day.latenessShadowPointsX2, toShadowPointsX2: shadow.pointsX2, latenessPolicyVersion: shadow.policyVersion, changedAt: now,
         } });
+        const stillOpen = own ? await tx.workDayEntry.findMany({ where: { date: day.date, department: day.department, status: 'active', endedAt: null, userId: { not: day.userId } }, include: { user: { select: { name: true } } } }) : [];
+        const openNote = stillOpen.length ? ` У ${stillOpen.map((d) => d.user.name).join(', ')} смена ещё открыта.` : '';
         await tx.adminInboxEvent.create({ data: {
-          eventKey: `workday-shift-repair:${change.id}`, type: 'workday.shift_repaired', title: 'Смена исправлена администратором',
-          body: `${admin.name}: ${day.user.name}, ${day.shiftLabel} → ${shift.label}. Проверки и денежные операции сохранены.`,
+          eventKey: `workday-shift-repair:${change.id}`, type: own ? 'workday.shift_changed_by_employee' : 'workday.shift_repaired', title: own ? `${day.user.name} изменил(а) смену` : 'Смена исправлена администратором',
+          body: own ? `${day.user.name}: ${day.shiftLabel} → ${shift.label}. Проверки и денежные операции сохранены, напоминания сдвинуты.${openNote}` : `${admin.name}: ${day.user.name}, ${day.shiftLabel} → ${shift.label}. Проверки и денежные операции сохранены.`,
           href: `/admin/workday?date=${day.date}&employee=${day.userId}`, sourceType: 'workday_shift_repair', sourceId: change.id, occurredAt: now,
         } });
         return updated;
@@ -81,4 +90,24 @@ export async function repairAdminWorkdayShift(db: PrismaClient, input: {
     }
   }
   throw new WorkdayShiftChangeError('SHIFT_RETRY_EXHAUSTED', 'Повторите исправление.');
+}
+
+/** Which other shifts the employee may switch to right now (same rules the change itself enforces). */
+export async function listOwnShiftChangeOptions(db: PrismaClient, input: { userId: number; department: string; date: string }) {
+  if (!supportedShiftCodesByDepartment[input.department]) return { canChange: false, current: null as string | null, options: [] as Array<{ code: string; label: string; endMinutes: number }> };
+  const day = await db.workDayEntry.findUnique({ where: { userId_date: { userId: input.userId, date: input.date } }, include: { shiftControlRun: { include: { tasks: true } } } });
+  if (!day || day.endedAt || day.status !== 'active' || (day.shiftControlRun && day.shiftControlRun.status !== 'active')) return { canChange: false, current: null as string | null, options: [] as Array<{ code: string; label: string; endMinutes: number }> };
+  const run = day.shiftControlRun;
+  if (run?.tasks.some(t => ['closing', 'handover'].includes(t.category) && (t.status !== 'pending' || t.completedAt))) return { canChange: false, current: day.shiftCode, options: [] };
+  const options: Array<{ code: string; label: string; endMinutes: number }> = [];
+  for (const shift of getShiftOptionsForDepartment(input.department)) {
+    if (shift.code === day.shiftCode || shift.startMinutes !== day.shiftStartMinutes) continue;
+    if (run) {
+      const template = await db.shiftControlTemplate.findFirst({ where: { department: input.department, shiftCode: shift.code, isActive: true }, include: { tasks: true }, orderBy: { version: 'desc' } });
+      if (!template?.tasks.length) continue;
+      try { adminShiftRepairPlan(run.tasks, template.tasks); } catch { continue; }
+    }
+    options.push({ code: shift.code, label: shift.label, endMinutes: shift.endMinutes ?? 0 });
+  }
+  return { canChange: options.length > 0, current: day.shiftCode, options };
 }

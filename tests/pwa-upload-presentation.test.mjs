@@ -17,12 +17,14 @@ test('connection notice retains offline persistence and error details', () => {
   assert.match(source, /Сумма и фото сохранены на телефоне\. \$\{cashOutboxError\}/);
 });
 
-test('early finish stays guarded and appears once alongside active shift', () => {
-  const label = source.indexOf('className=\'pwa-early-finish');
-  assert.ok(label > source.indexOf("className='pwa-workday-summary-top'"));
-  assert.ok(label < source.indexOf('{needsLateArrivalReason && (', label));
-  assert.equal((source.match(/onClick=\{openEarlyFinishSheet\}/g) || []).length, 1);
-  assert.match(source.slice(label - 250, label), /activeWorkDay && shiftControlState\.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes\(displayNow\) < shiftEnd/);
+test('early finish stays guarded and is reached once, from the one shift entry', () => {
+  // The status card has a single entry («Моя смена»); early finish is one guarded row inside that sheet.
+  assert.equal((source.match(/openEarlyFinishSheet\(\);/g) || []).length, 1);
+  assert.doesNotMatch(source, /className='pwa-early-finish/);
+  const guard = source.indexOf('const canEarly = Boolean(');
+  assert.ok(guard > 0);
+  assert.match(source.slice(guard, guard + 260), /activeWorkDay && shiftControlState\.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes\(displayNow\) < shiftEnd/);
+  assert.match(source, /Моя смена: изменить время или завершить раньше/);
 });
 
 test('compact summary retains times and lateness outside the action row', () => {
