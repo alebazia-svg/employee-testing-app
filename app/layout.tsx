@@ -1,5 +1,6 @@
 import '@/components/admin-page-journal.css';
 import './globals.css';
+import './pwa-status-bar.css';
 import './mobo-brand.css';
 import './desktop-copper.css';
 import '@/components/portal-access-devices.css';
@@ -33,5 +34,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang='ru'><body>{children}<PortalAccessTracker /></body></html>;
+  return <html lang='ru'><body><span className="pwa-status-bar-surface" aria-hidden="true" />{children}<PortalAccessTracker /></body></html>;
 }
