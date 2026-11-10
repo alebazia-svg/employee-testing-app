@@ -30,6 +30,16 @@ project from scratch.
 
 ## Read First By Task
 
+- Browser versions in Devices and Logins: `../ops/access-browser-versions-release-20261110.md`
+  — released/verified1.23.1 /00b989a from the live1.22.7 baseline on an explicitly
+  approved separate branch; pending transfer work/migration not installed.
+  Main browser version/provenance, retained OS values/uncertainty; names/groups,
+  auth/QR/settings/schema/uploads/session identity preserved. Feature is also in
+  design-local-updates /c77258f; its pending1.23.0 is older than live1.23.1, so
+  future version gates must use live metadata. Server build caused temporary
+  overload and was stopped; verified bounded local linux/amd64 artifact installed.
+  See incident, final checks and current-plus-two reserve evidence in the report.
+
 - Employee notification lifetime: `../ops/notification-lifetime-20261108.md` —
   released/verified1.22.5 /875ac8c on9November. Explicit informational kinds expire
   after24h; primary source-backed actions remain current after reading until
