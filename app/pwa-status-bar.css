@@ -1,0 +1,28 @@
+/* WebKit samples a fixed background >10px high for its top scroll-edge color.
+   Empty text clipping retains that background for sampling without painting over
+   the header. Keep this outside transformed application shells; do not replace
+   it with transparent/hidden styling or guessed safe-area padding.
+   Source: WebKit LocalFrameView::fixedContainerEdges, d620932d8ce3.
+   Verified by live A/B on iPhone 17 / iOS 27.2: removal restores the blur;
+   reapplication removes it without changing the header geometry or hit testing.
+   Other iOS builds and post-deploy cold launch remain to be verified. */
+.pwa-status-bar-surface { display: none; }
+
+@supports (-webkit-touch-callout: none) and (-webkit-background-clip: text) {
+  @media (display-mode: standalone) {
+    body:has(.employee-material-header) > .pwa-status-bar-surface {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 11px;
+      z-index: 2147483647;
+      background-color: inherit;
+      -webkit-background-clip: text;
+      background-clip: text;
+      pointer-events: none;
+      user-select: none;
+    }
+  }
+}
