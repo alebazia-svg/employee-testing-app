@@ -30,6 +30,16 @@ project from scratch.
 
 ## Read First By Task
 
+- Employee inspection clarity: `../ops/inspection-clarity-release-20261111.md` —
+  released/verified1.23.4 /6e31ef8 from live1.23.3, preserving shift extension and
+  iOS header correction. Cabinet opens immediately for missing/stale observations;
+  concise source status with full controls/data in Details; initial procurement
+  iframe loading fixed. Actor/read-only constraints, names/config/schema/uploads
+  retained. Built on Mac with bounded resources, streamed and verified on VPS;
+  no server build. Explicitly approved obsolete-image cleanup retained current
+  plus two verified reserves; final storage healthy and16GiB free. Feature also
+  in design-local-updates /b6dd499; use live version for the next version gate.
+
 - Browser versions in Devices and Logins: `../ops/access-browser-versions-release-20261110.md`
   — released/verified1.23.1 /00b989a from the live1.22.7 baseline on an explicitly
   approved separate branch; pending transfer work/migration not installed.
