@@ -119,7 +119,7 @@ export function deviceSystemListSummary(observation?: DeviceObservation | null) 
   const label = source === 'client-hints' ? 'расширенные сведения браузера'
     : source === 'user-agent' ? 'по описанию браузера'
     : 'сохранённые данные браузера; источник не уточнён';
-  return `${system} · ${label}`;
+  return `${system} · ${label}${source === 'client-hints' ? '' : '; точная версия ОС не подтверждена'}`;
 }
 export function deviceSystemExplanation(observation: DeviceObservation) {
   if (deviceFieldSource(observation, 'platformVersion') === 'client-hints' && observation.platformVersion) return 'Версия сообщена расширенным API браузера. Это не независимая проверка устройства.';
