@@ -1,10 +1,9 @@
 'use client';
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Eye, RefreshCw } from 'lucide-react';
 import { employeePreviewHref } from '@/lib/employee-navigation';
 import { employeePreviewUrl } from '@/lib/employee-preview-request';
-import { employeeScreenLabel } from '@/lib/employee-screen-state';
 import type { InspectionDeviceSnapshot } from '@/lib/employee-inspection-state';
 import { EmployeeInspectionDevice } from './EmployeeInspectionDevice';
 import { startVisibleSync } from '@/lib/visible-sync';
@@ -73,18 +72,15 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
   }, [blocked]);
   useEffect(() => { const timer = window.setTimeout(() => setExpired(true), Math.max(0, Date.parse(expiresAt) - Date.now())); return () => window.clearTimeout(timer); }, [expiresAt]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(timer); }, [notice]);
-  const observed=deviceSnapshot?.connections.find(c=>c.id===deviceSnapshot.selectedId);
-  const observedScreen=observed?.runtime?.screen;
-  const supported=Boolean(observed?.live&&observedScreen&&['day','schedule','payroll','notifications','procurement'].includes(observedScreen.section)&&!(observedScreen.dialog==='form'&&!observedScreen.form));
   return <Context.Provider value={value}>
     {!frame && <aside ref={banner} aria-label="Режим проверки сотрудника" className="sticky top-0 z-40 border-b border-[#d7c4b1] bg-[#f8eee3] px-4 py-3 text-[#493829] shadow-sm">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3"><Eye size={21} className="shrink-0"/><div><p className="text-sm font-bold">Режим проверки · {employeeName}</p><p className="mt-0.5 text-xs">Проверка интерфейса · изменения не сохраняются</p></div></div>
+        <div className="flex min-w-0 items-center gap-3"><Eye size={21} className="shrink-0"/><div><p className="text-sm font-bold">Режим проверки · {employeeName}</p></div></div>
         <div className="flex gap-2"><button onClick={() => window.location.reload()} className="flex min-h-10 items-center gap-2 rounded-xl border border-[#d7c4b1] bg-white px-3 text-xs font-semibold"><RefreshCw size={15}/>Обновить</button><Link href="/admin/employees" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#313539] px-3 text-xs font-semibold text-white"><ArrowLeft size={15}/>К сотрудникам</Link></div>
       </div>
     </aside>}
     {!expired && !frame && <EmployeeInspectionDevice snapshot={deviceSnapshot} selectedId={selectedConnection} onSelect={selectConnection} framed={Boolean(frame)} followScreen={followScreen} onFollow={setFollowScreen} />}
-    {expired ? <section className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="mt-3">Вернитесь к сотрудникам и откройте проверку заново.</p></section> : followScreen&&!supported ? <section className='mx-auto max-w-xl px-5 py-10 text-center'><Eye className='mx-auto mb-3 text-[#945e3b]' size={28}/><h2 className='text-lg font-semibold text-slate-900'>{!deviceSnapshot?'Получаем сведения с устройства…':observed?.live&&observedScreen?'Этот экран пока не передаётся в проверку':'Нет подтверждения текущего экрана'}</h2><p className='mt-2 text-sm leading-6 text-slate-600'>{observedScreen?employeeScreenLabel(observedScreen)+'. ':''}{observed?.live?'Доступные события сохраняются в активности.':'Показ последнего состояния не означает, что приложение открыто сейчас.'} Для самостоятельной проверки интерфейса отключите «По данным сотрудника».</p></section> : children}
+    {expired ? <section className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="mt-3">Вернитесь к сотрудникам и откройте проверку заново.</p></section> : children}
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[200] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl bg-[#313539] px-5 py-4 text-sm font-semibold text-white shadow-xl">{notice}</div>}
   </Context.Provider>;
 }
