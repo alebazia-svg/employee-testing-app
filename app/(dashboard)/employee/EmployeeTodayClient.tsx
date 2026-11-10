@@ -52,6 +52,8 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  LogOut,
+  MoreHorizontal,
   CreditCard,
   HandCoins,
   Pencil,
@@ -73,7 +75,7 @@ import { useEmployeeAppUpdate } from '@/lib/use-employee-app-update';
 import { createIdempotencyKey } from '@/lib/idempotency-key';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-employee-review-view';
-import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
+import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, supportedShiftCodesByDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { canEditDianaPastSchedule } from '@/lib/diana-october-schedule';
@@ -1373,6 +1375,20 @@ export function EmployeeTodayClient({
   const [startRecommendationHint, setStartRecommendationHint] = useState('');
   const [shiftSelectionHint, setShiftSelectionHint] = useState('Выберите свою смену на сегодня.');
   const [shiftCorrectionOpen, setShiftCorrectionOpen] = useState(false);
+  const [mineShiftOpen, setMineShiftOpen] = useState(false);
+  const [mineShiftOptions, setMineShiftOptions] = useState<Array<{ code: string; label: string; endMinutes: number }> | null>(null);
+  const [mineShiftPick, setMineShiftPick] = useState<string | null>(null);
+  const [mineShiftError, setMineShiftError] = useState('');
+  const [mineHint, setMineHint] = useState<{ kind: 'colleague_left'; colleagueName: string; toShiftCode: string; endMinutes: number } | null>(null);
+  const [liveShiftOptions, setLiveShiftOptions] = useState<Array<{ code: string; label: string; endMinutes: number }>>([]);
+  const [shiftPromptDismissed, setShiftPromptDismissedState] = useState(false);
+  useEffect(() => {
+    try { setShiftPromptDismissedState(localStorage.getItem(`mobo-shift-hint-off:${today}`) === '1'); } catch { /* optional */ }
+  }, [today]);
+  const setShiftPromptDismissed = (value: boolean) => {
+    setShiftPromptDismissedState(value);
+    try { if (value) localStorage.setItem(`mobo-shift-hint-off:${today}`, '1'); } catch { /* optional */ }
+  };
   const [shiftCorrectionCodes, setShiftCorrectionCodes] = useState<string[]>([]);
   const [shiftCorrectionHint, setShiftCorrectionHint] = useState('');
   const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
@@ -1691,6 +1707,8 @@ export function EmployeeTodayClient({
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const shiftControlEnabled = usesWorkdayShiftControl(user);
+  // The shift menu exists only where the shift list is defined (retail, wholesale); procurement keeps its own day card unchanged.
+  const canShiftMenu = Boolean(supportedShiftCodesByDepartment[user.department]);
   const canUseCashOperations = shiftControlEnabled;
   const shiftCorrectionWindowOpen = Boolean(activeWorkDay && shiftCorrectionState.canCorrect);
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
@@ -2775,6 +2793,78 @@ export function EmployeeTodayClient({
       workflowEvent('shift_change','opened');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось открыть исправление смены');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!activeWorkDay || preview || !canShiftMenu) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await request('/api/employee/workday/change-shift?live=1', { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled) return;
+        setMineHint(payload.hint ?? null);
+        setLiveShiftOptions(Array.isArray(payload.options) ? payload.options : []);
+      } catch { /* the hint is optional */ }
+    };
+    void load();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(activeWorkDay), workDay?.shiftCode, canShiftMenu]);
+
+  async function stayUntilLater(toShiftCode: string) {
+    if (preview) { preview.blocked(); return; }
+    setIsSaving(true);
+    try {
+      const response = await request('/api/employee/workday/change-shift', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ toShiftCode, live: true }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Не удалось продлить смену');
+      window.location.reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось продлить смену');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function openMineShift() {
+    setMineShiftError('');
+    setMineShiftPick(null);
+    setMineShiftOptions(null);
+    setMineShiftOpen(true);
+    try {
+      const response = await request('/api/employee/workday/change-shift?live=1', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось проверить смены');
+      setMineShiftOptions(Array.isArray(payload.options) ? payload.options : []);
+    } catch (reason) {
+      setMineShiftOptions([]);
+      setMineShiftError(reason instanceof Error ? reason.message : 'Не удалось проверить смены');
+    }
+  }
+
+  async function confirmMineShift() {
+    if (!mineShiftPick) return;
+    if (preview) { preview.blocked(); return; }
+    setMineShiftError('');
+    setIsSaving(true);
+    try {
+      const response = await request('/api/employee/workday/change-shift', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toShiftCode: mineShiftPick, live: true }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось изменить смену');
+      setMineShiftOpen(false);
+      window.location.reload();
+    } catch (reason) {
+      setMineShiftError(reason instanceof Error ? reason.message : 'Не удалось изменить смену');
     } finally {
       setIsSaving(false);
     }
@@ -4789,15 +4879,15 @@ export function EmployeeTodayClient({
                     <div className='flex items-center justify-between gap-3'><span className='text-xs font-extrabold text-amber-800'>Опоздание</span><span className='text-sm font-black text-amber-900'>{activeWorkDay?.lateMinutes ?? 0} мин</span></div>
                   </div>
                 ) : (
-                  <label className='employee-material-form grid gap-1.5 rounded-xl p-3 text-sm font-extrabold text-slate-800'>Завершу в
-                    <input type='time' value={earlyFinishTime} onChange={(event) => setEarlyFinishTime(event.target.value)} className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold text-slate-950' />
+                  <label className='grid gap-2 text-[15px] font-extrabold text-slate-900'>Во сколько заканчиваете
+                    <input type='time' value={earlyFinishTime} onChange={(event) => setEarlyFinishTime(event.target.value)} className='h-14 rounded-2xl border border-[#e2d9cc] bg-white px-4 text-[22px] font-black tabular-nums text-slate-950' />
                   </label>
                 )}
-                <fieldset className='employee-material-form rounded-xl p-3'>
-                  <legend className='px-1 text-sm font-extrabold text-slate-800'>{isLate ? 'Почему опоздали?' : 'Почему завершаете раньше?'}</legend>
-                  <div className='mt-1 grid grid-cols-2 gap-2'>
+                <fieldset className={isLate ? 'employee-material-form rounded-xl p-3' : 'grid gap-2'}>
+                  <legend className={isLate ? 'px-1 text-sm font-extrabold text-slate-800' : 'mb-2 text-[15px] font-extrabold text-slate-900'}>{isLate ? 'Почему опоздали?' : 'Причина'}</legend>
+                  <div className={isLate ? 'mt-1 grid grid-cols-2 gap-2' : 'grid gap-2'}>
                     {Object.entries(reasons).map(([value, label]) => (
-                      <button key={value} type='button' aria-pressed={deviationReason === value} onClick={() => setDeviationReason(value)} className={cn('employee-material-reason-choice flex min-h-12 items-center justify-center rounded-xl px-2 text-center text-sm font-bold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'is-selected bg-blue-50 text-slate-900 ring-blue-300' : 'bg-white text-slate-600 ring-slate-200')}>{isLate ? lateArrivalChoiceLabels[value as keyof typeof lateArrivalReasons] : label}</button>
+                      <button key={value} type='button' aria-pressed={deviationReason === value} onClick={() => setDeviationReason(value)} className={cn('employee-material-reason-choice flex min-h-12 items-center rounded-xl px-2 text-sm font-bold leading-tight ring-1 transition', isLate ? 'justify-center text-center' : '!min-h-[52px] !justify-between !rounded-2xl !px-4 text-left', isLate && value === 'other' && 'col-span-2', deviationReason === value ? 'is-selected bg-blue-50 text-slate-900 ring-blue-300' : 'bg-white text-slate-600 ring-slate-200')}>{isLate ? lateArrivalChoiceLabels[value as keyof typeof lateArrivalReasons] : <><span>{label}</span>{deviationReason !== value && <span aria-hidden='true' className='h-5 w-5 shrink-0 rounded-full bg-white ring-2 ring-[#d8cfc3]' />}</>}</button>
                     ))}
                   </div>
                   {deviationReason === 'other' && <textarea value={deviationComment} onChange={(event) => setDeviationComment(event.target.value)} rows={2} className='mt-3 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100' placeholder='Коротко опишите причину' />}
@@ -4869,6 +4959,59 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
+      {mineShiftOpen && workDay && (() => {
+        const pick = mineShiftOptions?.find((item) => item.code === mineShiftPick) ?? null;
+        const canEarly = Boolean(activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd);
+        const canWrongShift = shiftCorrectionState.canCorrect;
+        const longer = (item: { endMinutes: number }) => (workDay.shiftEndMinutes ?? 0) < item.endMinutes;
+        const rows: Array<{ key: string; icon: 'clock' | 'exit' | 'swap'; title: string; hint: string; onClick: () => void }> = [
+          ...(mineShiftOptions ?? []).filter(longer).map((item) => ({ key: item.code, icon: 'clock' as const, title: 'Задержаться', hint: `Смена продлится до ${minutesToTime(item.endMinutes)}`, onClick: () => setMineShiftPick(item.code) })),
+          ...(canEarly ? [{ key: 'early', icon: 'exit' as const, title: 'Завершить раньше', hint: 'Сдать смену и указать причину', onClick: () => { setMineShiftOpen(false); openEarlyFinishSheet(); } }] : []),
+          ...(canWrongShift ? [{ key: 'wrong', icon: 'swap' as const, title: 'Выбрал не ту смену', hint: 'Исправить в первые 5 минут', onClick: () => { setMineShiftOpen(false); void openShiftCorrection(); } }] : []),
+        ];
+        return (
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Моя смена'>
+          <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] bg-[#fbfaf7] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl'>
+            <BottomSheetDragHandle onDismiss={() => setMineShiftOpen(false)} disabled={isSaving} />
+            <div className='mt-2 flex items-center justify-between gap-3'>
+              {pick
+                ? <button type='button' disabled={isSaving} onClick={() => { setMineShiftPick(null); setMineShiftError(''); }} className='-ml-2 flex h-10 items-center gap-1 rounded-full px-2 text-sm font-bold text-[#7a4a2c]'><ChevronLeft className='h-5 w-5' aria-hidden='true' />Назад</button>
+                : <h2 className='text-[22px] font-black leading-tight text-slate-950'>Моя смена</h2>}
+              <button type='button' onClick={() => setMineShiftOpen(false)} className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#efece6] text-slate-600' aria-label='Закрыть без изменений'><X className='h-4 w-4' /></button>
+            </div>
+            {!pick && (
+              <>
+                <p className='mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-500'><Clock3 className='h-4 w-4' aria-hidden='true' />Сегодня · {workDay.shiftLabel}</p>
+                <div className='mt-5 grid gap-2.5'>
+                  {mineShiftOptions === null && <p className='py-4 text-sm font-semibold text-slate-500'>Проверяем…</p>}
+                  {rows.map((row) => (
+                    <button key={row.key} type='button' onClick={row.onClick} className='flex min-h-[68px] items-center gap-3.5 rounded-[20px] !border !border-[#e8e3db] !bg-white px-4 py-3 text-left !shadow-none transition active:scale-[0.99] active:!bg-[#f6f2ec]'>
+                      <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f3e6dc] text-[#945e3b]'>{row.icon === 'clock' ? <Clock3 className='h-5 w-5' aria-hidden='true' /> : row.icon === 'exit' ? <LogOut className='h-5 w-5' aria-hidden='true' /> : <RefreshCw className='h-5 w-5' aria-hidden='true' />}</span>
+                      <span className='min-w-0 flex-1'><span className='block text-[15px] font-extrabold leading-tight text-slate-950'>{row.title}</span><span className='mt-0.5 block text-[13px] font-medium text-slate-500'>{row.hint}</span></span>
+                      <ChevronRight className='h-5 w-5 shrink-0 text-slate-300' aria-hidden='true' />
+                    </button>
+                  ))}
+                  {mineShiftOptions !== null && rows.length === 0 && <p className='rounded-2xl bg-white px-4 py-4 text-sm font-semibold text-slate-600 ring-1 ring-[#e8e3db]'>{mineShiftError || 'Сейчас изменить смену нельзя. Если нужно, напишите администратору.'}</p>}
+                </div>
+              </>
+            )}
+            {pick && (
+              <div className='mt-2'>
+                <h2 className='text-[22px] font-black leading-tight text-slate-950'>Задержаться</h2>
+                <div className='mt-4 flex items-center gap-2.5'>
+                  <span className='flex-1 rounded-2xl bg-[#efece6] px-3 py-3 text-center'><span className='block text-[11px] font-bold uppercase tracking-wide text-slate-500'>Было</span><span className='block text-base font-extrabold tabular-nums text-slate-600'>{workDay.shiftLabel}</span></span>
+                  <ChevronRight className='h-5 w-5 shrink-0 text-slate-400' aria-hidden='true' />
+                  <span className='flex-1 rounded-2xl bg-[#f3e6dc] px-3 py-3 text-center ring-1 ring-[#e3c9b4]'><span className='block text-[11px] font-bold uppercase tracking-wide text-[#945e3b]'>Станет</span><span className='block text-base font-black tabular-nums text-slate-950'>{pick.label}</span></span>
+                </div>
+                <p className='mt-4 text-[14px] font-medium leading-snug text-slate-500'>Сдача смены и напоминания сдвинутся на {minutesToTime(pick.endMinutes)}.</p>
+                {mineShiftError && <p role='alert' className='mt-3 text-sm font-bold text-red-700'>{mineShiftError}</p>}
+                <button type='button' disabled={isSaving} onClick={() => void confirmMineShift()} className='mt-5 h-14 w-full rounded-2xl !bg-[#24282d] text-base font-extrabold !text-white transition active:scale-[0.99] disabled:opacity-60'>{isSaving ? 'Сохраняем…' : `Продлить до ${minutesToTime(pick.endMinutes)}`}</button>
+              </div>
+            )}
+          </div>
+        </div>
+        );
+      })()}
       {shiftCorrectionOpen && workDay && (
         <div className='employee-workday-sheet-overlay fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Исправление смены'>
           <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
@@ -5322,6 +5465,24 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
+              {activeWorkDay && canShiftMenu && !shiftPromptDismissed && !showCloseResolution && (() => {
+                // Only when the colleague has finished early: lingering at work alone is not a reason to ask.
+                const hint = mineHint;
+                if (!hint || (shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) >= shiftEnd)) return null;
+                const target = { code: hint.toShiftCode, endMinutes: hint.endMinutes };
+                const title = `Остаться до ${minutesToTime(target.endMinutes)}?`;
+                const caption = `${hint.colleagueName}: смена завершена, вы одни на смене`;
+                return (
+                  <aside role='status' className='mb-2 flex min-h-[64px] items-center rounded-[22px] border border-[#e8d9c9] bg-[#fffaf4] pr-2'>
+                    <button type='button' className='flex min-w-0 flex-1 items-center gap-3 px-3.5 py-2.5 text-left' onClick={() => { setMineShiftError(''); setMineShiftOptions(liveShiftOptions); setMineShiftPick(target.code); setMineShiftOpen(true); }}>
+                      <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f3e6dc] text-[#945e3b]'><Clock3 className='h-5 w-5' aria-hidden='true' /></span>
+                      <span className='min-w-0 flex-1'><span className='block text-[15px] font-extrabold leading-tight text-slate-950'>{title}</span><span className='mt-0.5 block text-[13px] font-medium leading-snug text-slate-500'>{caption}</span></span>
+                    </button>
+                    <button type='button' aria-label='Скрыть' title='Скрыть' onClick={() => setShiftPromptDismissed(true)} className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500'><X className='h-4 w-4' aria-hidden='true' /></button>
+                  </aside>
+                );
+              })()}
+
               {activeWorkDay && (
                 <div className='pwa-review-shift grid gap-1.5'>
                   <div className='pwa-studio-hide employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
@@ -5331,21 +5492,16 @@ export function EmployeeTodayClient({
                     <span className='pwa-shift-heading min-w-0 truncate'><span className='pwa-review-shift-title'>Рабочий день</span><span className='pwa-review-shift-time'><span className='pwa-studio-hide'> · </span>{workDay?.shiftLabel}<span className='pwa-studio-hide'> · {activeElapsedLabel}</span></span></span>
                   </div>
                   <div className='pwa-workday-summary-shell'>
-                    <div className='pwa-studio-only pwa-workday-summary' style={{ display: 'none' }}>
+                    <div className={cn('pwa-studio-only pwa-workday-summary', canShiftMenu && 'cursor-pointer')} style={{ display: 'none' }} {...(canShiftMenu ? { role: 'button', tabIndex: 0, 'aria-label': 'Моя смена: изменить время или завершить раньше', onClick: () => void openMineShift(), onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openMineShift(); } } } : {})}>
                       <div className='pwa-workday-summary-top'>
                         <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{conciseAttendanceSummary ? 'На работе' : needsWorkdayEndReminder(user) ? 'Рабочий день начат' : 'На смене'}</strong>
                         <span className='pwa-workday-summary-timer' aria-label={`${needsWorkdayEndReminder(user) ? 'Рабочий день' : 'В смене'} ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
                       </div>
                       <div className='pwa-workday-summary-facts'>
                         <span>Начало {formatTime(workDay!.startedAt)}{!conciseAttendanceSummary && <> · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</>}</span>
+                        {canShiftMenu && <span className='-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-[#6f655b]' aria-hidden='true'><MoreHorizontal className='h-5 w-5' /></span>}
                       </div>
                     </div>
-                    {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
-                      <button type='button' className='pwa-early-finish employee-material-day-change-in-details ml-auto inline-flex min-h-11 items-center gap-1 text-xs font-semibold' onClick={openEarlyFinishSheet}>
-                        Завершить раньше
-                        <ChevronRight className='h-4 w-4' aria-hidden='true' />
-                      </button>
-                    )}
                   </div>
                   {Boolean(workDay?.lateMinutes) && <div className='pwa-studio-only' style={{ display: 'none' }}><strong className='pwa-late-status'><Clock3 size={14} aria-hidden='true' />Опоздание · {workDay!.lateMinutes} мин</strong></div>}
                   {needsLateArrivalReason && (
@@ -5692,18 +5848,6 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {activeWorkDay && !needsWorkdayEndReminder(user) && shiftCorrectionWindowOpen && <Card className='pwa-review-details bg-slate-50 p-4'>
-                {shiftCorrectionWindowOpen && (
-                  <button
-                    type='button'
-                    onClick={() => void openShiftCorrection()}
-                    disabled={isSaving}
-                    className='mt-3 text-xs font-extrabold text-green-700 underline decoration-green-300 underline-offset-4 disabled:opacity-50'
-                  >
-                    Изменить смену
-                  </button>
-                )}
-              </Card>}
 
               {colleagueUsers.length > 0 && !workDay && !unfinished && (
                 <button type='button' className='pwa-studio-only pwa-prestart-team' style={{ display: 'none' }} aria-expanded={prestartColleaguesOpen} aria-controls='pwa-colleagues-today' onClick={() => setPrestartColleaguesOpen((open) => !open)}>

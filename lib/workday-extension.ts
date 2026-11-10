@@ -84,3 +84,30 @@ export async function syncWorkdayExtensionProposal(db:PrismaClient, now=new Date
   await db.adminInboxReceipt.createMany({data:admins.map(a=>({eventId:event.id,userId:a.id})),skipDuplicates:true});
   return proposal;
 }
+
+/** What the employee's own screen may offer right now: stay a little longer because the colleague left early. */
+export async function employeeShiftHint(db: PrismaClient, input: { userId: number; department: string; now?: Date }) {
+  const now = input.now ?? new Date();
+  const days = await db.workDayEntry.findMany({ where: { date: getMoscowDateKey(now), department: input.department, user: { role: 'EMPLOYEE', isActive: true } }, include: { user: { select: { name: true } } } });
+  const firstName = (name?: string) => (name ?? 'Коллега').trim();
+  if (input.department === 'retail') {
+    const proposal = deriveExtensionProposal(days, now);
+    if (!proposal || proposal.userId !== input.userId) return null;
+    const departed = days.find((d) => d.id === proposal.departedId);
+    return { kind: 'colleague_left' as const, colleagueName: firstName(departed?.user.name), toShiftCode: proposal.toShiftCode as string, endMinutes: proposal.endMinutes };
+  }
+  if (input.department === 'wholesale') {
+    // Same rule for wholesale: the 10:00-19:00 colleague finished early, the 09:00-18:00 colleague is alone.
+    const minute = getMoscowMinutes(now);
+    const started = days.filter((d) => d.startedAt <= now);
+    const active = started.filter((d) => d.status === 'active' && !d.endedAt);
+    if (active.length !== 1 || minute >= 1140) return null;
+    const current = active[0];
+    if (current.userId !== input.userId || current.shiftCode !== '09_18' || current.shiftEndMinutes !== 1080) return null;
+    const departed = started.filter((d) => d.userId !== current.userId && d.status === 'completed' && d.endedAt && d.endedAt <= now
+      && d.shiftEndMinutes === 1140 && getMoscowMinutes(d.endedAt) < 1140 && d.endedAt > current.startedAt)
+      .sort((a, b) => +b.endedAt! - +a.endedAt!)[0];
+    return departed ? { kind: 'colleague_left' as const, colleagueName: firstName(departed.user.name), toShiftCode: '09_19', endMinutes: 1140 } : null;
+  }
+  return null;
+}
