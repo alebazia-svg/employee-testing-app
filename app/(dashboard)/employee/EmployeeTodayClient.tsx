@@ -2040,6 +2040,8 @@ export function EmployeeTodayClient({
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const completedKkmCloseCheck = readRecord(handoverTask?.handoverData, 'kkmCloseCheck');
   const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
+  const kkmNotOpened = completedKkmCloseCheck?.status === 'not_opened';
+  const kkmOneCNotOpened = completedKkmCloseCheck?.status === 'one_c_not_opened';
   const closedWithoutEncashment = completedWithoutEncashment(handoverTask);
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === closingWorkDay?.date
@@ -2047,7 +2049,7 @@ export function EmployeeTodayClient({
   const savedKkmConfirmation = kkmCloseConfirmation(handoverTask?.handoverData);
   const kkmFinishPending = !isCompleted && Boolean(savedKkmConfirmation) && handoverTask?.status!=='done' && !requiredIssuesState.some(issue=>issue.ruleKey!=='kkm_shift_not_closed');
   const hasClosingReceipt = hasHandoverPhoto(readSavedPhoto(handoverTask?.handoverData,'zReport')) || Boolean(handoverTask && kkmPhotoRetry.current?.taskId===handoverTask.id);
-  const kkmConfirmationRequired = !isCompleted && Boolean(completedKkmCloseCheck?.status) && !kkmClosureConfirmed && !kkmCloseConfirmation(handoverTask?.handoverData);
+  const kkmConfirmationRequired = !isCompleted && Boolean(completedKkmCloseCheck?.status) && !kkmClosureConfirmed && !kkmNotOpened && !kkmOneCNotOpened && !kkmCloseConfirmation(handoverTask?.handoverData);
   const showKkmConfirmation = Boolean(kkmCloseIssue) || kkmConfirmationRequired || kkmFinishPending;
   const handoverWasBlocked = isRecord(handoverTask?.handoverData) && typeof handoverTask.handoverData.closeBlockedAt === 'string';
   const priorCash=readRecord(handoverTask?.handoverData,'personalCash');
@@ -5589,7 +5591,7 @@ export function EmployeeTodayClient({
                     {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
                     {closedWithoutEncashment ? (
                       <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · согласовано</p>
-                    ) : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : kkmCloseConfirmation(handoverTask?.handoverData) ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>{kkmCloseConfirmation(handoverTask?.handoverData)?.method==='photo'?'Чек закрытия сохранён':'Закрытие кассы проверяется'}</p> : null}
+                    ) : kkmOneCNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>По 1С кассовая смена не открывалась · сверка ОФД продолжается</p> : kkmNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Кассовая смена не открывалась · закрытие не требуется</p> : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : kkmCloseConfirmation(handoverTask?.handoverData) ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>{kkmCloseConfirmation(handoverTask?.handoverData)?.method==='photo'?'Чек закрытия сохранён':'Закрытие кассы проверяется'}</p> : null}
                   </div>
                 </Card>
               )}

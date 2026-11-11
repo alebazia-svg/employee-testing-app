@@ -1051,6 +1051,8 @@ function buildEmployeeAutoChecks({
         : null;
       const savedClose = handoverData && isRecord(handoverData.kkmCloseCheck) ? handoverData.kkmCloseCheck : null;
       const ofdConfirmed = savedClose?.status === 'confirmed' || confirmedKkmTaskIds.has(task.id);
+      const notOpened = savedClose?.status === 'not_opened';
+      const oneCNotOpened = savedClose?.status === 'one_c_not_opened';
       const closeConfirmation = kkmCloseConfirmation(handoverData);
       const photoConfirmed = Boolean(closeConfirmation);
       const closed = Boolean(assignedShift?.closedAt) && normalizeSearchText(assignedShift?.status ?? '').includes('закрыт');
@@ -1059,8 +1061,8 @@ function buildEmployeeAutoChecks({
         id: `handover-z-report-${task.id}`,
         taskId: task.id,
         label: 'Закрытие смены ККМ',
-        status: ofdConfirmed ? 'matched' : photoConfirmed ? 'waiting' : savedClose ? 'unavailable' : assignedShift ? (closed ? 'matched' : 'mismatch') : 'unavailable',
-        summary: ofdConfirmed ? 'Закрытие кассы подтверждено отчётом ОФД.' : photoConfirmed ? closeConfirmation?.method==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. Автосверка ОФД продолжается.' : 'Сотрудник сообщил: чек закрытия не распечатался. Автосверка ОФД продолжается.' : assignedShift
+        status: notOpened ? 'matched' : oneCNotOpened ? 'waiting' : ofdConfirmed ? 'matched' : photoConfirmed ? 'waiting' : savedClose ? 'unavailable' : assignedShift ? (closed ? 'matched' : 'mismatch') : 'unavailable',
+        summary: notOpened ? 'Кассовая смена не открывалась. Закрытие не требуется.' : oneCNotOpened ? 'По данным 1С кассовая смена не открывалась. ОФД недоступен; сверка продолжается.' : ofdConfirmed ? 'Закрытие кассы подтверждено отчётом ОФД.' : photoConfirmed ? closeConfirmation?.method==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. Автосверка ОФД продолжается.' : 'Сотрудник сообщил: чек закрытия не распечатался. Автосверка ОФД продолжается.' : assignedShift
           ? closed
             ? `Назначенная ККМ закрыта ${formatTime(assignedShift.closedAt || assignedShift.datetime)} · статус «${assignedShift.status}».`
             : `Смена назначенной ККМ не закрыта · статус «${assignedShift.status || 'не указан'}».`

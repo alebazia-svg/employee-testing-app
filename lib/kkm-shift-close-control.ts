@@ -7,6 +7,7 @@ import { loadOneCKkmChecks, loadPlatformaOfdZReports, loadPlatformaOfdReceipts, 
 import { resolveObsoleteKkmRequests } from '@/lib/workday-kkm-exception-resolution';
 import {resolveKkmCloseWorkplace} from './kkm-close-workplace';
 import {loadKkmCloseReports} from './kkm-close-report-cache';
+import { loadKkmShiftActivity, proveKkmNotOpened, proveKkmNotOpenedInOneC, type KkmNotOpenedProof, type KkmOneCNotOpenedProof } from './kkm-not-opened';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -18,7 +19,9 @@ export function firstKkmCloseEvidence(previous: unknown, evidence: KkmShiftClose
 }
 
 export type KkmShiftCloseEvidence = {
-  status: 'confirmed' | 'one_c_open' | 'ofd_missing' | 'unavailable';
+  status: 'confirmed' | 'not_opened' | 'one_c_not_opened' | 'one_c_open' | 'ofd_missing' | 'unavailable';
+  notOpenedProof?: KkmNotOpenedProof;
+  oneCNotOpenedProof?: KkmOneCNotOpenedProof;
   checkedAt: string;
   cashierRef: string;
   cashRegisterRef: string;
@@ -91,7 +94,7 @@ export async function prefetchEmployeeKkmClose(db:Db,userId:number,date:string) 
   if(place)await loadKkmCloseReports({kktRegistrationNumber:place.kktRegistrationNumber,...moscowPeriod(date)});
 }
 
-export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }, sources: {loadOneCKkmChecks:typeof loadOneCKkmChecks;getCashShifts:typeof getCashShifts;loadPlatformaOfdZReports:typeof loadKkmCloseReports;loadPlatformaOfdReceipts?:typeof loadPlatformaOfdReceipts} = { loadOneCKkmChecks, getCashShifts, loadPlatformaOfdZReports: loadKkmCloseReports, loadPlatformaOfdReceipts }): Promise<KkmShiftCloseEvidence> {
+export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }, sources: {loadOneCKkmChecks:typeof loadOneCKkmChecks;getCashShifts:typeof getCashShifts;loadPlatformaOfdZReports:typeof loadKkmCloseReports;loadPlatformaOfdReceipts?:typeof loadPlatformaOfdReceipts;loadKkmShiftActivity?:typeof loadKkmShiftActivity} = { loadOneCKkmChecks, getCashShifts, loadPlatformaOfdZReports: loadKkmCloseReports, loadPlatformaOfdReceipts, loadKkmShiftActivity }): Promise<KkmShiftCloseEvidence> {
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
   const identity = await input.db.userOneCCashboxMapping.findUnique({ where: { userId: input.userId } });
@@ -141,11 +144,39 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   const common = { ...empty, cashierRef, cashRegisterRef, cashRegisterName: shift?.cashRegister.name || '', kktRegistrationNumber, oneCShiftNumber: shift?.number || '', fiscalShiftNumber: shift?.fiscalShiftNumber || '', oneCOpenedAt: shift?.openedAt || '', oneCClosedAt: shift?.closedAt || '',...(workplace?{workplaceBasis:workplace.basis}:{}) };
   const oneCClosed = Boolean(shift?.closedAt) && normalized(shift?.status || '').includes('закрыт');
 
+  const noOpeningScope = async () => {
+    if (!workplace || lastCheck) return null;
+    const day = await input.db.workDayEntry.findUnique({ where: { userId_date: { userId: input.userId, date: input.date } } });
+    if (!day?.startedAt) return null;
+    const through = new Date(Math.min(Date.now(), Date.parse(period.to) - 1, day.endedAt ? +day.endedAt : Infinity)).toISOString();
+    const assignments = await input.db.workdayKkmAssignment.findMany({ where: { userId: input.userId, date: input.date,
+      effectiveFrom: { lte: new Date(through) }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: day.startedAt } }] } });
+    if (!assignments.every(a => a.kkmMode !== 'server' && a.oneCCashRegisterRef === cashRegisterRef)) return null;
+    return { through, historyFrom: new Date(Date.parse(period.from) - 6 * 86_400_000).toISOString() };
+  };
+  const oneCFallback = async () => {
+    const scope = await noOpeningScope();
+    if (!scope) return null;
+    const historyShifts = await sources.getCashShifts(new Date(scope.historyFrom).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }), input.date).catch(() => null);
+    const proof = historyShifts ? proveKkmNotOpenedInOneC({ cashRegisterRef, kktRegistrationNumber, from: period.from,
+      through: scope.through, shifts: historyShifts, checks }) : null;
+    return proof ? { ...common, status: 'one_c_not_opened' as const, oneCNotOpenedProof: proof,
+      sourceError: 'ОФД недоступен. По полным данным 1С кассовая смена не открывалась; подтверждение ОФД ожидается.' } : null;
+  };
+
   const loadedOfd = earlyOfd && kktRegistrationNumber===knownWorkplace?.kktRegistrationNumber
     ? await earlyOfd : await readOfd(kktRegistrationNumber);
   const ofd=loadedOfd.snapshot;
   Object.assign(common,{ofdRead:loadedOfd.observation});
-  if (!ofd.complete) return { ...common, status: 'unavailable', sourceError: 'Платформа OFD временно не ответила полностью.' };
+  if (!ofd.complete) {
+    // Transport failure alone permits the explicitly provisional 1C fallback.
+    // A returned malformed/open OFD shift is not an unavailable provider.
+    if (ofd.errorCode === 'OFD_REQUEST_FAILED' || ofd.errorCode === 'OFD_PROXY_NOT_CONFIGURED') {
+      const fallback = await oneCFallback();
+      if (fallback) return fallback;
+    }
+    return { ...common, status: 'unavailable', sourceError: 'Платформа OFD временно не ответила полностью.' };
+  }
   const refreshCached = () => verifyEmployeeKkmShiftClose(input,{...sources,loadPlatformaOfdZReports:arg=>sources.loadPlatformaOfdZReports(arg,{force:true})});
   const cached = 'fromCache' in ofd && ofd.fromCache===true && !('storedEvidence' in ofd&&ofd.storedEvidence);
   // Read the fiscal stream after the earliest saved closure, not the delayed 1C receipt stream.
@@ -175,6 +206,25 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
       &&r.shiftNumber===shift?.fiscalShiftNumber&&Date.parse(r.openedAt)<=Date.parse(r.closedAt)
       &&Date.parse(r.closedAt)>=Date.parse(period.from)&&Date.parse(r.closedAt)<Date.parse(period.to));
     if(reports.length===1){const r=reports[0];return {...common,status:'confirmed',ofdOpenedAt:r.openedAt,ofdClosedAt:r.closedAt,ofdDocumentLink:r.documentLink,ofdClosures:[{shiftNumber:r.shiftNumber,openedAt:r.openedAt,closedAt:r.closedAt}],sourceError:''};}
+    if (workplace && sources.loadKkmShiftActivity && sources.loadPlatformaOfdReceipts && shifts.ok && 'complete' in shifts && shifts.complete === true
+      && !shifts.shifts.some(s => s.cashRegister.ref === cashRegisterRef && s.deletionMark !== true)) {
+      const scope = await noOpeningScope();
+      if (scope) {
+        // Seven days supply a recent last CLOSED fiscal anchor. If no anchor is
+        // available, remain unavailable rather than assuming a carried shift away.
+        const [activity, receipts] = await Promise.all([
+          sources.loadKkmShiftActivity({ kktRegistrationNumber, from: scope.historyFrom, to: period.to }).catch(() => null),
+          sources.loadPlatformaOfdReceipts({ kktRegistrationNumber, ...period }, { attempts: 1, timeoutMs: 3000 }).catch(() => null),
+        ]);
+        const proof = activity && receipts ? proveKkmNotOpened({ cashRegisterRef, kktRegistrationNumber, from: period.from, through: scope.through,
+          activity, receipts, shifts, checks, existingReports: ofd.data, now: new Date() }) : null;
+        if (proof) return { ...common, status: 'not_opened', notOpenedProof: proof, sourceError: '' };
+        if (activity?.errorCode === 'OFD_OPENING_EVIDENCE_UNAVAILABLE') {
+          const fallback = await oneCFallback();
+          if (fallback) return fallback;
+        }
+      }
+    }
     if(cached)return refreshCached();
     return {...common,status:'unavailable',sourceError:'Проверяем закрытие кассы по рабочему месту. Однозначное подтверждение ОФД пока не получено.'};
   }
@@ -269,11 +319,11 @@ async function applyKkmShiftCloseIssue(db:Db,input:KkmSyncInput) {
       if (input.expectedTaskUpdatedAt && +task.updatedAt!==+input.expectedTaskUpdatedAt || 'expectedHandoverData' in input && JSON.stringify(task.handoverData)!==JSON.stringify(input.expectedHandoverData)) return {applied:false,issue:null};
       const confirmation=kkmCloseConfirmation(task.handoverData);
       currentInput={...input,confirmationMethod:confirmation?.userId===input.userId?confirmation.method:undefined,workdayCompleted:Boolean(task.run.workDayEntry.endedAt || task.run.workDayEntry.status==='completed')};
-      if (input.evidence.status==='confirmed' && task.category==='handover') {
+      if (kkmShiftCloseAllowsHandover(input.evidence) && task.category==='handover') {
         const data=task.handoverData && typeof task.handoverData==='object' && !Array.isArray(task.handoverData)?task.handoverData as Record<string,unknown>:{};
         const prior=data.kkmCloseCheck && typeof data.kkmCloseCheck==='object' && !Array.isArray(data.kkmCloseCheck)?data.kkmCloseCheck as Record<string,unknown>:{};
-        if (prior.status!=='confirmed' || prior.checkedAt!==input.evidence.checkedAt) {
-          const saved=await tx.shiftControlTask.updateMany({where:{id:task.id,updatedAt:task.updatedAt},data:{handoverData:{...data,kkmCloseCheck:{...prior,status:'confirmed',checkedAt:input.evidence.checkedAt,evidence:input.evidence,firstEvidence:firstKkmCloseEvidence(prior,input.evidence)}} as unknown as Prisma.InputJsonValue}});
+        if (prior.status!==input.evidence.status || prior.checkedAt!==input.evidence.checkedAt) {
+          const saved=await tx.shiftControlTask.updateMany({where:{id:task.id,updatedAt:task.updatedAt},data:{handoverData:{...data,kkmCloseCheck:{...prior,status:input.evidence.status,checkedAt:input.evidence.checkedAt,evidence:input.evidence,firstEvidence:firstKkmCloseEvidence(prior,input.evidence)}} as unknown as Prisma.InputJsonValue}});
           if(!saved.count)return {applied:false,issue:null};
         }
       }
@@ -287,7 +337,7 @@ export async function syncKkmShiftCloseIssue(db:Db,input:KkmSyncInput) { return 
 async function syncKkmShiftCloseIssueSource(db:Db,input:KkmSyncInput) {
   const fingerprint = kkmShiftCloseFingerprint(input.workDayEntryId);
   const existing = await db.workdayControlIssue.findUnique({ where: { fingerprint } });
-  if (input.evidence.status === 'confirmed') {
+  if (kkmShiftCloseSatisfied(input.evidence)) {
     if (existing?.status === 'open') {
       await db.workdayControlIssue.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: input.now, lastDetectedAt: input.now, nextReminderAt: null, sourceData: input.evidence as unknown as Prisma.InputJsonValue } });
       await db.workdayNotification.updateMany({ where: { issueId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
@@ -297,13 +347,14 @@ async function syncKkmShiftCloseIssueSource(db:Db,input:KkmSyncInput) {
     }
     return null;
   }
-  const employeeActionRequired = !input.confirmationMethod && !input.workdayCompleted;
+  const provisionalNoOpening = input.evidence.status === 'one_c_not_opened';
+  const employeeActionRequired = !provisionalNoOpening && !input.confirmationMethod && !input.workdayCompleted;
   const nextReminderAt = employeeActionRequired ? existing?.nextReminderAt ?? new Date(input.now.getTime()+15*60_000) : null;
   const existingSource = existing?.sourceData && typeof existing.sourceData==='object' && !Array.isArray(existing.sourceData) ? existing.sourceData as Record<string,unknown> : {};
-  const ownerVerificationRequired = Boolean(input.confirmationMethod || employeeActionRequired || existingSource.ownerVerificationRequired===true);
+  const ownerVerificationRequired = Boolean(provisionalNoOpening || input.confirmationMethod || employeeActionRequired || existingSource.ownerVerificationRequired===true);
   const severity = 'warning';
-  const title = input.confirmationMethod ? input.confirmationMethod==='photo' ? 'Чек закрытия приложен' : 'Чек закрытия не распечатался' : employeeActionRequired ? 'Подтвердите закрытие кассы' : 'Закрытие кассы не подтверждено ОФД';
-  const detail = input.confirmationMethod==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. Сверка ОФД продолжается автоматически.'
+  const title = provisionalNoOpening ? 'По 1С смена не открывалась · ожидаем ОФД' : input.confirmationMethod ? input.confirmationMethod==='photo' ? 'Чек закрытия приложен' : 'Чек закрытия не распечатался' : employeeActionRequired ? 'Подтвердите закрытие кассы' : 'Закрытие кассы не подтверждено ОФД';
+  const detail = provisionalNoOpening ? 'По полным данным 1С кассовая смена не открывалась. Закрытие от сотрудника не требуется; сверка ОФД продолжается автоматически.' : input.confirmationMethod==='photo' ? 'Сотрудник подтвердил закрытие бумажным чеком. Сверка ОФД продолжается автоматически.'
     : input.confirmationMethod==='not_printed' ? 'Сотрудник сообщил, что чек не распечатался. Закрытие кассы проверяется по ОФД.'
     : employeeActionRequired ? 'Сфотографируйте чек закрытия смены или нажмите «Чек не распечатался».'
     : 'День завершён, но закрытие кассы ещё не подтверждено ОФД. Портал повторяет проверку автоматически.';
@@ -335,7 +386,7 @@ async function syncKkmShiftCloseIssueSource(db:Db,input:KkmSyncInput) {
     create: {
       eventKey: `kkm_shift_close:${input.workDayEntryId}:attention`,
       type: 'workday.kkm_shift_close_attention',
-      title:'Закрытие кассы не подтверждено',
+      title: provisionalNoOpening ? 'По 1С смена не открывалась · ожидаем ОФД' : 'Закрытие кассы не подтверждено',
       body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`,
       href: `/admin/workday/issues/${issue.id}`,
       sourceType: 'workday_control_issue',
@@ -343,7 +394,7 @@ async function syncKkmShiftCloseIssueSource(db:Db,input:KkmSyncInput) {
       occurredAt: input.now,
     },
     update: {
-      title:'Закрытие кассы не подтверждено',
+      title: provisionalNoOpening ? 'По 1С смена не открывалась · ожидаем ОФД' : 'Закрытие кассы не подтверждено',
       body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`,
       occurredAt: existing?.detectedAt ?? input.now,
     },
@@ -366,7 +417,14 @@ export async function recheckOpenKkmShiftCloseIssues(now = new Date(), sources?:
     const handover = issue.task.handoverData && typeof issue.task.handoverData === 'object' && !Array.isArray(issue.task.handoverData) ? issue.task.handoverData as Record<string, unknown> : null;
     const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: issue.userId, date: issue.task.run.date, simulation: readKkmShiftCloseSimulation(handover?.kkmCloseSimulation) }, sources);
     const applied=await applyKkmShiftCloseIssue(prisma, {userId:issue.userId,taskId:issue.task.id,workDayEntryId:issue.task.run.workDayEntryId,date:issue.task.run.date,evidence,now,expectedTaskUpdatedAt:issue.task.updatedAt,expectedHandoverData:issue.task.handoverData});
-    if(applied.applied && evidence.status==='confirmed')resolved+=1;
+    if(applied.applied && kkmShiftCloseSatisfied(evidence))resolved+=1;
   }
   return { checked: issues.length, resolved };
+}
+
+export function kkmShiftCloseSatisfied(evidence: Pick<KkmShiftCloseEvidence, 'status'>) {
+  return evidence.status === 'confirmed' || evidence.status === 'not_opened';
+}
+export function kkmShiftCloseAllowsHandover(evidence: Pick<KkmShiftCloseEvidence, 'status'>) {
+  return kkmShiftCloseSatisfied(evidence) || evidence.status === 'one_c_not_opened';
 }

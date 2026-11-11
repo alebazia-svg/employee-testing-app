@@ -14,6 +14,8 @@ import { loadAqsiOperations } from '@/lib/aqsi-acquiring';
 
 export type SourceSnapshot<T> = {
   complete: boolean;
+  /** Stricter shape/coverage guarantee for negative KKM-opening evidence only. */
+  absenceComplete?: boolean;
   checkedAt: string;
   providerFetchedAt?: string;
   data: T[];
@@ -321,6 +323,7 @@ export async function loadOneCKkmChecks(input: { fromDate: string; toDate: strin
   const config = readOneCRuntimeEnv();
   if (!config.baseUrl || !config.user || !config.password) return { complete: false, checkedAt, data: [], errorCode: 'ONE_C_NOT_CONFIGURED' };
   const output: OneCCheck[] = [];
+  let absenceComplete = true;
   for (let offset = 0; offset <= ONE_C_MAX_OFFSET; offset += ONE_C_PAGE_LIMIT) {
     const query = new URLSearchParams({ from: input.fromDate, to: input.toDate, limit: String(ONE_C_PAGE_LIMIT), offset: String(offset) });
     const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
@@ -337,7 +340,9 @@ export async function loadOneCKkmChecks(input: { fromDate: string; toDate: strin
     if (normalizedChecks.length !== checks.length) return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_NORMALIZATION_FAILED' };
     output.push(...normalizedChecks);
     const pagination = record(root.pagination);
-    if (!bool(pagination?.has_more)) return { complete: true, checkedAt, data: output };
+    absenceComplete = absenceComplete && Array.isArray(root.checks) && typeof pagination?.has_more === 'boolean'
+      && (!Array.isArray(root.warnings) || root.warnings.length === 0);
+    if (!bool(pagination?.has_more)) return { complete: true, absenceComplete: absenceComplete && checks.length < ONE_C_PAGE_LIMIT, checkedAt, data: output };
     if (checks.length < ONE_C_PAGE_LIMIT) return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_PAGINATION_CONTRADICTION' };
   }
   return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_OFFSET_LIMIT' };
@@ -418,8 +423,16 @@ export async function loadPlatformaOfdReceipts(input: {
         const normalizedReceipts = receipts.map(normalizePlatformaOfdReceipt).filter(Boolean) as OfdReceipt[];
         const providerComplete = root.complete === true || dataRoot?.complete === true || meta?.complete === true;
         const complete = providerComplete && normalizedReceipts.length === receipts.length;
+        const coverage = record(meta?.period);
+        const fetchedAt = typeof meta?.fetchedAt === 'string' ? Date.parse(meta.fetchedAt) : NaN;
+        const absenceComplete = complete && (Array.isArray(root.receipts) || Array.isArray(dataRoot?.receipts))
+          && meta?.complete === true && Array.isArray(meta.warnings) && meta.warnings.length === 0
+          && coverage?.semantics === '[from,to)' && Date.parse(String(coverage.fromUtc)) === Date.parse(input.from)
+          && Date.parse(String(coverage.toUtc)) === Date.parse(input.to)
+          && fetchedAt <= Date.now() + 30_000 && Date.now() - fetchedAt <= 60_000;
         latest = {
           complete,
+          absenceComplete,
           checkedAt,
           data: normalizedReceipts,
           errorCode: complete ? undefined : normalizedReceipts.length !== receipts.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE',
