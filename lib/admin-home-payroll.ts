@@ -53,7 +53,7 @@ export async function loadHomePayroll(now=new Date()):Promise<HomePayroll> {
  const purchase=aggregate?.purchases??buildPayrollPurchaseSupplierPreview('settlements' in combined.purchases?combined.purchases.settlements:[],source.suppliers);
  const attendance=source.attended&&source.attendance?{...source.attended,snapshot:{servedFrom:'stored' as const,sourceCheckedAt:source.attendance.sourceCheckedAt.toISOString(),savedAt:source.attendance.updatedAt.toISOString()}}:null;
  const manual=prepareDailyPayrollInputs({directory,manual:draft.manual,attendance,periodKey:period,finboxAmount:source.finbox?(source.finbox.amountCents/100).toFixed(2):null});
- const rows=buildDailyPayrollBase({periodKey:period,directory,users:source.users,summaries:compact.managerSummaries,manual,fixed:draft.fixed,purchase:draft.purchase,purchaseBase:purchase.approvedBase});
+ const rows=buildDailyPayrollBase({periodKey:period,directory,users:source.users,summaries:compact.managerSummaries,manual,fixed:draft.fixed,purchase:draft.purchase,purchaseBase:purchase.approvedBase,attendance});
  const result=applyPayrollBonuses(rows,validatePayrollBonuses(draft.bonuses,rows.map(row=>row.manager)));
  const messages=[...(compact.unresolvedRows?['Нужно выбрать правила классификации товаров']:[]),...(!purchase.ready?['Нужно проверить поставщиков закупок']:[]),...(!source.attended?['Не обновлены дни и опоздания']:[])];
  const href=`/admin/payroll?period=${period}`;

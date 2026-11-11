@@ -31,8 +31,8 @@ test('actual workbook generator preserves totals, advance provenance and manual 
   assert.ok(workbook);
   const book = workbook as XLSX.WorkBook;
   const rows = (sheet: string) => XLSX.utils.sheet_to_json<(string|number)[]>(book.Sheets[sheet],{header:1,defval:''});
-  const employee=rows('Итоги').find(r=>r[0]===employeeName)!;
-  assert.equal(employee[1],35490); assert.equal(employee[7],15000); assert.equal(employee[8],20490);
+  const employee=rows('Итоги').find(r=>r[0]===payrollDisplayName(employeeName))!;
+  assert.equal(employee[0],'Тимур · поклейка'); assert.equal(employee[1],35490); assert.equal(employee[7],15000); assert.equal(employee[8],20490);
   const advance=rows('Расшифровка').find(r=>r[5]==='Аванс')!;
   assert.equal(advance[7],'Расходники 1С'); assert.match(String(advance[8]),/00OF-001697/);
   assert.ok(!rows('Контроль расчёта').some(r=>r.includes('Ошибка')));

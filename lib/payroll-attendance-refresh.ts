@@ -102,7 +102,7 @@ export async function refreshPayrollAttendance(request: Request) {
         payrollName: true,
         workDays: {
           where: { date: { gte: `${period.periodKey}-01`, lte: throughDate } },
-          select: { userId: true, date: true, startedAt: true, status: true },
+          select: { userId: true, date: true, startedAt: true, qrAcceptedAt: true, status: true },
         },
       },
     }) : [];

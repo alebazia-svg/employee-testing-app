@@ -832,11 +832,13 @@ export function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>,
     });
 }
 
-export function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report: PurchaseReportState | null, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees): FullPayrollRow {
+export function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report: PurchaseReportState | null, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees, actual?: { periodKey: string; workedDays: number | null }): FullPayrollRow {
   const employee = employeeDirectory[purchaseManagerName] ?? payrollEmployees[purchaseManagerName];
   const purchaseBase = report?.base ?? null;
   const purchasePercentAmount = purchaseBase === null ? 0 : purchaseBase * purchasePercent;
-  const dayPay = purchaseStandardWorkedDays * purchaseDayRate;
+  const useActual = Boolean(actual && actual.periodKey >= '2026-11');
+  const workedDays = useActual ? (Number.isInteger(actual!.workedDays) && actual!.workedDays! >= 0 && actual!.workedDays! <= 31 ? actual!.workedDays : null) : purchaseStandardWorkedDays;
+  const dayPay = (workedDays ?? 0) * purchaseDayRate;
   const rawAdjustment = purchaseTargetSalary - dayPay - purchasePercentAmount;
   const purchaseTargetAdjustment = purchaseBase === null ? 0 : Math.max(rawAdjustment, 0);
   const advance = parseManualNumber(input?.advance ?? '') ?? 0;
@@ -845,6 +847,7 @@ export function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined,
   const netPay = grossPay - advance - fixedDeduction;
   const payrollReasons = [
     purchaseBase === null ? 'Отчёт закупок не загружен или сумма закупок не найдена' : '',
+    useActual && workedDays === null ? 'Не подтверждены фактические выходы Астемира' : '',
   ].filter(Boolean);
 
   return {
@@ -862,7 +865,7 @@ export function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined,
     accessoryBonus: 0,
     wholesaleBonus: 0,
     totalBonus: 0,
-    workedDays: purchaseStandardWorkedDays,
+    workedDays,
     lateCount: null,
     advance,
     agentCreditCommission: 0,
@@ -875,7 +878,7 @@ export function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined,
     purchaseTargetAdjustment,
     purchaseTargetSalary,
     comment: input?.comment ?? '',
-    daysSource: 'manual',
+    daysSource: useActual ? 'attendance' : 'manual',
     dayRate: purchaseDayRate,
     dayPay,
     salesBonus: 0,

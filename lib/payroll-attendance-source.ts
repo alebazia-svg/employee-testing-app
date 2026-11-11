@@ -30,6 +30,9 @@ export const PAYROLL_APP_ATTENDANCE_CUTOVERS = [{
   aliases: ['Костеренко Магомед', 'Магомед', 'Косторенко Магомед', 'Магомед Косторенко',
     'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'],
   fromDate: '2026-10-18',
+}, {
+  userId: 10, employee: 'Тохов Астемир', aliases: ['Тохов Астемир', 'Астемир Тохов', 'Астемир'],
+  fromDate: '2026-11-01', requireQr: true,
 }] as const;
 
 type Cutover = {
@@ -37,13 +40,14 @@ type Cutover = {
   employee: string;
   aliases: readonly string[];
   fromDate: string;
+  requireQr?: boolean;
 };
 
 type AppUser = {
   id: number;
   name: string;
   payrollName: string | null;
-  workDays: { userId: number; date: string; startedAt: Date; status: string }[];
+  workDays: { userId: number; date: string; startedAt: Date; qrAcceptedAt?: Date | null; status: string }[];
 };
 
 const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -66,7 +70,7 @@ export function mergePayrollAttendanceSources(input: {
   let formSummaries = buildFormSummaries(input.googleRows, input.periodKey);
   const sources: PayrollAttendanceSourceSummary[] = [];
 
-  for (const rule of input.cutovers ?? PAYROLL_APP_ATTENDANCE_CUTOVERS) {
+  for (const rule of (input.cutovers ?? PAYROLL_APP_ATTENDANCE_CUTOVERS) as readonly Cutover[]) {
     if (rule.fromDate > input.throughDate || rule.fromDate.slice(0, 7) > input.periodKey) continue;
     const user = input.appUsers.find((item) => item.id === rule.userId);
     if (!user || normalize(user.payrollName || user.name) !== normalize(rule.employee)) {
@@ -82,7 +86,9 @@ export function mergePayrollAttendanceSources(input: {
     const appDays = new Map<string, AppUser['workDays'][number]>();
     for (const day of user.workDays) {
       if (day.date < rule.fromDate || day.date.slice(0, 7) !== input.periodKey || day.date > input.throughDate) continue;
-      if (day.userId !== rule.userId || !['active', 'completed'].includes(day.status)
+      if (rule.requireQr && (!['active', 'completed', 'missing_checkout'].includes(day.status) || !day.qrAcceptedAt)) continue;
+      if (day.userId !== rule.userId || !(rule.requireQr ? ['active', 'completed', 'missing_checkout'] : ['active', 'completed']).includes(day.status)
+        || (rule.requireQr && (!Number.isFinite(day.qrAcceptedAt!.getTime()) || getMoscowDateKey(day.qrAcceptedAt!) !== day.date))
         || !Number.isFinite(day.startedAt.getTime()) || getMoscowDateKey(day.startedAt) !== day.date
         || appDays.has(day.date)) {
         throw new Error('Проверьте даты и состояние рабочих дней сотрудника в приложении.');
