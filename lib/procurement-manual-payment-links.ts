@@ -28,8 +28,8 @@ export function samePaymentSupplier(plan: { supplierPartner: string; supplierCou
     if(normalize(row.supplier||'')!==normalize(PROCUREMENT_CARGO.supplierPartner)||normalize(row.counterparty||'')!==normalize(PROCUREMENT_CARGO.supplierCounterparty))return false;
     const register=row.registerContractBasis?.contracts;
     const contractConfirmed=register?.length===1&&register[0].ref===PROCUREMENT_CARGO.contractRef;
-    // Existing register-basis endpoint is RUB-only. A USDT RKO needs an explicit
-    // native contract; no empty header is inferred from a supplier's balance.
+    // Require the exact native delivery contract, from the header or verified
+    // register movements; never infer it from a supplier's balance.
     if(!contractConfirmed&&!(row.documentCurrency==='USDT'&&row.contract?.trim()===PROCUREMENT_CARGO.contractName))return false;
   }
   const names = [plan.supplierPartner, plan.supplierCounterparty].map(normalize).filter(Boolean);
