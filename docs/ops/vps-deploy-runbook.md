@@ -75,6 +75,14 @@ Before every new release, including resumed work in an old chat:
 1. Read the live `/release-info.json` and fetch the latest
    `origin/design-local-updates`; inspect its `package.json` version. Reconcile
    concurrent releases before choosing a number; do not rely on chat memory.
+   Inspect relevant active portal-release chats read-only and their runtime
+   branches as well: an in-progress release may already use the next version
+   while public metadata still shows the previous one. A deployment flock and
+   a stale-base guard prevent unsafe installation, but do not replace this
+   coordination check. If another release is installing, wait for its verified
+   outcome, preserve its exact installed commit in the new candidate, and then
+   recheck the next version. The owner must not have to identify this collision.
+   Do not send cross-chat messages without applicable owner authorization.
 2. New production code, UI, text or assets require a new version. Small
    compatible fixes increment PATCH (for example 1.1.2 -> 1.1.3). Do not reserve
    numbers in advance; recheck immediately before pushing the release.

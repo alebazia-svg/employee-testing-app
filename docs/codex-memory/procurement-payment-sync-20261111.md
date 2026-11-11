@@ -1,7 +1,8 @@
 # Payment reconciliation load — phase 1 candidate, 2026-11-11
 
-Status: implemented and verified locally, **not deployed**. Source commit
-`258f500`. Isolated branch `codex/payment-sync-20261111` starts from the observed
+Status: **deployed and independently verified as 1.24.3**, runtime commit
+`d0ec9b5c8ca12cfe153c684f05fc3ad1cf00cf02`. Original phase-1 source commit
+`258f500`. Isolated branch `codex/payment-sync-20261111` started from the observed
 production commit `835603268a22367658b70cc65c0cddeffe774c2f` / 1.24.1.
 Do not include the unrelated warehouse-transfer work currently ahead on the
 deployment branch. Recheck live/deployment branch and assign a new portal patch
@@ -81,11 +82,53 @@ not rerun. One old source assertion was corrected to allow the existing
 
 ## Next step and limits
 
-Review/release this narrow candidate first, then independently verify production
-reconciliation and public/server application identity. A growth-related scope
-limit can still occur; it remains an explicit protective failure. Separating
+Phase 1 is released. A growth-related scope limit can still occur; it remains an
+explicit protective failure. Separating
 active/history work and cross-process sharing needs its own design and freshness
 review rather than silently weakening this guard.
 
 The separate procurement-agent evidence contract remains 54.8/100; no stage IDs,
 spending authority or 1C-write permissions changed.
+
+## Verified release outcome
+
+The initial calendar candidate numbered 1.24.2 was cancelled before installation
+when the concurrent KKM release became known; its installer was retired and no
+calendar artifact with that number was loaded on production. The owner correctly
+identified a coordination gap: checking only public metadata and the stale
+deployment branch had missed the active release. The runbook now explicitly
+requires inspecting relevant active release chats/runtime branches before
+choosing a number, without making the owner coordinate them.
+
+The calendar candidate was merged with installed KKM 1.24.2 /
+`913fdeb1f60c1f6e4f585c1be4f885060d97c1a0`, then rebuilt as 1.24.3. KKM source files
+are byte-for-byte unchanged relative to that installed commit. The runtime diff
+contains only the approved procurement read changes, tests, documentation and
+the new version. The existing public receipts build flag remains enabled.
+
+- Both public domains report 1.24.3, built `2026-11-11T13:37:39.555Z` (16:37 MSK).
+- VPS HEAD is the exact runtime commit above; `/api/health` reports healthy.
+- Running image is
+  `sha256:bac176e0f2e9f1bd7fab8e360f3fe9108e6ce3e4dc0202120f8e7d6d21a8e16c`.
+- Transport SHA-256 is
+  `54349a2d873f43904af03a45339c340e66c5c180f2f286464b76a883afc7988b`.
+- Read-only reconciliation from the installed module completed: 52 plans,
+  226 payments, 118 successful requests, 9.55 seconds, complete RUB support.
+  This is one observed read, not a latency percentile or guarantee.
+- Authenticated ADMIN calendar shows 1.24.3 and a fresh 16:45 reconciliation;
+  the old unavailable-source warning disappeared. Receipt queue and its existing
+  upload action remain available. One unmatched payment remains visibly guarded
+  for basis verification; no matching rule was relaxed to close it.
+- Before/after hashes preserved 52 plan business records, 33 receipt/requisites
+  records, 201 plan events, three daily-rate records and 30 physical files.
+  Only existing display-cache updates are excluded from the business fingerprint.
+  Schema/migrations, runtime environment, mounts and notification units match.
+- The merged source passed 168 server/logic/KKM tests, one buyer streaming test,
+  five metadata checks, TypeScript, production build and isolated artifact module
+  checks. Production buyer/PWA UI was not separately exercised.
+- Installer completed with exit 0. After independent verification, the new image
+  was registered with both verified reserves (KKM 1.24.2 and calendar-label 1.24.1).
+  Storage maintenance applied only its existing authorized retention policy.
+
+Unrelated worktrees and the uninstalled warehouse changes remain untouched.
+Historical refresh scheduling and cross-process read sharing remain deferred.
