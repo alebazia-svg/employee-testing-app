@@ -99,3 +99,51 @@ calendar-only release. Unrelated dirty files and other checkouts remain untouche
   here. Recheck capacity/approved retention before the next build or import.
   About2.9GiB RAM available; no server compilation occurred. Maintenance last
   recorded Result=success; it was not rerun as cleanup in this release.
+
+## Follow-up text-only release 1.24.1 — verified 11 November 2026
+
+Owner explicitly approved publication of the already reviewed single missing-plan
+caption. Runtime source is `origin/codex/calendar-empty-label-20261111`, commit
+`835603268a22367658b70cc65c0cddeffe774c2f`, from live1.24.0/b37a9aa.
+Exact runtime diff: `components/admin/TeamSchedule.tsx`, `package.json`,
+`package-lock.json`. Missing app/Google plans share “График не заполнен”; the
+legend follows that caption. Underlying states, source precedence, Google reserve,
+QR logic, day-end cutoffs and all saved records are unchanged. Feature-only
+commit2f40bad is in design-local-updates; its other pending work remains excluded.
+
+43 calendar/source/attendance checks, five release metadata checks, TypeScript and
+Mac-built linux/amd64 production build passed. Actual artifact HTTP/PostgreSQL
+check verified the new caption, the six existing QR scenarios and unchanged
+plans/workdays/notices/correction history. No new tests were added for this
+reversible text-only change. Physical iPhone and unrelated business flows were
+not retested.
+
+Artifact image: `sha256:2d428a7067c01849343dfb46dd0dbf191789204aefb1e9bfd257672e18089ca6`.
+Archive SHA256: `923c99b60b82a4f218d0e141dfb6c38b9d0982efaad0f780659c556f4852d080`.
+Public/embedded/shared-label version1.24.1; build2026-11-11T10:22:02.172Z
+(13:22MSK). Server commit and healthy running image verified independently.
+Authenticated calendar has no old “Уточнить план” button captions; future missing
+plans display the unified text. Today's unmarked Zukhra retains her working plan
+before20:00, as approved. UI check was read-only; screenshot:
+`/tmp/calendar-label-production-1.24.1.png`.
+
+The existing approved retention removed only unused old1.23.2 imageacbeccbf,
+which was outside the current-plus-two registry. This left14.91GiB, below the
+15GiB gate. Owner separately approved `journalctl --vacuum-size=700M`; only old
+archived journals were vacuumed and capacity passed before the artifact import.
+Current and two verified reserves were checked under the shared flock. Image
+transport SHA256 matched; no VPS build, schema/migration, env, mount, timer or
+manual database changes.
+
+Post-install preservation checks match10 user configurations,11 browser-owner
+records,9 templates,5 cashbox mappings,333 existing upload hashes and149 existing
+session identities. Existing174 workday,755 schedule,109 cash operation and1,738
+notification IDs remain. Effective env, server.env, all mounts, schema/migrations
+and notification units match. Current1.24.1 plus reserves1.24.0/1.23.4 are
+registered and exist. Worker ended VERIFIED_RELEASE_COMPLETE, INSTALL_EXIT=0;
+final health ok. Approximately14GiB free remains: recheck the capacity gate and
+approved retention before the next release. Broader cleanup was not performed.
+Unrelated dirty files/checkouts were left untouched.
+
+Worker/log: `/home/bela/mobo-calendar-label-1.24.1-install.sh` / `.log`.
+Preservation evidence: `/root/mobo-calendar-label-1.24.1-20261111/`.
