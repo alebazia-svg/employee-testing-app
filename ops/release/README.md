@@ -1,8 +1,10 @@
 # Guarded portal image delivery
 
-Implementation candidate, 11 November 2026. Not installed on the VPS and not an
-approval to deploy. Existing application behavior, background schedules, database,
-uploads, backups and rollback retention policy are preserved.
+Installed on the VPS on 11 November 2026 at 18:24 Moscow (tool revision
+`faa53f8`). This is now the default for subsequent compatible releases. The
+installation did not deploy an application image. Existing application behavior,
+background schedules, database, uploads, backups and rollback policy are preserved.
+See `docs/ops/release-process-install-20261111.md` for host evidence and tooling rollback.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
@@ -104,8 +106,8 @@ image equals the current running image and two protected reserves still exist.
 A failed UI/business check requires an explicitly reviewed rollback; this tool
 never automatically registers an unverified build.
 
-The installed maintenance script remains unchanged until separately installed
-through the approved operations flow. Its code correction uses the same byte
+The corrected maintenance script is installed at
+`/usr/local/sbin/portal-storage-maintenance`. Its code correction uses the same byte
 count for Docker's cleanup target and the 15 GiB floor. Current plus two verified
 reserves, every container-used image (including stopped containers), unknown
 images/tags, volumes and backups remain protected.
@@ -128,7 +130,7 @@ health and restoration after an injected public-check failure. Git, database
 migration state and external HTTP are fixtures; production DB migration safety,
 real background completion and authenticated UI remain release-time checks.
 
-## Implementation verification, 11 November 2026
+## Pre-installation implementation verification, 11 November 2026
 
 Code commit: `d8821d8`, branch `codex/release-reliability-20261111` in the isolated
 `portal-release-reliability-20261111` worktree. No push, VPS installation,

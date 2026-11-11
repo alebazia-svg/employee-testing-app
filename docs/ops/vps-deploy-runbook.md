@@ -12,22 +12,30 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 - Env file: `server.env`
 - Uploads must stay mounted as Docker volume at `/app/uploads`.
 
-## Guarded prebuilt image path — implementation candidate, 2026-11-11
+## Default: guarded prebuilt image delivery — installed 2026-11-11
 
-The checked-in `ops/release/portal_release.py` and its README provide preparation
-outside the VPS and a guarded installer. This code is not yet installed or
-production-verified; do not claim the production process has already changed.
-Use it for a separately approved compatible release after reconciling the live
-source/version. It refuses schema/migration/Compose/startup changes, stale image
-registries and insufficient space; never bypass those guards. The existing
-manual flow below remains a documented fallback requiring the same approvals.
+Use `ops/release/portal_release.py prepare` on the local build host, and the
+installed `/usr/local/sbin/portal-release install` on the VPS. Read
+`ops/release/README.md`. The owner approved this as the default for subsequent
+compatible releases, retaining the existing approvals/version gates and current
+plus two verified rollback images. Do not rebuild on the shared production VPS
+by default. The manual flow below is a reviewed recovery fallback only.
 
-The maintenance correction now uses 16106127360 bytes for both cleanup target
-and the 15 GiB floor. Install that reviewed host script separately; changing its
-repository copy does not update `/usr/local/sbin/portal-storage-maintenance`.
-After independent UI/business verification, registration supports
-`--expected-current <full-image-id>` to reject a concurrent release. Registration
-still uses the existing lock and preserves current plus two verified reserves.
+Tool revision `faa53f8` and corrected storage maintenance were installed without
+restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
+`docs/ops/release-process-install-20261111.md`. Application source/Docker cache
+changes are in the maintained branch for the next approved, versioned image;
+they were not injected into the running application.
+
+The installer refuses schema/migration/Compose/startup changes, stale bases,
+pending migrations, stale verified registries and insufficient space. Never
+bypass those gates. Reconcile the exact live runtime source with the maintained
+branch before preparing each release. Independent business/UI verification still
+precedes registration with `--expected-current <verified-image-id>`.
+
+The maintenance script now uses 16106127360 bytes for both cleanup target and
+15 GiB floor. Its schedule and protection of all container-used/unknown images,
+volumes and backups are unchanged. Installation did not execute cleanup.
 
 ## Safe deploy flow
 
