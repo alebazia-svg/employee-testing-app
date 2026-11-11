@@ -481,8 +481,10 @@ function HandoverDetails({ data, department, onPreview, checks=[], submitted=tru
   const needsClosingPhoto=storeClosing?.zReportRequired===true;
   const closingCheck=checks.find(check=>check.id.startsWith('handover-z-report-'));
   const closures=confirmedKkmClosures(data);
-  const closingTone=closingCheck?.manualReview?.decision==='confirmed_issue'?'error':closingCheck?.manualReview?.decision==='confirmed_ok'?'green':closingCheck?.status==='matched'?'green':closingCheck?.status==='mismatch'?'error':'amber';
-  const closingLabel=closingCheck?.manualReview?.decision==='confirmed_issue'?'Проблема подтверждена':closingCheck?.manualReview?.decision==='confirmed_ok'?'Подтверждено вручную':closingCheck?.status==='matched'?'Закрытие подтверждено':closingCheck?.status==='mismatch'?'Закрытие не подтверждено':closingCheck?.status==='waiting'&&kkmCloseConfirmation(data)?kkmCloseConfirmation(data)?.method==='photo'?'Чек приложен · сверяем ОФД':'Чек не распечатался · сверяем ОФД':'Ожидает сверки ОФД';
+  const notOpened=readRecord(data,'kkmCloseCheck')?.status==='not_opened';
+  const oneCNotOpened=readRecord(data,'kkmCloseCheck')?.status==='one_c_not_opened';
+  const closingTone=closingCheck?.manualReview?.decision==='confirmed_issue'?'error':closingCheck?.manualReview?.decision==='confirmed_ok'?'green':notOpened?'':closingCheck?.status==='matched'?'green':closingCheck?.status==='mismatch'?'error':'amber';
+  const closingLabel=closingCheck?.manualReview?.decision==='confirmed_issue'?'Проблема подтверждена':closingCheck?.manualReview?.decision==='confirmed_ok'?'Подтверждено вручную':notOpened?'Смена не открывалась':oneCNotOpened?'По 1С не открывалась · ожидаем ОФД':closingCheck?.status==='matched'?'Закрытие подтверждено':closingCheck?.status==='mismatch'?'Закрытие не подтверждено':closingCheck?.status==='waiting'&&kkmCloseConfirmation(data)?kkmCloseConfirmation(data)?.method==='photo'?'Чек приложен · сверяем ОФД':'Чек не распечатался · сверяем ОФД':'Ожидает сверки ОФД';
   if(!personalCash&&!reserveCash&&!storeClosing)return null;
   const money=(value:unknown)=>value===null||value===undefined?'Не указано':formatMoney(Number(value));
   return <div className="team-handover-content">

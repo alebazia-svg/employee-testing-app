@@ -13,6 +13,8 @@ export const handoverServerStages = {
   check_missing: 'Проверка: закрытие в 1С есть, подтверждения OFD пока нет',
   check_unavailable: 'Проверке не хватило данных — результат неизвестен',
   check_confirmed: 'Закрытие ККМ подтверждено системой',
+  check_not_opened: 'Кассовая смена не открывалась — закрытие не требуется',
+  check_not_opened_one_c: 'По данным 1С смена не открывалась — ОФД недоступен, сверка продолжается',
 } as const;
 export type HandoverClientStage = keyof typeof handoverClientStages;
 export type HandoverServerStage = keyof typeof handoverServerStages;

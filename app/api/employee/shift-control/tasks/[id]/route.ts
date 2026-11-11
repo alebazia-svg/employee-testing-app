@@ -23,7 +23,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { prefetchEmployeeKkmClose, firstKkmCloseEvidence, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { prefetchEmployeeKkmClose, firstKkmCloseEvidence, kkmShiftCloseAllowsHandover, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -578,7 +578,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       handoverVersion=savedCheck.updatedAt;handoverSnapshot=savedCheck.handoverData;
       scheduleHandoverCheckAudit(req, user.id, task.id, readFormString(formData, 'activityAttempt'), evidence.status);
       await syncKkmShiftCloseIssue(prisma, { userId:user.id, taskId:task.id, workDayEntryId:task.run.workDayEntryId, date:task.run.date, evidence, now, confirmationMethod:kkmCloseConfirmation?.method,expectedTaskUpdatedAt:handoverVersion,expectedHandoverData:handoverSnapshot });
-      if (evidence.status !== 'confirmed' && !kkmCloseConfirmation) {
+      if (!kkmShiftCloseAllowsHandover(evidence) && !kkmCloseConfirmation) {
         const issues=await findOpenRequiredWorkdayIssues(prisma,user.id);
         return Response.json({error:'Подтвердите закрытие кассы',code:'OPEN_REQUIRED_ISSUES',issues},{status:409});
       }
@@ -818,7 +818,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           data: {
             status: 'done',
             completedAt: now,
-            comment: kkmCloseConfirmation?.method==='not_printed' ? 'Сотрудник сообщил: чек закрытия не распечатался; сверка ОФД продолжается' : kkmCloseCheckAudit?.status==='confirmed' ? 'Закрытие кассы подтверждено ОФД' : 'Чек закрытия смены сохранён при сдаче смены',
+            comment: kkmCloseCheckAudit?.status==='one_c_not_opened' ? 'По данным 1С кассовая смена не открывалась; сверка ОФД продолжается' : kkmCloseCheckAudit?.status==='not_opened' ? 'Кассовая смена не открывалась; закрытие не требуется' : kkmCloseConfirmation?.method==='not_printed' ? 'Сотрудник сообщил: чек закрытия не распечатался; сверка ОФД продолжается' : kkmCloseCheckAudit?.status==='confirmed' ? 'Закрытие кассы подтверждено ОФД' : 'Чек закрытия смены сохранён при сдаче смены',
           },
         });
         const updatedRun = await tx.shiftControlRun.update({
