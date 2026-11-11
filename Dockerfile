@@ -7,15 +7,18 @@ RUN apt-get update \
 
 FROM base AS deps
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,id=portal-npm,target=/root/.npm,sharing=locked npm ci
 
 FROM base AS builder
+ARG TARGETARCH
+ARG PORTAL_BUILD_REVISION
+ENV PORTAL_BUILD_REVISION=$PORTAL_BUILD_REVISION
 ARG NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=0
 ENV NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=$NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
-RUN npm run build
+RUN --mount=type=cache,id=portal-next-${TARGETARCH},target=/app/.next/cache,sharing=locked npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
