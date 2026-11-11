@@ -1,3 +1,4 @@
+import { dianaAttendanceNote } from '@/lib/payroll-individual-note-server';
 import { payrollDayReviewEnabled } from '@/lib/payroll-day-review';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
@@ -14,5 +15,5 @@ export default async function PayrollPage({searchParams}:{searchParams?:Promise<
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');
-  return <AdminPayrollPage initialPeriod={initialPeriod} initialPaymentsTab={query?.tab==="payments"} liveWorkspace dayReviewEnabled={payrollDayReviewEnabled()} serverDraftsEnabled={payrollFeatureState().draftsEnabled} testEnvironment={process.env.PAYROLL_SETTLEMENT_PREVIEW === '1'} />;
+  return <AdminPayrollPage individualAttendanceNote={dianaAttendanceNote} initialPeriod={initialPeriod} initialPaymentsTab={query?.tab==="payments"} liveWorkspace dayReviewEnabled={payrollDayReviewEnabled()} serverDraftsEnabled={payrollFeatureState().draftsEnabled} testEnvironment={process.env.PAYROLL_SETTLEMENT_PREVIEW === '1'} />;
 }
