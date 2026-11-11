@@ -1,5 +1,5 @@
 'use client';
-import { withPayrollIndividualNote } from '@/lib/payroll-individual-note';
+import { payrollIndividualNote, withPayrollIndividualNote } from '@/lib/payroll-individual-note';
 import { payrollDisplayName } from '@/lib/payroll-display-name';
 import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 
@@ -3152,7 +3152,7 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   return { status: 'OK', reason: 'замечаний нет' };
 }
 
-export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, dayReviewEnabled = false, settlementRows, settlementEvidence, initialPeriod, initialPaymentsTab=false }: { initialPeriod?: string; initialPaymentsTab?: boolean; visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; dayReviewEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
+export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, serverDraftsEnabled = false, dayReviewEnabled = false, settlementRows, settlementEvidence, initialPeriod, initialPaymentsTab=false, individualAttendanceNote }: { individualAttendanceNote?: string; initialPeriod?: string; initialPaymentsTab?: boolean; visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; serverDraftsEnabled?: boolean; dayReviewEnabled?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
   const defaultPayrollPeriod = initialPeriod ? {year:initialPeriod.slice(0,4),month:String(Number(initialPeriod.slice(5))-1)} : liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
   const modernManagerCard = liveWorkspace || Boolean(settlementRows);
   const [showCurrentComparison, setShowCurrentComparison] = useState(false);
@@ -3879,7 +3879,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     const advanceIssues = isPreliminary
       ? [...advanceResult.issues, ...(oneCAdvancesError ? [oneCAdvancesError] : !advanceRead ? ['Авансы из 1С ещё проверяются.'] : [])]
       : [];
-    const shadowRows: FullPayrollRow[] = advanceResult.rows.map(row => withPayrollIndividualNote(row, selectedPayrollPeriodKey));
+    const shadowRows: FullPayrollRow[] = advanceResult.rows.map(row => withPayrollIndividualNote(row, selectedPayrollPeriodKey, individualAttendanceNote));
     const baselineByEmployee = new Map((oneCShadowBaseline?.employeeResults ?? []).map((row) => [row.employeeName, row]));
     const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
     const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()])).filter((name) => {
@@ -6234,11 +6234,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
           <span>Исправление ведомости №{correction.runNumber}. До сохранения действует прежняя финальная версия.</span>
           <button type='button' disabled={isSavingPayroll || draftSync.saving} className='min-h-11 font-semibold' onClick={() => { setAutomaticDraft(null); setPayrollFinalApproval(null); setSelectedManager(null); setCorrection(null); }}>Вернуться к финальной</button>
         </div>}
-        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} onCorrect={() => void beginPayrollCorrection()} correcting={payrollHistoryActionId === 'correction'} />}
+        {workspaceFinalRun && <PayrollFinalOverview individualAttendanceNote={individualAttendanceNote} employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} onCorrect={() => void beginPayrollCorrection()} correcting={payrollHistoryActionId === 'correction'} />}
         {workspaceFinalRun && showCurrentComparison && !oneCShadowCalculation && <p role='status' className='rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600'>Текущие данные для сверки ещё недоступны. Утверждённые суммы выше сохранены и не изменяются. Состояние загрузки можно посмотреть в «Источниках и настройках».</p>}
         {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
           periodPicker={settlementRows || workspaceFinalRun ? <></> : periodPicker}
+          individualAttendanceNote={individualAttendanceNote}
           periodKey={selectedPayrollPeriodKey}
           period={`${months[Number(month)]} ${year}`}
           date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
@@ -7816,7 +7817,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                     {!savedCardRun && isAttendancePreviewPeriodCurrent && attendancePreview?.attendanceSources
                       ?.filter((source) => normalizePersonName(source.employee) === normalizePersonName(selectedManagerPayroll.manager))
                       .map((source) => <PayrollAttendanceSourceNote key={source.userId} source={source} />)}
-                    {!savedCardRun && selectedManagerSource === 'oneC' && oneCShadowCalculation?.mode === 'preliminary' && (selectedManagerPayroll.payrollReasons.some(reason => /опоздан|не заполнены.*дни|отработанн.*дн/i.test(reason)) || manualPayroll[selectedManagerPayroll.manager]?.source === 'manualCorrection') && <section className='rounded-xl border border-amber-200 bg-amber-50 p-4' aria-label='Исправить данные сотрудника'>
+                    {!savedCardRun && !payrollIndividualNote(selectedManagerPayroll.manager, selectedPayrollPeriodKey, individualAttendanceNote) && selectedManagerSource === 'oneC' && oneCShadowCalculation?.mode === 'preliminary' && (selectedManagerPayroll.payrollReasons.some(reason => /опоздан|не заполнены.*дни|отработанн.*дн/i.test(reason)) || manualPayroll[selectedManagerPayroll.manager]?.source === 'manualCorrection') && <section className='rounded-xl border border-amber-200 bg-amber-50 p-4' aria-label='Исправить данные сотрудника'>
                       <h3 className='font-semibold'>Дни и опоздания</h3>
                       <div className='mt-3 grid gap-3 sm:grid-cols-2'>
                         {selectedManagerPayroll.salaryRule !== 'daily' && <label className='grid gap-1 text-sm'>Опоздания
