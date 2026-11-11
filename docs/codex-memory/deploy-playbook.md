@@ -5,9 +5,20 @@ repeated mistakes from prior deployments.
 
 ## Default from 11 November 2026
 
+For each approved compatible release, use one native-Terminal sudo
+`portal-release session-start`, then ordinary SSH for log monitoring, upload and
+`session-confirm` after independent UI/business verification. The bounded root
+worker handles installation/rollback and expected-image registration. Do not
+open separate sudo windows for these normal steps. See the session workflow in
+`ops/release/README.md`. No sudo/security-setting changes are part of this.
+
+
 Use the guarded prebuilt-image process in `ops/release/README.md`. Host command
 `/usr/local/sbin/portal-release` and corrected maintenance are installed, tool
-revision `faa53f8`. Normal builds run outside the production VPS. Read
+revision `f82c912` (includes capacity correction `884390f`; initial adoption
+was `faa53f8`). Normal builds run outside
+the production VPS. Current capacity/rollback evidence is in
+`../ops/release-capacity-20261111.md`. Read
 `../ops/release-process-install-20261111.md` for preservation evidence and tooling
 rollback. Installation did not restart or change portal 1.24.6. The following
 manual command is a reviewed recovery fallback, not the default release path.
@@ -177,3 +188,17 @@ mount list changed hash; permutation matching proved identical env/mount content
 The successful retry normalized order and preserved exact app/DB identities,
 start time, image/volume inventories, registry and timer state. No pruning or
 application release occurred. See the installation report for full identities.
+
+
+## Release capacity correction — 2026-11-11
+
+The owner approved fixing release headroom after a 15.2 GiB cleanup result left
+only 208 MiB above the reserve, less than the 313 MiB pending archive. Use
+`prepare`'s capacity.json or `plan` for existing bundles, then the VPS read-only
+`portal-release check-space` BEFORE transferring the archive. The 15 GiB reserve
+is not reduced. Budget stored layers + twice expanded layer tar bytes + 1 GiB,
+plus the archive before transfer; shared Docker/containerd filesystems are not
+counted twice. Pre-load and post-load checks remain mandatory. The optional
+maintenance release headroom changes only that explicit pass's capacity target;
+daily scheduling and every deletion protection stay unchanged. A capacity budget
+is not authorization for wider cleanup or additional disk purchases.

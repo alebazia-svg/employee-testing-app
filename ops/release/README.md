@@ -1,15 +1,84 @@
 # Guarded portal image delivery
 
 Installed on the VPS on 11 November 2026, initially at 18:24 Moscow. Current
-host tool revision is `884390f` (capacity correction installed at 18:58 Moscow). This is now the default for subsequent compatible releases. The
+host tool revision is `f82c912` (one-password workflow installed at 20:06 Moscow;
+capacity correction `884390f` remains included). This is now the default for subsequent compatible releases. The
 installation did not deploy an application image. Existing application behavior,
 background schedules, database, uploads, backups and rollback policy are preserved.
-See `docs/ops/release-capacity-20261111.md` for current evidence/rollback and
+See `docs/ops/release-single-auth-20261111.md` for current evidence/rollback,
+`docs/ops/release-capacity-20261111.md` for capacity evidence, and
 `docs/ops/release-process-install-20261111.md` for the initial installation.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
 with one checked-in installer. It does not introduce another hosting service.
+
+## Normal release: one sudo entry point
+
+Use the session workflow below for an already approved compatible release.
+Prepare and test the image locally before requesting a password. Create a private
+incoming directory as Bela and transfer **only** the small capacity plan first.
+Compute the plan SHA-256 locally and review the exact image/base/target/options.
+
+Start once in native Terminal, with the password only there:
+
+```sh
+sudo portal-release session-start \
+  --plan /home/bela/<attempt>/capacity.json --plan-sha256 <reviewed-sha256> \
+  --incoming /home/bela/<attempt>/incoming --origin https://team.mobo-opt.ru \
+  --remove-archive --apply
+```
+
+The incoming directory must already exist, be Bela-owned mode 700 and on the
+same filesystem as the root session store. Leave `image.tar.gz` absent until the
+worker reports `READY_FOR_TRANSFER`. Do not open another sudo window to perform
+capacity checks or registration for this session. When the exact operation also
+includes an approved existing-policy storage pass, include
+`--approved-storage-maintenance`; this permits one pass only if capacity is short.
+No cleanup happens implicitly or outside the existing retention policy.
+
+The command validates and pins the small plan and starts one bounded, detached
+transient systemd worker. `STARTED_NOT_COMPLETE` means launch only. It prints the
+session ID and exchange directory `/home/bela/portal-release-session-<id>/`.
+Codex must monitor `events.jsonl` through normal SSH without another password,
+remain with the task and continue automatically; do not ask Bela to send `готово`.
+
+After `READY_FOR_TRANSFER`, upload normally to
+`incoming/image.tar.gz.partial`, then rename it to `incoming/image.tar.gz` only
+when SCP finishes. The worker checks size/checksum/ownership, promotes the
+archive by same-filesystem rename, rechecks the approved source and calls the
+existing capacity/install/rollback implementation under the shared lock. A
+Terminal/SSH disconnect does not terminate this worker. No permanent service,
+NOPASSWD rule, sudo timeout change or password storage is introduced.
+
+After `AWAITING_INDEPENDENT_VERIFICATION`, perform the actual public metadata,
+health, authenticated UI/business and affected background-job checks. Only when
+those checks pass, Codex submits this ordinary-data command through normal SSH:
+
+```sh
+portal-release session-confirm --exchange /home/bela/portal-release-session-<id> \
+  --confirm-independent-verification
+```
+
+It requires no sudo and sends no executable instruction. The root worker accepts
+only the exact pinned session/image/commit, rechecks health/source/public identity,
+registers that expected image using the existing guarded maintenance command and
+confirms all three protected images still exist. `--remove-archive` removes only
+this session's temporary archive after successful verification/registration.
+Monitor **COMPLETE** and independently verify public metadata; neither a worker
+launch nor the confirmation command's exit alone proves completion.
+
+`--reject` leaves the release unregistered. Upload timeout (default 15 minutes)
+changes no app; review timeout (default 30 minutes, maximum one hour) leaves the
+healthy installed release unregistered, never falsely verified. The worker exits
+with a distinct nonzero status for an unverified result. An explicitly reviewed
+rollback/recovery remains available. Existing installation failures still invoke
+the existing rollback immediately. A stale source, failed capacity check or new
+unapproved operation is a stop condition, not a reason to repeatedly prompt for
+passwords or extend the worker's authority.
+
+The lower-level install/check-space/register commands remain documented recovery
+and diagnostic tools. They are not extra sudo steps in the normal session path.
 
 ## Prepare locally, after an application release is approved
 
@@ -55,8 +124,9 @@ python3 ops/release/portal_release.py plan \
   --output /tmp/portal-approved-release-capacity.json
 ```
 
-Transfer only this small JSON first. Before uploading the archive, check the
-actual intended receive directory on the VPS:
+Transfer only this small JSON first. In the normal session path the worker
+performs this check internally before `READY_FOR_TRANSFER`. For a separately
+needed standalone diagnostic, check the intended receive directory on the VPS:
 
 ```sh
 sudo portal-release check-space --plan /tmp/portal-approved-release-capacity.json \

@@ -14,8 +14,10 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 
 ## Default: guarded prebuilt image delivery — installed 2026-11-11
 
-Use `ops/release/portal_release.py prepare` on the local build host, and the
-installed `/usr/local/sbin/portal-release install` on the VPS. Read
+Use `ops/release/portal_release.py prepare` on the local build host and one
+`sudo portal-release session-start` on the VPS. Monitor/upload/review confirmation
+use ordinary SSH without further sudo prompts. See the session sequence in
+`ops/release/README.md`; low-level install/check/register remain recovery tools. Read
 `ops/release/README.md`. The owner approved this as the default for subsequent
 compatible releases, retaining the existing approvals/version gates and current
 plus two verified rollback images. Do not rebuild on the shared production VPS
@@ -26,8 +28,8 @@ restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
 `docs/ops/release-process-install-20261111.md`. Application source/Docker cache
 changes are in the maintained branch for the next approved, versioned image;
 they were not injected into the running application. Current host tooling is
-`884390f`, with pre-transfer capacity planning; see
-`docs/ops/release-capacity-20261111.md` for its installation and rollback.
+`f82c912`, with the single-password session and pre-transfer capacity planning; see
+`docs/ops/release-single-auth-20261111.md` for current installation and rollback.
 
 The installer refuses schema/migration/Compose/startup changes, stale bases,
 pending migrations, stale verified registries and insufficient space. Never
