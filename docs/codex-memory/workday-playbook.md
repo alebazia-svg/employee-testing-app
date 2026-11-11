@@ -777,3 +777,29 @@ in OFD can supersede an unposted, unfiscalized payment draft. Closed case retrie
 are cancelled and older observations cannot reopen newer saved results. Existing
 notification style, source safeguards and actual-shift routing remain.
 Production evidence and exact changes: docs/ops/receipt-lifecycle-20261103.md.
+
+## ADMIN calendar actual days — owner decision 2026-11-11 (local, not released)
+
+Approved scope: the existing `/admin/attendance` main calendar derives actual
+working/off days from accepted QR starts since `APP_ATTENDANCE_FROM` (2026-10-24).
+A QR in WorkDayEntry or WorkdayStartIntent makes that Moscow date working,
+including an off/empty plan, an unfinished shift selection or a missing checkout.
+Without QR, finalize off at retail 20:00, wholesale 19:00, procurement 18:00 MSK;
+previous dates are finalized on read. A later accepted QR immediately wins.
+Future plans and vacations without QR retain their existing meaning. Source
+plans remain available in the existing app/Google layers and comparison tab.
+
+No scheduled writes or migration: `team-calendar-fact.ts` projects these facts
+on page load and existing refresh. QR read errors fail the page rather than
+inventing days off. Do not change employee schedules, payroll, QR timestamps,
+shift/checklist logic or notification policy as part of this calendar change.
+
+Forgotten QR can be corrected to working by ADMIN with a required reason, in
+the existing day dialog. The existing corrections API appends immutable
+AdminInboxEvent audit records (`sourceType=workday_calendar_fact`), without
+receipts or deliveries. Cancelling a manual correction appends a reset; it
+cannot invalidate real QR. Serializable writes, idempotency and expected latest
+revision protect retries/concurrent corrections. No fake WorkDay/QR is created.
+
+Implementation and scenarios are local in `codex/qr-calendar-fact-20261111`.
+Deployment requires separate approval and the normal live version gate.
