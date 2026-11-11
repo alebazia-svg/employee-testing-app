@@ -1,8 +1,11 @@
 # USDT register basis and supplier-debt matching — 11 November 2026
 
-Status: implemented and verified, **not released**. Code commit `32d5da9` on
-`codex/usdt-payment-basis-20261111`. Base is the exact installed calendar/KKM
-1.24.3 runtime `d0ec9b5` plus its documentation. No new release number assigned.
+Status: **released and independently verified as 1.24.6** on 11 November 2026.
+Runtime commit `ade055de8de596c3b5fd759a973fa4d95d5fbca7`, branch
+`codex/usdt-payment-basis-20261111`; source fix `32d5da9`.
+The candidate preserved the exact installed company-card 1.24.4 and KKM-copy
+1.24.5 (`6501f2f`) releases before the version increment. Unfinished warehouse
+work on the maintained source branch was not installed.
 
 Owner approved fixing the reported USDT payment and applying the verified rule
 to other requests. This is an extension of financial matching, not a manual
@@ -64,9 +67,40 @@ fall through into automatic reassignment.
   matching: paid retires; partial, ambiguous, unposted and incomplete remain
   active. No notification delivery was invoked.
 - TypeScript, final production build and `git diff --check` passed.
-- No production database mutation or deployment occurred. PostgreSQL write
-  integration and production buyer/PWA UI were not exercised; no persistence or
-  interface change is included.
+- Before installation, no production database mutation occurred. PostgreSQL
+  write integration and production buyer/PWA UI were not exercised; no
+  persistence or interface change is included.
+
+## Production release verification
+
+- Mac-built amd64 image
+  `sha256:edca439efd87b7a70d5236b8eac88738566a6a08eac85d1105557479811c0755`,
+  public build time `2026-11-11T14:50:23.842Z`; both public domains reported
+  1.24.6 and the server commit matched `ade055d`. HTTP health returned 200.
+- Deployment used the existing global storage/release lock, exact previous
+  commit/image gates, archive SHA-256 verification and prebuilt-image restart.
+  No schema, migration, env, notification service, mount or 1C package changed.
+- Independent fresh read-only replay on the installed source: 52 plans, 226
+  payments, 260 native expense requests. The target is paid, remaining zero;
+  all other **51 complete matching results are identical** to 1.24.5 on the
+  same responses. The source was complete, with 124 reads in 18.91 seconds.
+- Authenticated ADMIN calendar: Tural moved from waiting to payment history;
+  detail showed fully paid 8,000 USDT, RKO `00OF-002084`, full RKO 8,005.95 USDT
+  and 5.95 USDT unallocated. Waiting/history counts changed from 3/49 to 2/50.
+  The displayed application version was 1.24.6. The physical iPhone/buyer PWA
+  was not separately exercised for this server-only matching change.
+- Before/after comparison preserved all 52 plans, 33 receipt/requisite records,
+  201 events, 3 daily rates and 30 physical files. Only the existing display
+  evidence cache is excluded from business-row hashes; its normal refresh is
+  expected after new matching.
+- Owner explicitly approved deleting only the unused 1.24.2 image outside
+  current plus two reserves. The helper rechecked no container/registry use and
+  exact tags before removal. No other extra cleanup was authorized or performed.
+- Installer evidence: `/home/bela/mobo-usdt-1.24.6-install.log`; safe comparison
+  summary: `/home/bela/mobo-usdt-1.24.6-matching-summary.json`. Private readbacks
+  remain outside Git. Installer finished with `VERIFIED_RELEASE_COMPLETE`,
+  `INSTALL_EXIT=0`, healthy app and a verified registry containing 1.24.6 plus
+  1.24.5/1.24.4 rollback images.
 
 Changed files:
 
@@ -82,6 +116,6 @@ Changed files:
 
 Before any later approved release, recheck active parallel releases, live and
 deployment-branch versions, preserve the newest installed source and assign the
-next free patch. No release authority is inferred from this candidate note.
+next free patch. No future release authority is inferred from this note.
 The separate procurement-agent progress contract remains unchanged at 54.8/100;
 there are no changed stage IDs or new spending/1C-write permissions.
