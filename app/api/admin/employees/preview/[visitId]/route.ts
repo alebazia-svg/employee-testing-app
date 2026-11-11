@@ -14,6 +14,8 @@ import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 import { cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
 import { getMoscowDateKey } from '@/lib/workday';
+import { employeeShiftHint } from '@/lib/workday-extension';
+import { listOwnShiftChangeOptions } from '@/lib/workday-admin-shift-repair';
 import { readNotificationDetail } from '@/lib/notification-detail-reader';
 import { prisma } from '@/lib/prisma';
 import { receiptSelect, readProcurementReceipt, ReceiptError, legacyReceiptWhere } from '@/lib/procurement-receipts';
@@ -72,7 +74,16 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
         return Response.json(await loadDeliveryView(), { headers });
       } catch { return Response.json({ error: 'Данные временно недоступны.' }, { status: 503, headers }); }
     }
-    case 'change-shift': return Response.json(await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: getMoscowDateKey() }), { headers });
+    case 'change-shift': {
+      if (url.searchParams.get('live') === '1') {
+        // Read-only mirror of what the employee's own «Моя смена» sheet would offer.
+        const options = await listOwnShiftChangeOptions(prisma, { userId: user.id, department: user.department, date: getMoscowDateKey() });
+        const found = options.canChange ? await employeeShiftHint(prisma, { userId: user.id, department: user.department }) : null;
+        const hint = found && options.options.some((item) => item.code === found.toShiftCode) ? found : null;
+        return Response.json({ ...options, hint }, { headers });
+      }
+      return Response.json(await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: getMoscowDateKey() }), { headers });
+    }
     case 'today': return Response.json(await getEmployeeWorkdaySnapshot(user), { headers });
     case 'notifications': return Response.json(await loadEmployeeNotifications(user, true), { headers });
     case 'attention': return Response.json(await loadEmployeeAttention(user), { headers });

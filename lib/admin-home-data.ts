@@ -1,3 +1,6 @@
+import { loadTeamCalendarEvidence } from './team-calendar-evidence';
+import { calendarCorrectionSourceId } from './team-calendar-fact';
+import { resolveControlCalendarDay } from './team-control-calendar';
 import 'server-only';
 import { prisma } from './prisma';
 import { getMoscowDateKey, departmentLabel, formatTime, getMoscowMinutes } from './workday';
@@ -44,18 +47,24 @@ async function workday(now:Date):Promise<HomeWorkday>{
   loadOpenHandoverReviews(prisma),
   getTerminalFiscalWorkdaySummary({periodFrom:startOfDay,periodTo:new Date(startOfDay.getTime()+86_400_000)}),
  ]);
+ const calendarEvidence=await loadTeamCalendarEvidence(prisma,{userIds:users.map(u=>u.id),dates:[date],now,workdays:days});
  const result:HomeWorkday={date,working:0,off:0,completed:0,notStarted:0,actions:[],timing:[],departments:[],missingPlans:[],devices:[]};
  const groups=new Map<string,number>();
  for(const user of users){
   const day=days.find(row=>row.userId===user.id),run=runs.find(row=>row.userId===user.id);
   const g=googleDay(user.name,date,google.plans,google.marks);
   const plan=resolveTeamSchedule({name:user.name,appStatus:schedules.find(row=>row.userId===user.id)?.status,googlePlan:g.plan,googleAvailable:google.planAvailable,vacation:vacations.some(row=>row.userId===user.id)});
+  const evidence=calendarEvidence.get(calendarCorrectionSourceId(user.id,date));
+  const calendarDay=resolveControlCalendarDay({date,department:user.department,plan:plan.state,source:plan.source,vacation:vacations.some(row=>row.userId===user.id),qrAccepted:evidence?.qrAccepted??false,correction:evidence?.history[0],now,hasWorkDay:Boolean(day)});
   const attendance=resolveTeamAttendance({date,today:date,workDay:day,google:g,googleAvailable:google.marksAvailable,fallbackState:plan.label});
-  if(attendance.active){result.working++;groups.set(user.department,(groups.get(user.department)||0)+1);}else if(attendance.end!=='—'||day?.status==='completed')result.completed++;else if(plan.status==='off')result.off++;
-  const start=teamStartControl(plan.state,attendance.start!=='—',attendance.marksAvailable,date,date,getMoscowMinutes(now),clockMinutes(attendance.shift));
+  if(calendarDay.calendarState==='off'||calendarDay.calendarState==='vacation')result.off++;
+  // An audited working day without a created shift is accounted,
+  // but must not invent current presence or a completed shift on the home page.
+  else if(!calendarDay.settled){if(attendance.active){result.working++;groups.set(user.department,(groups.get(user.department)||0)+1);}else if(attendance.end!=='—'||day?.status==='completed')result.completed++;else if(plan.status==='off')result.off++;}
+  const start=calendarDay.settled?{missing:false}:teamStartControl(plan.state,attendance.start!=='—',attendance.marksAvailable,date,date,getMoscowMinutes(now),clockMinutes(attendance.shift));
   if(start.missing){result.notStarted++;result.actions.push({id:`start-${user.id}`,title:`${user.name}: проверить начало дня`,detail:'По плану нет отметки начала',href:detailHref(date,user.id),tone:'attention'});}
   if(['unknown','unavailable'].includes(plan.state))result.missingPlans.push({id:`plan-${user.id}`,title:`План: ${user.name}`,detail:plan.label,href:`/admin/attendance?date=${date}`});
-  const violations=evaluateWorkdayTiming({dateKey:date,department:user.department,scheduleStatus:plan.status,workDay:day,tasks:run?.tasks,now});
+  const violations=evaluateWorkdayTiming({dateKey:date,department:user.department,scheduleStatus:calendarDay.settled?'off':plan.status,workDay:day,tasks:run?.tasks,now});
   for(const v of violations){
    const action:HomeAction={id:`timing-${user.id}-${v.id}`,title:`${user.name}: ${v.label.toLocaleLowerCase('ru-RU')}`,detail:v.detail,href:detailHref(date,user.id),tone:'attention'};
    if(v.kind==='task_overdue'||v.kind==='missing_checkout')result.actions.push(action);else result.timing.push(action);

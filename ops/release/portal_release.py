@@ -409,6 +409,9 @@ def prepare(host, base, target, output, receipts_enabled):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1].startswith('session-'):
+        from portal_release_session import main as session_main
+        return session_main(sys.argv[1:])
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     build = sub.add_parser('prepare')
