@@ -6,7 +6,7 @@ import {readQrFunding,attachQrFunding} from '@/lib/procurement-qr-funding-source
 import { prisma } from "@/lib/prisma";
 import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
-import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
+import { fetchSupplierCurrencyPaymentDisplaySnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks, samePaymentSupplier } from "@/lib/procurement-manual-payment-links";
@@ -58,7 +58,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
       plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, from), to, includeHistory: true, historyConcurrency: 2 })),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
-      plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000, plans: rows })),
+      plansQuery.then((rows) => fetchSupplierCurrencyPaymentDisplaySnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000, plans: rows })),
     ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const procurementManagers =

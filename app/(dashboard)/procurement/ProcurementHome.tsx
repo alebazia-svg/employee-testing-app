@@ -24,7 +24,7 @@ import {cargoManagerAllowed} from '@/lib/procurement-cargo';
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
-import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
+import { fetchSupplierCurrencyPaymentDisplaySnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import {readQrFunding,attachQrFunding} from '@/lib/procurement-qr-funding-source';
 import { paymentEvidenceFrom } from "@/lib/procurement-ruble-payment-evidence";
@@ -127,7 +127,7 @@ async function readLive({user,initialPlans,generation,readOnly}:{user:Procuremen
     plansQuery,
     getLatestProcurementUsdtRate(todayKey),
     plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, includeHistory: true, historyConcurrency: 2 })),
-    plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000, plans: rows })),
+    plansQuery.then((rows) => fetchSupplierCurrencyPaymentDisplaySnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000, plans: rows })),
   ]);
   const { plansSourceError, evidenceSourceError } = procurementSourceHealth(plansResult, requestsResult, currencyPaymentsResult);
   const allPlans = plansResult.status === "fulfilled" ? plansResult.value : [];

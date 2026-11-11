@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchSupplierCurrencyPaymentSnapshot } from '../lib/procurement-currency-payment-source';
+import { fetchSupplierCurrencyPaymentSnapshot, fetchSupplierCurrencyPaymentDisplaySnapshot } from '../lib/procurement-currency-payment-source';
 import {hasConfirmedPaymentBasis} from '../lib/procurement-payment-basis';
 
 test('source reads exact register basis for an orderless payment without inventing an order', async t => {
@@ -139,4 +139,96 @@ test('orderless debt request discovers and verifies acquisition or header order 
   omit=true;assert.equal(hasConfirmedPaymentBasis((await read()).payments[0]),false,'partial discovery is not proof of a whole RKO');
   base=refs[0];assert.equal((await read()).payments[0].verifiedHeaderOrderRef,refs[0]);
   base='unknown-document';assert.equal(hasConfirmedPaymentBasis((await read()).payments[0]),false);
+});
+
+test('history reads only periods usable by headerless RKOs while current header state is always rechecked', async t => {
+  const env={...process.env};t.after(()=>{process.env=env;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const order='11111111-1111-4111-8111-111111111111';
+  const now=new Date(),day=(ago:number)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now.getTime()-ago*86400000));
+  const at=(ago:number)=>day(ago)+'T12:00:00+03:00';
+  let active=true;const windows:string[]=[];
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[
+      {ref:'header-rko',date:at(65),posted:true,deleted:false,document_amount:10,document_currency:'USDT',supplier_partner:'Supplier',contract:'Contract',base_document_ref:order},
+      {ref:'unlinked-rko',date:at(35),posted:true,deleted:false,document_amount:20,document_currency:'USDT',supplier_partner:'Supplier',base_document_ref:'',settlement_amount:200,settlement_currency:'руб',settlement_movements_count:1},
+    ]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[]});
+    if(url.pathname.includes('supplier-order-finance-control'))return Response.json({ok:true,request_orders:[]});
+    if(url.pathname.includes('supplier-settlements')){
+      assert.equal(url.searchParams.get('detail'),'document-evidence');
+      const from=url.searchParams.get('date_from')!,to=url.searchParams.get('date_to')!;windows.push(to);
+      const historical=from<=day(35)&&to>=day(35);
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',
+        as_of:to===day(0)?new Date().toISOString():to+'T23:59:59+03:00',
+        order:[{order_ref:order,supplier_name:'Supplier',posted:active,deleted:!active}],
+        due_date_movements:historical?[{source_recorder_ref:'unlinked-rko',settlement_object_ref:order,settlement_document_ref:'unlinked-rko',movement_date:at(35),movement_type:'Приход',raw_debt:0,raw_prepayment:200,currency_name:'руб'}]:[]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const read=()=>fetchSupplierCurrencyPaymentSnapshot({from:new Date(now.getTime()-70*86400000),to:now,plans:[{supplierPartner:'Supplier',orderRefs:[order]},{supplierPartner:'Supplier',orderRefs:[]}]});
+  const result=await read();assert.equal(result.complete,true);
+  assert.deepEqual(windows,[day(0),day(31)],'the header-only period at day 62 is unused; headerless history is retained');
+  assert.equal(result.payments[0].verifiedHeaderOrderRef,order);
+  assert.equal(result.payments[1].settlementOrderRef,order);
+  active=false;windows.length=0;
+  const reversed=await read();
+  assert.equal(reversed.payments[0].verifiedHeaderOrderRef,undefined);
+  assert.equal(reversed.payments[1].settlementOrderRef,undefined);
+  assert.deepEqual(windows,[day(0),day(31)]);
+});
+
+test('whole display reads join a running reconciliation, isolate results, and discard completed reads and errors', async t => {
+  const env={...process.env};t.after(()=>{process.env=env;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  let calls=0,fail=false,release!:()=>void;
+  let gate=new Promise<void>(resolve=>{release=resolve;});
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    calls++;await gate;
+    if(fail)throw Error('SOURCE_FAILED');
+    const url=new URL(input);
+    return Response.json(url.pathname.includes('supplier-currency')?{ok:true,rows:[]}:
+      url.pathname.includes('currency-cash-costing-plan')?{ok:true,events:[]}:{ok:true,cash_expense_orders:[]});
+  });
+  const input={from:new Date('2026-01-01'),to:new Date('2026-01-02'),plans:[]};
+  const first=fetchSupplierCurrencyPaymentDisplaySnapshot(input),second=fetchSupplierCurrencyPaymentDisplaySnapshot(input);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,3);
+  release();const [a,b]=await Promise.all([first,second]);
+  a.payments.push({ref:'changed'} as any);assert.deepEqual(b.payments,[]);
+  await fetchSupplierCurrencyPaymentDisplaySnapshot(input);assert.equal(calls,6,'a later screen read must fetch again');
+  await fetchSupplierCurrencyPaymentSnapshot(input);assert.equal(calls,9,'financial source stays independently fresh');
+  fail=true;gate=new Promise<void>(resolve=>{release=resolve;});
+  const failed=Promise.allSettled([fetchSupplierCurrencyPaymentDisplaySnapshot(input),fetchSupplierCurrencyPaymentDisplaySnapshot(input)]);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,12);release();
+  assert.ok((await failed).every(row=>row.status==='rejected'));
+  fail=false;await fetchSupplierCurrencyPaymentDisplaySnapshot(input);assert.equal(calls,15,'a failed read never blocks a fresh retry');
+});
+
+test('late display joins reuse the whole graph but changed manual links and financial reads start fresh graphs', async t => {
+  const env={...process.env};t.after(()=>{process.env=env;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const order='11111111-1111-4111-8111-111111111111',now=new Date();
+  const date=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric'}).format(now)+' 00:00:00';
+  let calls=0,release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    calls++;const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[{ref:'rko',date,posted:true,deleted:false,document_amount:1,document_currency:'USDT',supplier_partner:'Supplier',base_document_ref:''}]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[]});
+    if(url.pathname.includes('supplier-settlements')){
+      await gate;
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:new Date().toISOString(),order:[{order_ref:order,supplier_name:'Supplier',posted:true,deleted:false}],due_date_movements:[]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const input={from:new Date(now.getTime()-86400000),to:now,plans:[{supplierPartner:'Supplier',orderRefs:[order],oneCCashEvidence:{}}]};
+  const first=fetchSupplierCurrencyPaymentDisplaySnapshot(input);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,4);
+  const late=fetchSupplierCurrencyPaymentDisplaySnapshot({...input,plans:[{...input.plans[0],oneCCashEvidence:{lastCompletePaymentView:{verifiedAt:'changed'}}}]});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,4,'saving display evidence does not restart source reconciliation');
+  const fresh=fetchSupplierCurrencyPaymentSnapshot(input);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,7,'a financial action rereads the document lists even during a display scan');
+  const changed=fetchSupplierCurrencyPaymentDisplaySnapshot({...input,plans:[{...input.plans[0],oneCCashEvidence:{manualRubleLinks:[{ref:'rko',fingerprint:'changed'}]}}]});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,10,'manual payment identity changes cannot join a prior display scan');
+  release();await Promise.all([first,late,fresh,changed]);
 });
