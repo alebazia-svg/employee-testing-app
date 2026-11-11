@@ -187,6 +187,12 @@ class SessionTests(unittest.TestCase):
                 host.space()
         self.assertEqual(self.events[-1], ('CAPACITY_DETAIL', {'output':'SPACE_CHECK [{"shortfall_bytes":123}]'}))
 
+    def test_worker_main_does_not_report_an_unverified_exit_as_success(self):
+        with patch.object(session.os, 'geteuid', return_value=0), patch.object(session, 'worker', return_value=False):
+            with self.assertRaises(SystemExit) as result:
+                session.main(['session-worker', '--attempt', '/not-a-live-session'])
+            self.assertEqual(result.exception.code, 2)
+
     def test_data_reader_rejects_symlinks_and_unbounded_input(self):
         large = self.root / 'large.json'; large.write_bytes(b'x'*100)
         with self.assertRaises(core.ReleaseError): session.read_data(large, limit=10)
