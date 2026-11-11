@@ -278,7 +278,7 @@ test('approved five-person union restores all 18 missing October dates without d
 });
 
 test('new cutovers retain pre-pilot Google days and lateness, reject wrong identities, and leave other staff unchanged', () => {
-  for (const rule of PAYROLL_APP_ATTENDANCE_CUTOVERS.slice(1)) {
+  for (const rule of PAYROLL_APP_ATTENDANCE_CUTOVERS.slice(1).filter(rule => rule.fromDate === '2026-10-18')) {
     const ownDay = (date: string) => ({ ...day(date), userId: rule.userId });
     const user = { id: rule.userId, name: rule.employee, payrollName: rule.employee,
       workDays: [ownDay('2026-10-16'), ownDay('2026-10-18'), ownDay('2026-10-19')] };

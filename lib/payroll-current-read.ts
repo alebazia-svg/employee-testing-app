@@ -145,7 +145,7 @@ export function calculatePersonalCurrentPayroll(periodKey: string, userId: numbe
   const manual = prepareDailyPayrollInputs({ directory, manual: draft.manual, periodKey, finboxAmount: evidence.finboxAmount,
     attendance: { ...attendance, snapshot: { servedFrom: 'stored', sourceCheckedAt: evidence.attendance.sourceCheckedAt.toISOString(), savedAt: evidence.attendance.updatedAt.toISOString() } } });
   const base = buildDailyPayrollBase({ periodKey, directory, users: evidence.users, summaries: compact.managerSummaries,
-    manual, fixed: draft.fixed, purchase: draft.purchase, purchaseBase: purchases.approvedBase });
+    manual, fixed: draft.fixed, purchase: draft.purchase, purchaseBase: purchases.approvedBase, attendance: { ...attendance, snapshot: { servedFrom: 'stored', sourceCheckedAt: evidence.attendance.sourceCheckedAt.toISOString(), savedAt: evidence.attendance.updatedAt.toISOString() } } });
   const bonuses = validatePayrollBonuses(draft.bonuses, base.map(row => row.manager));
   const allRows = applyPayrollBonuses(base, bonuses);
   const rows = allRows.filter(row => row.manager === name);

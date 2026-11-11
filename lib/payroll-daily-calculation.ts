@@ -1,3 +1,4 @@
+import { purchasePayrollAttendance } from './payroll-purchase-attendance';
 import {
   agentCreditCommissionEmployee, applyAutomaticAttendanceInputs, applyBelaPercentRule,
   buildFixedPayrollRows, buildFullPayrollRow, buildPurchasePayrollRow,
@@ -44,13 +45,14 @@ export function buildDailyPayrollBase(input: {
   fixed: Record<string, FixedPayrollInput>;
   purchase: PurchasePayrollInput;
   purchaseBase: number;
+  attendance?: PayrollAttendancePreviewResponse | null;
 }) {
   const sales = buildSalesPayrollSummaries(input.summaries, input.directory)
     .map(summary => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, input.manual), input.directory));
   const fixed = buildFixedPayrollRows(input.fixed, input.periodKey, input.directory);
   const purchase = buildPurchasePayrollRow(input.purchase, {
     fileName: 'Автоматические данные 1С', base: input.purchaseBase, sourceRow: null,
-  }, input.directory);
+  }, input.directory, purchasePayrollAttendance(input.periodKey, input.attendance));
   const unconfigured = buildUnconfiguredPayrollRows(input.users, input.directory, input.periodKey, new Set(sales.map(row => row.manager)));
   return applyBelaPercentRule([...sales, ...fixed, purchase, ...unconfigured], input.periodKey);
 }

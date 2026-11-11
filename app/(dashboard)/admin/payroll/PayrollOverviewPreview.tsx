@@ -72,6 +72,7 @@ export default function PayrollOverviewPreview(p: Props) {
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 border-y border-slate-100 px-4 py-2">
       <button data-payroll-read-action type="button" onClick={()=>setReview(v=>!v)} aria-expanded={review} aria-controls="payroll-preview-checks" className={button+(count?' !border-amber-200 !bg-amber-50 !text-amber-950':'')}>{review?'Скрыть проверку':count?`Проверить · ${count}`:'Проверки пройдены'}</button>
+      {p.attendanceLoading && <span role="status" className="text-xs text-slate-500">Рабочие дни обновляются…</span>}
       {(p.saveDisabled || p.exportDisabled) && <details className="max-w-full text-xs text-slate-600">
         <summary className="flex min-h-11 cursor-pointer items-center">Почему ведомость недоступна?</summary>
         <ul className="mb-2 max-w-xl list-disc space-y-1 pl-4">{[...new Set([...(p.saveDisabled ? p.saveReasons ?? [] : []), ...(p.exportDisabled ? p.exportReasons ?? [] : [])])].map(reason=><li key={reason}>{reason}</li>)}</ul>

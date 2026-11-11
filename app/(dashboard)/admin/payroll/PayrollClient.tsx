@@ -1,5 +1,7 @@
 'use client';
 import { payrollIndividualNote, withPayrollIndividualNote } from '@/lib/payroll-individual-note';
+import { purchasePayrollAttendance } from '@/lib/payroll-purchase-attendance';
+import { refreshPayrollAttendanceClient } from '@/lib/payroll-attendance-refresh-client';
 import { payrollDisplayName } from '@/lib/payroll-display-name';
 import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 
@@ -3049,7 +3051,7 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
 function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '', manager = '') {
   if (salaryType === 'purchase_daily') return 'отработанные дни × ставка за день − выплаченный аванс';
   if (isFilmTrainee(manager)) return 'выручка всех услуг × 70% − выплаченный аванс; товары без начисления';
-  if (salaryType === 'purchase_manager') return '20 × 600 + бонус с закупок 1,75% + доплата до минимальной зарплаты − аванс − удержание';
+  if (salaryType === 'purchase_manager') return `${periodKey >= '2026-11' ? 'фактические выходы' : '20'} × 600 + бонус с закупок 1,75% + доплата до минимальной зарплаты − аванс − удержание`;
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
   if (salaryType === 'vl_percent') return getBelaMinimum(periodKey) ? '12% от обычных начислений выбранных сотрудников + доплата до минимальной зарплаты − аванс; разовая премия сверху' : '12% от обычных начислений выбранных сотрудников';
   if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
@@ -3260,6 +3262,10 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const payrollFixedStorageKey = `payroll-fixed-${year}-${month}`;
   const payrollPurchaseStorageKey = `payroll-purchase-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
+  const manualAttendanceAbort = useRef<AbortController | null>(null);
+  const attendancePeriodRef = useRef(selectedPayrollPeriodKey);
+  attendancePeriodRef.current = selectedPayrollPeriodKey;
+  useEffect(() => () => { manualAttendanceAbort.current?.abort(); }, [selectedPayrollPeriodKey]);
   useEffect(() => {
     setCorrection(null); setAutomaticDraft(null); setPayrollFinalApproval(null);
   }, [selectedPayrollPeriodKey]);
@@ -3461,6 +3467,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   useEffect(() => {
     if (!isSelectedPayrollPeriodAvailable) return;
     let cancelled = false;
+    const controller = new AbortController();
+    let baseline: string | undefined;
     setAttendancePreviewError('');
     setIsAttendancePreviewLoading(true);
     const endpoint = `/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
@@ -3472,6 +3480,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         const storedPayload = await storedResponse.json();
         if (storedResponse.ok && !cancelled) {
           hasStoredPreview = true;
+          baseline = storedPayload.snapshot?.sourceCheckedAt;
           setAttendancePreview(storedPayload as PayrollAttendancePreviewResponse);
         } else if (storedResponse.status !== 404 && !cancelled) {
           setAttendancePreviewError(storedPayload?.error || 'Не удалось открыть сохранённые данные о рабочих днях.');
@@ -3487,9 +3496,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
 
       if (cancelled || (!isSelectedPayrollPeriodCurrent && hasStoredPreview)) return;
       try {
-        const refreshResponse = await fetch(endpoint, { method: 'POST', cache: 'no-store' });
-        const refreshedPayload = await refreshResponse.json();
-        if (!refreshResponse.ok) throw new Error(refreshedPayload?.error || 'Не удалось обновить данные о рабочих днях.');
+        const refreshedPayload = await refreshPayrollAttendanceClient(endpoint, { baseline, signal: controller.signal });
         if (!cancelled) {
           const preview = refreshedPayload as PayrollAttendancePreviewResponse;
           setAttendancePreview(preview);
@@ -3505,7 +3512,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         if (!cancelled) setIsAttendancePreviewRefreshing(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [isSelectedPayrollPeriodAvailable, isSelectedPayrollPeriodCurrent, month, selectedPayrollPeriodKey, year]);
 
   useEffect(() => {
@@ -3561,7 +3568,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     [payrollManagerSummaries, manualPayroll, payrollEmployeeDirectory, attendancePreview, selectedPayrollPeriodKey],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory), [fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory]);
-  const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport, payrollEmployeeDirectory), [purchasePayroll, purchaseReport, payrollEmployeeDirectory]);
+  const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport, payrollEmployeeDirectory, purchasePayrollAttendance(selectedPayrollPeriodKey, attendancePreview)), [purchasePayroll, purchaseReport, payrollEmployeeDirectory, selectedPayrollPeriodKey, attendancePreview]);
   const unconfiguredPayrollRows = useMemo(
     () => buildUnconfiguredPayrollRows(payrollDirectoryUsers, payrollEmployeeDirectory, selectedPayrollPeriodKey, new Set(salesPayrollRows.map((row) => row.manager))),
     [payrollDirectoryUsers, payrollEmployeeDirectory, salesPayrollRows, selectedPayrollPeriodKey],
@@ -3857,7 +3864,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     const shadowRegularRows = buildDailyPayrollBase({ periodKey: selectedPayrollPeriodKey,
       directory: shadowEmployeeDirectory, users: payrollDirectoryUsers, summaries: shadowManagerSummaries,
       manual: shadowManualPayroll, fixed: shadowFixedPayroll, purchase: shadowPurchaseInput,
-      purchaseBase: oneCShadowSource.purchases.approvedBase });
+      purchaseBase: oneCShadowSource.purchases.approvedBase, attendance: attendancePreview });
     const savedBonuses: PayrollBonus[] = oneCShadowBaseline
       ? oneCShadowBaseline.employeeResults.flatMap((employee) =>
         (employee.adjustments ?? [])
@@ -4501,17 +4508,17 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   }
 
   async function loadAttendancePreview() {
+    manualAttendanceAbort.current?.abort();
+    const controller = new AbortController();
+    manualAttendanceAbort.current = controller;
+    const requestPeriod = selectedPayrollPeriodKey;
     setAttendancePreviewError('');
     setAttendanceApplyResult(null);
     setIsAttendancePreviewRefreshing(true);
 
     try {
-      const response = await fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { method: 'POST', cache: 'no-store' });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось загрузить предпросмотр посещаемости.');
-      }
+      const payload = await refreshPayrollAttendanceClient(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { baseline: attendancePreview?.snapshot.sourceCheckedAt, signal: controller.signal });
+      if (controller.signal.aborted || attendancePeriodRef.current !== requestPeriod) return;
 
       const preview = payload as PayrollAttendancePreviewResponse;
       setAttendancePreview(preview);
@@ -4519,11 +4526,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         ? `Показаны сохранённые данные. ${preview.snapshot.refreshError}`
         : '');
     } catch (caught) {
+      if (controller.signal.aborted || attendancePeriodRef.current !== requestPeriod) return;
       setAttendancePreviewError(caught instanceof Error
         ? `${attendancePreview ? 'Сохранённые данные оставлены без изменений. ' : ''}${caught.message}`
         : 'Не удалось обновить данные о рабочих днях.');
     } finally {
-      setIsAttendancePreviewRefreshing(false);
+      if (!controller.signal.aborted && attendancePeriodRef.current === requestPeriod) setIsAttendancePreviewRefreshing(false);
     }
   }
 
@@ -5269,7 +5277,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         pushBonuses();
         push('Начислено за месяц', null, 'оплата за отработанные дни + разовые премии', row.grossPay);
         if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
-        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey, row.manager), row.netPay, row.comment);
         return rowsForEmployee;
       }
 
@@ -5285,14 +5293,14 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       }
 
       if (row.salaryType === 'purchase_manager') {
-        push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay);
+        push('Оплата по дням', row.workedDays, `${row.workedDays ?? 'не подтверждено'} × ${row.dayRate}`, row.dayPay);
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
         if (Math.abs(row.purchaseTargetAdjustment) > 0.005) push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
         pushBonuses();
         push('Начислено за месяц', null, 'оплата за дни + процент с закупок + доплата + премии', row.grossPay);
         if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
         if (row.fixedDeduction) push('Удержание', row.fixedDeduction, 'вычитается после начисления зарплаты', -row.fixedDeduction);
-        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey, row.manager), row.netPay, row.comment);
         return rowsForEmployee;
       }
 
