@@ -1,4 +1,5 @@
 'use client';
+import { payrollIndividualNote } from '@/lib/payroll-individual-note';
 import { payrollDisplayName } from '@/lib/payroll-display-name';
 import { useState, type ReactNode } from 'react';
 import { payrollDepartmentTone } from './payroll-department-tone';
@@ -9,7 +10,7 @@ import type { PayrollReviewDecision } from '@/lib/payroll-review-save';
 
 type Row = { employeeName: string; shadowGrossPay: number; shadowNetPay: number; advance: number; requiresReview: boolean; detailDifferences: string[] };
 type Props = {
-  period: string; date: string; updatedAt?: string; costVerified?: boolean; preliminary: boolean; stale: boolean;
+  period: string; periodKey?: string; date: string; updatedAt?: string; costVerified?: boolean; preliminary: boolean; stale: boolean;
   saveReasons?: string[]; exportReasons?: string[];
   periodPicker?: ReactNode;
   columns: { name: string; rows: Row[] }[][];
@@ -126,6 +127,7 @@ export default function PayrollOverviewPreview(p: Props) {
               return <button data-payroll-read-action key={r.employeeName} type="button" onClick={()=>p.onEmployee(r.employeeName)} className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-600">
                 <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{payrollDisplayName(r.employeeName)}</span>
                 <span className="whitespace-nowrap text-sm font-bold tabular-nums text-slate-950">{money(r.shadowGrossPay)}</span>
+                {payrollIndividualNote(r.employeeName, p.periodKey ?? '') && <span className="col-span-2 text-xs font-medium text-amber-800">{payrollIndividualNote(r.employeeName, p.periodKey ?? '')}</span>}
                 {needsReview && reviewLabel && <span title={reasons.join('\n')} className="col-span-2 text-xs font-medium text-amber-800">{reviewLabel}</span>}
                 {p.advancesValid && (r.advance!==0 || deduction!==0) && <span className="col-span-2 text-xs leading-relaxed text-slate-600">
                   {r.advance!==0&&<>Аванс: {money(r.advance)} · </>}{deduction!==0&&<>Удержания: {money(deduction)} · </>}После авансов: {money(r.shadowNetPay)}
