@@ -33,8 +33,11 @@ bypass those gates. Reconcile the exact live runtime source with the maintained
 branch before preparing each release. Independent business/UI verification still
 precedes registration with `--expected-current <verified-image-id>`.
 
-The maintenance script now uses 16106127360 bytes for both cleanup target and
-15 GiB floor. Its schedule and protection of all container-used/unknown images,
+The reserve is 16106127360 bytes (15 GiB). Before archive transfer, run the
+capacity plan/check described in `ops/release/README.md`; measured archive/load
+headroom is additional to that reserve. Approved maintenance can use
+`--release-headroom-bytes N` without broadening eligible deletion. The default
+daily maintenance target remains 15 GiB. Its schedule and protection of all container-used/unknown images,
 volumes and backups are unchanged. Installation did not execute cleanup.
 
 ## Safe deploy flow

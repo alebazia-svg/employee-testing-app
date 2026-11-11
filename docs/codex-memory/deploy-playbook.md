@@ -177,3 +177,17 @@ mount list changed hash; permutation matching proved identical env/mount content
 The successful retry normalized order and preserved exact app/DB identities,
 start time, image/volume inventories, registry and timer state. No pruning or
 application release occurred. See the installation report for full identities.
+
+
+## Release capacity correction — 2026-11-11
+
+The owner approved fixing release headroom after a 15.2 GiB cleanup result left
+only 208 MiB above the reserve, less than the 313 MiB pending archive. Use
+`prepare`'s capacity.json or `plan` for existing bundles, then the VPS read-only
+`portal-release check-space` BEFORE transferring the archive. The 15 GiB reserve
+is not reduced. Budget stored layers + twice expanded layer tar bytes + 1 GiB,
+plus the archive before transfer; shared Docker/containerd filesystems are not
+counted twice. Pre-load and post-load checks remain mandatory. The optional
+maintenance release headroom changes only that explicit pass's capacity target;
+daily scheduling and every deletion protection stay unchanged. A capacity budget
+is not authorization for wider cleanup or additional disk purchases.

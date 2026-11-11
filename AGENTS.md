@@ -321,5 +321,9 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 - Schema, migration, Compose or startup changes need a separately reviewed release;
   the compatible-release installer intentionally refuses them. Never bypass a
   stale-base, pending-migration, low-space or verified-registry guard.
+- Before transferring an image archive, use the bundle's `capacity.json` (or
+  measure an existing bundle with `plan`) and the installed VPS `check-space`.
+  Keep 15 GiB as the reserve; archive and measured load headroom are additional.
+  A larger cleanup target never authorizes deletion of protected/in-use data.
 - Installing the tooling does not release application changes. The working app
   stays on its current version until a separately approved, versioned release.
