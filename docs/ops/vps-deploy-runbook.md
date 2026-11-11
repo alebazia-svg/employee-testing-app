@@ -12,6 +12,23 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 - Env file: `server.env`
 - Uploads must stay mounted as Docker volume at `/app/uploads`.
 
+## Guarded prebuilt image path — implementation candidate, 2026-11-11
+
+The checked-in `ops/release/portal_release.py` and its README provide preparation
+outside the VPS and a guarded installer. This code is not yet installed or
+production-verified; do not claim the production process has already changed.
+Use it for a separately approved compatible release after reconciling the live
+source/version. It refuses schema/migration/Compose/startup changes, stale image
+registries and insufficient space; never bypass those guards. The existing
+manual flow below remains a documented fallback requiring the same approvals.
+
+The maintenance correction now uses 16106127360 bytes for both cleanup target
+and the 15 GiB floor. Install that reviewed host script separately; changing its
+repository copy does not update `/usr/local/sbin/portal-storage-maintenance`.
+After independent UI/business verification, registration supports
+`--expected-current <full-image-id>` to reject a concurrent release. Registration
+still uses the existing lock and preserves current plus two verified reserves.
+
 ## Safe deploy flow
 
 ### Disk-capacity gate (incident 2026-10-18)

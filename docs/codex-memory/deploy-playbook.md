@@ -141,3 +141,16 @@ monitor unit Result plus application health. A launch success or EXIT0 alone doe
 not establish installation. Require deploy-ready, independent commit/metadata/UI
 verification and the final verified-registry marker. This does not authorise a
 new release, broaden sudo access or introduce a permanent service.
+
+
+## Release reliability implementation — 2026-11-11
+
+Owner approved hardening after read-only diagnosis. Candidate lives in
+`ops/release/` (README, preparer/installer, failure tests). It extends existing
+Compose and verified registry; does not remove test environments, backups or
+images. Local code is not host installation or production approval. Use the
+candidate's failure/rollback checks before adopting it for an approved release.
+Storage correction unifies the 15 GiB target in bytes; optional expected-current
+registration prevents accidentally verifying another concurrently installed image.
+Keep the independent UI/business and background-job checks before registration.
+No app version is allocated until actual release preparation against live/source.
