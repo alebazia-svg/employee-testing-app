@@ -117,6 +117,43 @@ export function matchProcurementPaymentEvidence(
     .filter((payment) => payment.posted && !payment.deleted && payment.documentCurrency === 'USDT' && payment.documentAmount > 0)
     .sort((a, b) => oneCDateTimestamp(a.date) - oneCDateTimestamp(b.date));
 
+  // Only the new supplier-debt fallback needs this chronological coverage view.
+  // Keep the established allocation pass intact and do not persist this view.
+  const coveredBefore = (at: number) => {
+    const coverage = new Map([...evidence].map(([id, row]) => [id, {
+      ...structuredClone(row), cashOrders: row.cashOrders.filter(p => oneCDateTimestamp(p.date) < at),
+    }] as const));
+    for (const plan of plans) {
+      const row = coverage.get(plan.id)!, prior = allocations.get(plan.id)!;
+      const target = Number(plan.foreignAmount || 0);
+      const complete = target > 0 ? prior.foreign + tolerance(target) >= target :
+        prior.rubles + (prior.unknownEquivalent ? prior.referenceRubles : 0) + tolerance(plan.plannedAmount) >= plan.plannedAmount;
+      if (prior.foreign > 0 && row.state !== 'MISMATCH') Object.assign(row, {
+        state: complete ? 'PAID_BY_ONE_C' : 'PARTIALLY_PAID_BY_ONE_C',
+        paidForeignAmount: prior.foreign, paidAmount: prior.rubles, currencyPayments: prior.payments,
+      });
+    }
+    const earlier = uniquePayments.filter(p => oneCDateTimestamp(p.date) < at);
+    applyRublePaymentEvidence(plans, earlier, coverage, options.allowSmallRemainder === true);
+    return {rows: coverage, covered: (plan: EvidencePlan) => {
+      const row = coverage.get(plan.id)!;
+      if (row.state === 'MISMATCH' || row.state === 'NEEDS_REVIEW' || row.rubleAllocationNeedsReview) return false;
+      if (row.state === 'PAID_BY_ONE_C' && row.currencyPayments.length &&
+          row.currencyPayments.every(p => oneCDateTimestamp(p.date) < at)) return true;
+      const orders = [...new Map(row.cashOrders.map(p => [p.ref.toLowerCase(), p])).values()];
+      if (!orders.length || orders.some(p => !p.ref || !(p.amount > 0) || !Number.isFinite(p.amount) ||
+        !(oneCDateTimestamp(p.date) < at) || [...coverage.values()].filter(other =>
+          other.cashOrders.some(r => r.ref.toLowerCase() === p.ref.toLowerCase())).length !== 1)) return false;
+      const issuedMinor = orders.reduce((sum, p) => sum + Math.round(p.amount * 100), 0);
+      if (!Number.isSafeInteger(issuedMinor)) return false;
+      const issued = issuedMinor / 100;
+      return issuedMinor >= Math.round(plan.plannedAmount * 100) || options.allowSmallRemainder === true &&
+        (smallRubleRemainder(plan, issued) !== null || !row.currencyPayments.length && smallForeignRubleFundingRemainder(plan, issued) !== null) &&
+        confirmedRubleRemainderPayments(plan, orders, earlier);
+    }};
+  };
+  const ambiguousDebtPlans = new Set<string>();
+
   for (const payment of payments) {
     const completedOwners = plans.filter(p => p.status === COMPLETED_WITHOUT_TOPUP && p.completedPaymentRefs?.includes(payment.ref));
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => link.ref.toLowerCase() === payment.ref.toLowerCase()));
@@ -148,14 +185,46 @@ export function matchProcurementPaymentEvidence(
         (Number(candidate.foreignAmount)>0?prior.foreign<Number(candidate.foreignAmount):prior.rubles<candidate.plannedAmount);
     }):[];
     const cargoOwner=cargoOwners.length===1&&cargoOwners[0].paymentPurpose==='DELIVERY'?cargoOwners[0]:undefined;
+    let debtOwner: EvidencePlan | undefined;
+    const cancelledOrderOwner = plans.some(p => p.status === 'CANCELLED' && orderRef &&
+      p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef));
+    if (!manualOwners.length && !completedOwners.length && !cargoOwner && !cancelledOrderOwner && Number.isFinite(paymentAt) && paymentAt <= Date.now() && hasConfirmedPaymentBasis(payment) &&
+        eligiblePlans.some(p => p.status === 'APPROVED' && !p.orderRefs.length &&
+          Date.parse(p.createdAt || '') <= paymentAt && samePaymentSupplier(p,payment)) &&
+        ![...evidence.values()].some(row => row.cashOrders.some(p => p.ref.toLowerCase() === payment.ref.toLowerCase()))) {
+      const {covered, rows: priorEvidence} = coveredBefore(paymentAt);
+      const outstanding = plans.filter(p => p.status === 'APPROVED' && Number.isFinite(Date.parse(p.createdAt || '')) &&
+        Date.parse(p.createdAt!) <= paymentAt && samePaymentSupplier(p, payment) && !covered(p));
+      // A current exact order owner wins; paid historical owners keep their
+      // original RKOs but do not compete for this later debt payment.
+      const exactOwner = eligiblePlans.some(p => orderRef && Date.parse(p.createdAt || '') <= paymentAt &&
+        samePaymentSupplier(p,payment) && !covered(p) && p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef) &&
+        (p.status !== COMPLETED_WITHOUT_TOPUP || p.completedPaymentRefs?.includes(payment.ref)));
+      if (outstanding.some(p => !p.orderRefs.length) && !exactOwner && !outstanding.some(p => orderRef &&
+        p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef))) {
+        const candidate = outstanding.length === 1 ? outstanding[0] : undefined;
+        const target = Number(candidate?.foreignAmount || 0);
+        const prior = candidate ? allocations.get(candidate.id)! : undefined;
+        const conflict = candidate?.supplierCounterparty.trim() && payment.counterparty?.trim() &&
+          !samePaymentSupplier({supplierPartner:'',supplierCounterparty:candidate.supplierCounterparty}, {...payment,supplier:''});
+        const supplierConflict = candidate?.supplierPartner.trim() && payment.supplier?.trim() &&
+          !samePaymentSupplier({supplierPartner:candidate.supplierPartner,supplierCounterparty:''}, {...payment,counterparty:''});
+        if (candidate?.paymentMethod === 'USDT' && !candidate.orderRefs.length && !candidate.hasPendingRevision &&
+            target > 0 && Number.isFinite(target) && !conflict && !supplierConflict && prior &&
+            !priorEvidence.get(candidate.id)!.cashOrders.length &&
+            payment.documentAmount <= Math.max(0, target - prior.foreign) + tolerance(target)) debtOwner = candidate;
+        else for (const p of outstanding) if (p.paymentMethod === 'USDT') ambiguousDebtPlans.add(p.id);
+      }
+    }
     for (const plan of eligiblePlans) {
+      if (debtOwner && debtOwner.id !== plan.id) continue;
       if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))continue;
       if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))continue;
       if (availableForeign <= 0.0000001) break;
       if (manualOwners.length) {
         if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || !['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') ||
             !plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) || !samePaymentSupplier(plan, payment)) continue;
-      } else if (cargoOwner?.id!==plan.id&&(!orderRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === orderRef) ||
+      } else if (cargoOwner?.id!==plan.id&&debtOwner?.id!==plan.id&&(!orderRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === orderRef) ||
         (!payment.baseDocumentRef && (settlementOwners.length!==1||settlementOwners[0].id!==plan.id)))) continue;
       const createdAt = plan.createdAt ? new Date(plan.createdAt).getTime() : Number.NaN;
       if (Number.isFinite(createdAt) && Number.isFinite(paymentAt) && createdAt > paymentAt) continue;
@@ -209,9 +278,10 @@ export function matchProcurementPaymentEvidence(
     const complete = targetForeign > 0
       ? allocation.foreign + tolerance(targetForeign) >= targetForeign
       : estimateCovered || allocation.rubles + tolerance(plan.plannedAmount) >= plan.plannedAmount;
+    const unresolvedDebt = ambiguousDebtPlans.has(plan.id) && !(allocation.foreign > 0 && complete);
     evidence.set(plan.id, {
       ...current,
-      state: allocation.unknownEquivalent && !estimateCovered ? 'NEEDS_REVIEW' : allocation.foreign > 0 ? complete ? 'PAID_BY_ONE_C' : 'PARTIALLY_PAID_BY_ONE_C' : current.state,
+      state: unresolvedDebt || allocation.unknownEquivalent && !estimateCovered ? 'NEEDS_REVIEW' : allocation.foreign > 0 ? complete ? 'PAID_BY_ONE_C' : 'PARTIALLY_PAID_BY_ONE_C' : current.state,
       paymentAmountNeedsConfirmation: allocation.unknownEquivalent && !estimateCovered,
       completionByRubleEstimate: estimateCovered,
       paidAmount: allocation.rubles,

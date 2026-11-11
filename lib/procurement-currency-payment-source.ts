@@ -236,11 +236,11 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       const originalProof={...payment,registerContractBasis:undefined};
       return hasConfirmedPaymentBasis(originalProof)?originalProof:payment;
     });
-    // An orderless debt plan may be paid against a contract in the register,
-    // although both header contract and header basis are empty. Read the exact
-    // RKO, not an order catalogue amount or a current advance balance.
-    const unresolved = combined.filter(p => p.posted && !p.deleted && ['РУБ', 'RUB'].includes(p.documentCurrency) &&
-      debtNames.has(normalize(p.supplier || '')) && (!hasConfirmedPaymentBasis(p)||input.plans?.some(plan=>plan.paymentPurpose==='DELIVERY'&&normalize(plan.supplierPartner)===normalize(p.supplier||''))) &&
+    // RUB or USDT debt may be settled against a native register contract with
+    // an empty header. For USDT, keep existing order proofs first and read the
+    // exact RKO only if still unresolved; never infer a contract from a balance.
+    const unresolved = combined.filter(p => p.posted && !p.deleted && ['РУБ', 'RUB','USDT'].includes(p.documentCurrency) &&
+      debtNames.has(normalize(p.supplier || '')) && (!hasConfirmedPaymentBasis(p)||p.documentCurrency!=='USDT'&&input.plans?.some(plan=>plan.paymentPurpose==='DELIVERY'&&normalize(plan.supplierPartner)===normalize(p.supplier||''))) &&
       (parseOneCDateTime(p.date)?.getTime() || 0) >= from.getTime());
     if (unresolved.length > 100) throw new Error('PAYMENT_BASIS_SCOPE_LIMIT');
     const verified = new Map<SupplierCurrencyPaymentRow, SupplierCurrencyPaymentRow>();

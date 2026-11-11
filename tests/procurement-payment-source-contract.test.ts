@@ -157,6 +157,9 @@ test('history reads only periods usable by headerless RKOs while current header 
     if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[]});
     if(url.pathname.includes('supplier-order-finance-control'))return Response.json({ok:true,request_orders:[]});
     if(url.pathname.includes('supplier-settlements')){
+      // An inactive order now triggers exact USDT basis verification. Keep this
+      // window/header regression independent by simulating the old API there.
+      if(url.searchParams.get('detail')==='payment-basis')return Response.json({ok:true,rows:[]});
       assert.equal(url.searchParams.get('detail'),'document-evidence');
       const from=url.searchParams.get('date_from')!,to=url.searchParams.get('date_to')!;windows.push(to);
       const historical=from<=day(35)&&to>=day(35);
