@@ -30,6 +30,14 @@ project from scratch.
 
 ## Read First By Task
 
+- KKM unopened-shift check: `../ops/kkm-not-opened-release-20261111.md` -
+  released/verified1.24.2 /913fdeb. OFD-primary no-opening proof skips closing/photo;
+  explicit1C fallback keeps ADMIN-only OFD recheck open. Existing empty/open,
+  reopen, unknown-data, cash/credit and photo/history guards retained. Actual
+  installed default verifier passed for Zukhra10November on direct server sources.
+  No schema/financial/1C writes or new payment-calendar change. Historical
+  saved submission not backfilled; current plus two verified reserves registered.
+
 - ADMIN calendar actual days: `../ops/qr-calendar-release-20261111.md` —
   released/verified1.24.0 /b37a9aa from1.23.4. Accepted QR means working;
   no QR after retail20:00/wholesale19:00/procurement18:00 MSK means off.
