@@ -1,9 +1,9 @@
 # Payroll follow-ups — local candidate, 11 November 2026
 
-NOT RELEASED. Runtime base remains verified production 1.24.7 / 74e6539.
-Owner approved implementation of the following defined changes. No operations
-approval for this separate release has yet been given; allocate the next version
-only after approval and a fresh live/canonical/concurrent-release check.
+RELEASED with explicit owner operations approval: 1.24.8, runtime commit
+81c801b46333b1dbc4f356d75923af1b91123597, built 2026-11-11T16:20:53.010Z.
+Guarded prebuilt installation completed; public metadata, authenticated shared
+version label and server commit independently verified.
 
 ## Approved behavior
 
@@ -46,7 +46,7 @@ minimum/percentage/deductions and workbook advance provenance are covered.
 Existing component SSR visual check confirmed the short busy status, new name,
 preserved Diana remark and original row/amount layout in the local preview.
 That preview is explicitly static; it does not demonstrate live API transitions.
-Production refresh/rounding/Excel/saved-run verification remains a release gate.
+Production verification is recorded below.
 No production payroll save/FINAL or source refresh was performed by the audit.
 
 ## Changed files
@@ -67,5 +67,30 @@ No production payroll save/FINAL or source refresh was performed by the audit.
 - `tests/payroll-attendance-refresh-client.test.ts`
 - `tests/payroll-purchase-attendance.test.ts`
 
-Code commit: ec04106. No migration, feature-flag change, version allocation or
-production deployment. No unrelated dirty tracked files existed or were changed.
+Code commit: ec04106. No migration or feature-flag change. Version/deployment completed as above. No unrelated dirty tracked files existed or were changed.
+
+## Production verification completed
+
+- Installed image sha256:55ea34ee056f5faf8060a190aaf6dc5b91b137eacabb7d4657b10a03d3dc5fa7.
+- All 10 saved runs / 136 employee results and identity, classification and
+  supplier-rule hashes matched before, after install and after normal source sync.
+- Standard automatic source service completed: November sales and attendance
+  updated through 10 November; October skipped. No FINAL was saved for testing.
+- Real ADMIN: Astemir 6 × 600 = 3,600; purchase percentage 36,593.54;
+  top-up 59,806.46; total 100,000. Busy status visibly disappeared automatically,
+  leaving only the actual Diana Finbox warning. Diana remark and 8,720.51 retained.
+- Actual Excel downloaded and parsed: Astemir days 6, gross 100,000;
+  Timur presentation 16,464; manager days Zukhra8/Zalina9/Liana7/Milana6/Magomed6.
+  Browser download-event listener timed out, but native download files were
+  independently found and parsed successfully. No physical phone check performed.
+- Screenshot: /tmp/payroll-1.24.8-verified.jpg. Source refresh and original
+  payroll tests passed; no separate employee rounding change was included.
+- Verified registry contains current 1.24.8 and preceding verified 1.24.7/1.24.6;
+  all three images exist. Finish log reports RELEASE_FULLY_VERIFIED, free space19G.
+- Capacity recovery archived only three unused old build node_modules folders
+  before removal. Durable verified archives and manifest are retained at
+  /Users/bela/Projects/portal-release-archives/20261111-server-build-dependencies/.
+  Exact known unused 1.24.4 image was removed outside protected current+2.
+  Containers, volumes, backups, uploads, environment and migrations untouched.
+- Canonical merge 27f8051 was not deployed because it includes unrelated pending
+  changes. Runtime is exact 81c801b. Unrelated work was preserved.

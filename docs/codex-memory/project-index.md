@@ -719,3 +719,5 @@ No fixed20-day norm, Google/calendar paid-day fallback or automatic schedule cop
 October, Astemir, saved runs and1C documents unchanged, verified before/after.
 November ADMIN still requires first closed1C source data. Real first QR pending.
 New image registered healthy with current plus two verified rollback reserves.
+
+- Payroll 1.24.8 release / Astemir QR, Timur name, source-lock retry: [verified record](payroll-followups-candidate-20261111.md).
