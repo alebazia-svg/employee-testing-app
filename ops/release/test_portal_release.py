@@ -1,5 +1,6 @@
 import importlib.util
 import io
+import gzip
 import json
 from pathlib import Path
 import tarfile
@@ -74,9 +75,9 @@ class FakeHost:
         if self.fail == 'route' and self.image == NEW:
             raise r.ReleaseError('HTTP 502')
 
-    def space(self):
+    def space(self, **kwargs):
         self.space_calls += 1
-        if self.fail == 'space' or (self.fail == 'extraction-space' and self.space_calls == 2):
+        if self.fail == 'space' or (self.fail == 'extraction-space' and self.space_calls == 3):
             raise r.ReleaseError('space')
 
     def run(self, *args, **kwargs):
@@ -120,11 +121,18 @@ class ReleaseTests(unittest.TestCase):
         self.events = []
 
     def write_archive(self, tags):
-        content = json.dumps([dict(RepoTags=tags)]).encode()
+        content = json.dumps([dict(RepoTags=tags, Layers=['layer.tar'])]).encode()
         with tarfile.open(self.archive, 'w:gz') as archive:
             info = tarfile.TarInfo('manifest.json')
             info.size = len(content)
             archive.addfile(info, io.BytesIO(content))
+            layer = io.BytesIO()
+            with tarfile.open(fileobj=layer, mode='w'):
+                pass
+            raw = layer.getvalue()
+            info = tarfile.TarInfo('layer.tar')
+            info.size = len(raw)
+            archive.addfile(info, io.BytesIO(raw))
         self.manifest['archive_sha256'] = r.digest(self.archive)
 
     def install(self, host, registry=None):
@@ -201,6 +209,73 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(host.image, OLD)
         self.assertEqual(host.head, BASE)
         self.assertEqual(self.events[-1][0], 'ROLLED_BACK')
+
+    def test_capacity_plan_keeps_reserve_and_counts_all_layers_without_rebuilding(self):
+        plan = r.capacity_plan(self.bundle, self.manifest)
+        self.assertEqual(plan['reserve_bytes'], 15 * r.GIB)
+        self.assertEqual(plan['archive_bytes'], self.archive.stat().st_size)
+        self.assertEqual(plan['expanded_layer_bytes'], 10240)
+        self.assertGreater(plan['before_transfer_bytes'], plan['before_load_bytes'])
+        self.assertEqual(plan['before_transfer_bytes'] - plan['before_load_bytes'], self.archive.stat().st_size)
+        self.assertEqual(plan['after_load_bytes'], 15 * r.GIB)
+        self.assertEqual(r.validate_plan(plan), plan)
+
+    def test_gzip_layer_is_budgeted_by_expanded_bytes_not_compressed_size(self):
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode='w') as layer:
+            info = tarfile.TarInfo('compressible-file')
+            body = b'x' * 1024 * 1024
+            info.size = len(body)
+            layer.addfile(info, io.BytesIO(body))
+        packed = gzip.compress(raw.getvalue())
+        metadata = json.dumps([dict(RepoTags=['offonika-portal-release:1.0.1-' + TARGET[:12]], Layers=['blob.gz'])]).encode()
+        with tarfile.open(self.archive, 'w:gz') as archive:
+            for name, data in [('manifest.json', metadata), ('blob.gz', packed)]:
+                info = tarfile.TarInfo(name); info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        self.manifest['archive_sha256'] = r.digest(self.archive)
+        plan = r.capacity_plan(self.bundle, self.manifest)
+        self.assertEqual(plan['expanded_layer_bytes'], len(raw.getvalue()))
+        self.assertEqual(plan['stored_layer_bytes'], len(packed))
+        self.assertGreater(plan['expanded_layer_bytes'], 100 * plan['stored_layer_bytes'])
+
+    def test_capacity_plan_rejects_missing_layers_and_tampered_floor(self):
+        plan = r.capacity_plan(self.bundle, self.manifest)
+        for field in ('reserve_bytes', 'load_headroom_bytes', 'before_transfer_bytes', 'before_load_bytes', 'after_load_bytes'):
+            with self.subTest(field=field), self.assertRaises(r.ReleaseError):
+                r.validate_plan(dict(plan, **{field: 1}))
+        content = json.dumps([dict(RepoTags=['offonika-portal-release:1.0.1-' + TARGET[:12]], Layers=['absent'])]).encode()
+        with tarfile.open(self.archive, 'w:gz') as archive:
+            info = tarfile.TarInfo('manifest.json'); info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+        self.manifest['archive_sha256'] = r.digest(self.archive)
+        with self.assertRaisesRegex(r.ReleaseError, 'Missing'):
+            r.capacity_plan(self.bundle, self.manifest)
+
+    def test_shared_filesystem_does_not_double_count_docker_and_containerd(self):
+        entries = [dict(device=1, path='/docker', available_bytes=30*r.GIB, load_bytes=4*r.GIB),
+                   dict(device=1, path='/containerd', available_bytes=30*r.GIB, load_bytes=4*r.GIB),
+                   dict(device=1, path='/bundle', available_bytes=30*r.GIB, archive_bytes=r.GIB)]
+        report, = r.filesystem_budget(entries)
+        self.assertEqual(report['required_bytes'], 20*r.GIB)
+        self.assertEqual(report['shortfall_bytes'], 0)
+
+    def test_separate_archive_filesystem_has_its_own_reserve_and_transfer_cost(self):
+        entries = [dict(device=1, path='/docker', available_bytes=19*r.GIB, load_bytes=4*r.GIB),
+                   dict(device=2, path='/bundle', available_bytes=15*r.GIB, archive_bytes=r.GIB)]
+        docker, archive = r.filesystem_budget(entries)
+        self.assertEqual(docker['shortfall_bytes'], 0)
+        self.assertEqual(archive['shortfall_bytes'], r.GIB)
+        archive_present, = r.filesystem_budget([dict(device=2, path='/bundle', available_bytes=15*r.GIB)])
+        self.assertEqual(archive_present['required_bytes'], 15*r.GIB)
+
+    def test_capacity_shortfall_is_detected_before_host_mutation_or_image_load(self):
+        host = FakeHost()
+        with patch.object(host, 'space', side_effect=r.ReleaseError('release headroom')):
+            with self.assertRaisesRegex(r.ReleaseError, 'headroom'):
+                self.install(host)
+        self.assertEqual(host.calls, [])
+        self.assertEqual(host.image, OLD)
 
     def test_manifest_rejects_wrong_architecture_paths_and_invalid_identities(self):
         for key, value in [('platform', 'linux/arm64'), ('archive', '../image.tar.gz'),

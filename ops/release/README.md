@@ -1,10 +1,11 @@
 # Guarded portal image delivery
 
-Installed on the VPS on 11 November 2026 at 18:24 Moscow (tool revision
-`faa53f8`). This is now the default for subsequent compatible releases. The
+Installed on the VPS on 11 November 2026, initially at 18:24 Moscow. Current
+host tool revision is `884390f` (capacity correction installed at 18:58 Moscow). This is now the default for subsequent compatible releases. The
 installation did not deploy an application image. Existing application behavior,
 background schedules, database, uploads, backups and rollback policy are preserved.
-See `docs/ops/release-process-install-20261111.md` for host evidence and tooling rollback.
+See `docs/ops/release-capacity-20261111.md` for current evidence/rollback and
+`docs/ops/release-process-install-20261111.md` for the initial installation.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
@@ -43,6 +44,61 @@ image ID, archive SHA-256 and platform. Preserve previous attempts; output must
 not already exist. The image has a unique release tag, never `:latest` in the
 archive. The installer rejects archives carrying other tags before loading them.
 
+## Capacity: plan before transferring the archive
+
+`prepare` now also writes `capacity.json`. For an already built bundle, without
+changing/rebuilding its image or manifest, use:
+
+```sh
+python3 ops/release/portal_release.py plan \
+  --bundle /tmp/portal-approved-release-bundle \
+  --output /tmp/portal-approved-release-capacity.json
+```
+
+Transfer only this small JSON first. Before uploading the archive, check the
+actual intended receive directory on the VPS:
+
+```sh
+sudo portal-release check-space --plan /tmp/portal-approved-release-capacity.json \
+  --archive-directory /home/bela/<attempt>-bundle
+```
+
+This is read-only apart from the shared lock; it does not build, load, clean,
+register or restart anything. It prints required/available/shortfall bytes for
+every involved filesystem. A failed check is not permission to remove protected
+images, backups, volumes or test environments.
+
+The reserve remains **15 GiB**. Additional headroom is measured from the actual
+archive: stored layer blobs + twice the uncompressed layer-tar bytes + **1 GiB**
+for temporary allocation/metadata and concurrent growth. Compressed OCI gzip
+blobs are streamed and decompressed for counting; unsupported encodings fail
+closed. No files are extracted to disk. All layers are budgeted, even potentially
+shared ones, so this is conservative planning rather than exact Docker allocation.
+After loading, the installer still checks the full 15 GiB reserve.
+
+On one filesystem the phases are:
+
+- Before transfer: reserve + archive bytes + load headroom.
+- Before `docker load`: reserve + load headroom (archive already occupies space).
+- After loading: reserve, while the old app remains running.
+
+Docker/containerd paths on the same device share one load budget; a separate
+archive filesystem gets its own reserve and archive cost. Shared layers are not
+subtracted. Use the same receive/final filesystem and move the archive by atomic
+rename when promoting to the root-owned bundle; do not keep an extra `cp` copy
+or use cross-filesystem moves without separately budgeting both copies.
+
+For an applicable approved maintenance pass, the existing command additionally
+accepts `--release-headroom-bytes N`, where N is the additional capacity shown
+by the plan above the reserve on the filesystem being maintained. This sets the
+cleanup target **and** resulting capacity check to reserve + N. The default daily
+schedule/15 GiB target, cache retention target and all deletion protections are
+unchanged. This option does not create reclaimable space or broaden deletion
+eligibility. Do not keep retrying cleanup if only protected/in-use data remains.
+After any approved maintenance pass, rerun `check-space` before the transfer.
+Use `--archive-present` to check the pre-load phase only when the exact matching
+archive already exists at the checked directory; its size/SHA-256 are verified.
+
 ## Review, transfer, then install only with operations approval
 
 The installer has a validation-only default:
@@ -78,9 +134,9 @@ to the Compose file or startup script require a separately reviewed release and
 are refused by this path: startup currently runs `migrate deploy`, so generic
 image rollback must not be claimed safe across schema changes.
 
-At least 15 GiB must be available on the Docker, containerd and checkout
-filesystems, both before loading and after extraction. This is a floor, not a
-prediction that every image will fit. No automatic cleanup is performed. A stale
+The measured release headroom must be available above the 15 GiB reserve
+before loading, and the reserve must still remain after extraction. The budget
+is conservative planning, not a prediction that every future image will fit. No automatic cleanup is performed. A stale
 verified registry stops installation; reconcile it only after independent
 verification of the actual release, never by bypassing the guard.
 

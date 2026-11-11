@@ -21,11 +21,13 @@ compatible releases, retaining the existing approvals/version gates and current
 plus two verified rollback images. Do not rebuild on the shared production VPS
 by default. The manual flow below is a reviewed recovery fallback only.
 
-Tool revision `faa53f8` and corrected storage maintenance were installed without
+Initial tool revision `faa53f8` and corrected storage maintenance were installed without
 restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
 `docs/ops/release-process-install-20261111.md`. Application source/Docker cache
 changes are in the maintained branch for the next approved, versioned image;
-they were not injected into the running application.
+they were not injected into the running application. Current host tooling is
+`884390f`, with pre-transfer capacity planning; see
+`docs/ops/release-capacity-20261111.md` for its installation and rollback.
 
 The installer refuses schema/migration/Compose/startup changes, stale bases,
 pending migrations, stale verified registries and insufficient space. Never
@@ -33,8 +35,11 @@ bypass those gates. Reconcile the exact live runtime source with the maintained
 branch before preparing each release. Independent business/UI verification still
 precedes registration with `--expected-current <verified-image-id>`.
 
-The maintenance script now uses 16106127360 bytes for both cleanup target and
-15 GiB floor. Its schedule and protection of all container-used/unknown images,
+The reserve is 16106127360 bytes (15 GiB). Before archive transfer, run the
+capacity plan/check described in `ops/release/README.md`; measured archive/load
+headroom is additional to that reserve. Approved maintenance can use
+`--release-headroom-bytes N` without broadening eligible deletion. The default
+daily maintenance target remains 15 GiB. Its schedule and protection of all container-used/unknown images,
 volumes and backups are unchanged. Installation did not execute cleanup.
 
 ## Safe deploy flow
