@@ -3,10 +3,14 @@
 import { Check, Download, ExternalLink, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-const pdfPath = '/documents/company-card-ip-keshtova.pdf';
-const docxPath = '/documents/company-card-ip-keshtova.docx';
+type CompanyCardActionsProps = {
+  bankName: string;
+  pdfPath: string;
+  docxPath: string;
+  downloadName: string;
+};
 
-export function CompanyCardActions() {
+export function CompanyCardActions({ bankName, pdfPath, docxPath, downloadName }: CompanyCardActionsProps) {
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
@@ -21,8 +25,8 @@ export function CompanyCardActions() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Карточка предприятия ИП Кештова Бэла Руслановна',
-          text: 'Реквизиты ИП Кештова Бэла Руслановна',
+          title: `Карточка предприятия ИП Кештова Бэла Руслановна — ${bankName}`,
+          text: `Реквизиты ИП Кештова Бэла Руслановна — ${bankName}`,
           url,
         });
         return;
@@ -56,13 +60,13 @@ export function CompanyCardActions() {
       </button>
       <a
         href={docxPath}
-        download='Карточка предприятия ИП Кештова Бэла Руслановна.docx'
+        download={downloadName}
         className='inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
       >
         <Download className='h-4 w-4' />
         Скачать Word
       </a>
-      <span className='sr-only' aria-live='polite'>{linkCopied ? 'Ссылка на PDF скопирована' : ''}</span>
+      <span className='sr-only' aria-live='polite'>{linkCopied ? `Ссылка на PDF ${bankName} скопирована` : ''}</span>
     </div>
   );
 }
