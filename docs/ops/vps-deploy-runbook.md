@@ -21,11 +21,13 @@ compatible releases, retaining the existing approvals/version gates and current
 plus two verified rollback images. Do not rebuild on the shared production VPS
 by default. The manual flow below is a reviewed recovery fallback only.
 
-Tool revision `faa53f8` and corrected storage maintenance were installed without
+Initial tool revision `faa53f8` and corrected storage maintenance were installed without
 restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
 `docs/ops/release-process-install-20261111.md`. Application source/Docker cache
 changes are in the maintained branch for the next approved, versioned image;
-they were not injected into the running application.
+they were not injected into the running application. Current host tooling is
+`884390f`, with pre-transfer capacity planning; see
+`docs/ops/release-capacity-20261111.md` for its installation and rollback.
 
 The installer refuses schema/migration/Compose/startup changes, stale bases,
 pending migrations, stale verified registries and insufficient space. Never

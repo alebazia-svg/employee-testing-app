@@ -7,7 +7,9 @@ repeated mistakes from prior deployments.
 
 Use the guarded prebuilt-image process in `ops/release/README.md`. Host command
 `/usr/local/sbin/portal-release` and corrected maintenance are installed, tool
-revision `faa53f8`. Normal builds run outside the production VPS. Read
+revision `884390f` (initial adoption was `faa53f8`). Normal builds run outside
+the production VPS. Current capacity/rollback evidence is in
+`../ops/release-capacity-20261111.md`. Read
 `../ops/release-process-install-20261111.md` for preservation evidence and tooling
 rollback. Installation did not restart or change portal 1.24.6. The following
 manual command is a reviewed recovery fallback, not the default release path.

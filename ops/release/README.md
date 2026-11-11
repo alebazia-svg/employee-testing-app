@@ -1,10 +1,11 @@
 # Guarded portal image delivery
 
-Installed on the VPS on 11 November 2026 at 18:24 Moscow (tool revision
-`faa53f8`). This is now the default for subsequent compatible releases. The
+Installed on the VPS on 11 November 2026, initially at 18:24 Moscow. Current
+host tool revision is `884390f` (capacity correction installed at 18:58 Moscow). This is now the default for subsequent compatible releases. The
 installation did not deploy an application image. Existing application behavior,
 background schedules, database, uploads, backups and rollback policy are preserved.
-See `docs/ops/release-process-install-20261111.md` for host evidence and tooling rollback.
+See `docs/ops/release-capacity-20261111.md` for current evidence/rollback and
+`docs/ops/release-process-install-20261111.md` for the initial installation.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
