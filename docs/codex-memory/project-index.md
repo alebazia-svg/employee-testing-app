@@ -30,6 +30,13 @@ project from scratch.
 
 ## Read First By Task
 
+- ADMIN calendar actual days: `../ops/qr-calendar-release-20261111.md` —
+  released/verified1.24.0 /b37a9aa from1.23.4. Accepted QR means working;
+  no QR after retail20:00/wholesale19:00/procurement18:00 MSK means off.
+  Late QR wins; original plans, payroll and notifications preserved. Audited
+  ADMIN forgotten-QR correction in the existing day dialog; no schema change.
+  Next release must recheck capacity: approximately14GiB free after this import.
+
 - Employee inspection clarity: `../ops/inspection-clarity-release-20261111.md` —
   released/verified1.23.4 /6e31ef8 from live1.23.3, preserving shift extension and
   iOS header correction. Cabinet opens immediately for missing/stale observations;

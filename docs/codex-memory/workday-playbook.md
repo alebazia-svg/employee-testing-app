@@ -778,7 +778,7 @@ are cancelled and older observations cannot reopen newer saved results. Existing
 notification style, source safeguards and actual-shift routing remain.
 Production evidence and exact changes: docs/ops/receipt-lifecycle-20261103.md.
 
-## ADMIN calendar actual days — owner decision 2026-11-11 (local, not released)
+## ADMIN calendar actual days — released 1.24.0, owner decision 2026-11-11
 
 Approved scope: the existing `/admin/attendance` main calendar derives actual
 working/off days from accepted QR starts since `APP_ATTENDANCE_FROM` (2026-10-24).
@@ -801,5 +801,7 @@ receipts or deliveries. Cancelling a manual correction appends a reset; it
 cannot invalidate real QR. Serializable writes, idempotency and expected latest
 revision protect retries/concurrent corrections. No fake WorkDay/QR is created.
 
-Implementation and scenarios are local in `codex/qr-calendar-fact-20261111`.
-Deployment requires separate approval and the normal live version gate.
+Released and verified 1.24.0 / b37a9aa from live1.23.4, on the approved narrow
+release branch. Feature-only change is retained in design-local-updates. See
+`../ops/qr-calendar-release-20261111.md` for exact files, tests, preservation and
+the next-release disk-capacity gate.
