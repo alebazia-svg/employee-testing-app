@@ -46,7 +46,12 @@ def main():
     parser.add_argument('--register-verified', action='store_true',
                         help='Only after independently verifying the current release')
     parser.add_argument('--expected-current', help='Guard registration against a concurrent release (full image ID)')
+    parser.add_argument('--release-headroom-bytes', type=int, default=0,
+                        help='Additional temporary release capacity above the unchanged 15 GiB reserve')
     args = parser.parse_args()
+    if args.release_headroom_bytes < 0 or (args.release_headroom_bytes and args.register_verified):
+        raise ValueError('Release headroom must be nonnegative and is not a registration option')
+    target_free_bytes = MIN_FREE_BYTES + args.release_headroom_bytes
     if args.expected_current and (not args.register_verified or not re.fullmatch(r'sha256:[a-f0-9]{64}', args.expected_current)):
         raise ValueError('--expected-current requires registration and a full image ID')
     lock = open('/run/lock/offonika-portal-storage.lock', 'w')
@@ -85,11 +90,13 @@ def main():
     if args.apply:
         # This is a retention target, not a hard disk quota. Active cache is safe.
         subprocess.run(['docker', 'buildx', 'prune', '--all', '--force',
-                        '--max-used-space', '5GB', '--min-free-space', str(MIN_FREE_BYTES)], check=True)
+                        '--max-used-space', '5GB', '--min-free-space', str(target_free_bytes)], check=True)
     free = shutil.disk_usage('/').free
     print('Free GiB:', round(free / 1024**3, 2), flush=True)
-    if free < MIN_FREE_BYTES:
-        raise RuntimeError('Less than 15 GiB free: do not deploy; inspect disk usage')
+    print('Capacity bytes:', {'reserve': MIN_FREE_BYTES, 'release_headroom': args.release_headroom_bytes,
+                              'required': target_free_bytes, 'shortfall': max(0, target_free_bytes - free)}, flush=True)
+    if free < target_free_bytes:
+        raise RuntimeError('Insufficient release capacity above 15 GiB reserve: do not deploy; inspect disk usage')
 
 
 if __name__ == '__main__':

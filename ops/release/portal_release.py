@@ -8,6 +8,8 @@ import argparse
 import datetime
 import fcntl
 import hashlib
+import gzip
+import io
 import json
 import os
 from pathlib import Path
@@ -55,8 +57,89 @@ def validate_archive(path, manifest):
                 require(member.isfile() and member.size <= 65536, 'Invalid archive manifest')
                 items = json.load(archive.extractfile(member))
                 require(len(items) == 1 and items[0].get('RepoTags') == [expected_tag], 'Unexpected image tags in archive')
-                return
+                return items[0]
     raise ReleaseError('Missing Docker save manifest')
+
+
+def capacity_plan(bundle, manifest):
+    """Stream compressed layer contents, never trusting compressed image size as disk use.
+
+    Shared layers are intentionally not subtracted: this is a conservative budget,
+    not a promise of exact allocation. No files are extracted to the filesystem.
+    """
+    validate_manifest(manifest)
+    archive = Path(bundle) / manifest['archive']
+    require(digest(archive) == manifest['archive_sha256'], 'Archive checksum mismatch')
+    metadata = validate_archive(archive, manifest)
+    layers = metadata.get('Layers')
+    require(isinstance(layers, list) and layers and all(isinstance(x, str) for x in layers)
+            and len(set(layers)) == len(layers), 'Missing or duplicate image layers')
+    pending = set(layers)
+    stored = expanded = 0
+    with tarfile.open(archive, 'r|gz') as tar:
+        for member in tar:
+            if member.name not in pending:
+                continue
+            require(member.isfile(), 'Image layer must be a regular file')
+            pending.remove(member.name)
+            stored += member.size
+            with io.BufferedReader(tar.extractfile(member)) as stream:
+                prefix = stream.peek(512)
+                # Docker save can contain raw tar layers or gzip OCI blobs.
+                if prefix[:2] == b'\x1f\x8b':
+                    content = gzip.GzipFile(fileobj=stream, mode='rb')
+                else:
+                    require(len(prefix) >= 512 and (prefix[257:262] == b'ustar' or not any(prefix[:512])),
+                            'Unsupported layer encoding; repack before planning')
+                    content = stream
+                try:
+                    for block in iter(lambda: content.read(1024 * 1024), b''):
+                        expanded += len(block)
+                finally:
+                    if content is not stream:
+                        content.close()
+    require(not pending and expanded > 0, 'Missing or empty image layer payload')
+    archive_bytes = archive.stat().st_size
+    # Budget blob storage, two expanded-layer equivalents (unpack/temp/FS
+    # amplification), plus 1 GiB for metadata, allocation and concurrent growth.
+    headroom = stored + 2 * expanded + GIB
+    return dict(format=1, manifest=manifest, reserve_bytes=SPACE_FLOOR,
+                archive_bytes=archive_bytes, stored_layer_bytes=stored,
+                expanded_layer_bytes=expanded, load_headroom_bytes=headroom,
+                before_transfer_bytes=SPACE_FLOOR + archive_bytes + headroom,
+                before_load_bytes=SPACE_FLOOR + headroom, after_load_bytes=SPACE_FLOOR)
+
+
+def validate_plan(plan):
+    require(isinstance(plan, dict) and plan.get('format') == 1, 'Unsupported capacity plan')
+    validate_manifest(plan.get('manifest', {}))
+    for field in ('archive_bytes', 'stored_layer_bytes', 'expanded_layer_bytes', 'load_headroom_bytes'):
+        require(type(plan.get(field)) is int and plan[field] > 0, 'Invalid capacity bytes: ' + field)
+    headroom = plan['stored_layer_bytes'] + 2 * plan['expanded_layer_bytes'] + GIB
+    require(plan.get('reserve_bytes') == SPACE_FLOOR and plan['load_headroom_bytes'] == headroom
+            and plan.get('before_transfer_bytes') == SPACE_FLOOR + plan['archive_bytes'] + headroom
+            and plan.get('before_load_bytes') == SPACE_FLOOR + headroom
+            and plan.get('after_load_bytes') == SPACE_FLOOR, 'Capacity budget or 15 GiB reserve changed')
+    return plan
+
+
+def filesystem_budget(entries):
+    """Combine roles sharing a filesystem; count load budget once and archive once."""
+    groups = {}
+    for entry in entries:
+        group = groups.setdefault(entry['device'], dict(paths=[], available_bytes=entry['available_bytes'],
+                                                       load_bytes=0, archive_bytes=0))
+        group['paths'].append(entry['path'])
+        group['available_bytes'] = min(group['available_bytes'], entry['available_bytes'])
+        group['load_bytes'] = max(group['load_bytes'], entry.get('load_bytes', 0))
+        group['archive_bytes'] = max(group['archive_bytes'], entry.get('archive_bytes', 0))
+    reports = []
+    for group in groups.values():
+        required = SPACE_FLOOR + group['load_bytes'] + group['archive_bytes']
+        reports.append(dict(paths=sorted(set(group['paths'])), reserve_bytes=SPACE_FLOOR,
+                            required_bytes=required, available_bytes=group['available_bytes'],
+                            shortfall_bytes=max(0, required - group['available_bytes'])))
+    return reports
 
 
 def version(value):
@@ -124,14 +207,27 @@ class Host:
                             '--output', '/dev/null', '--write-out', '%{http_code}', origin + route)
             require(int(code) in accepted, 'Unexpected HTTP status ' + code + ' for ' + route)
 
-    def space(self):
-        # Check each real filesystem used by Docker/containerd and the checkout.
+    def space(self, headroom=0, archive_path=None, archive_bytes=0):
+        # Predict destination capacity before transfer; check again after transfer
+        # and extraction. Existing archive bytes are already reflected in f_bavail.
         root = self.run('docker', 'info', '--format', '{{.DockerRootDir}}')
-        for path in {Path(root), Path('/var/lib/containerd'), self.app}:
-            require(path.is_dir(), 'Cannot inspect storage filesystem: ' + str(path))
+        roles = [(Path(root), headroom, 0), (Path('/var/lib/containerd'), headroom, 0), (self.app, 0, 0)]
+        if archive_path is not None:
+            roles.append((Path(archive_path), 0, archive_bytes))
+        entries = []
+        for destination, load_bytes, transfer_bytes in roles:
+            path = destination.resolve()
+            while not path.exists() and path != path.parent:
+                path = path.parent
             stats = os.statvfs(path)
-            available = stats.f_bavail * stats.f_frsize
-            require(available >= SPACE_FLOOR, 'Less than 15 GiB available: ' + str(path))
+            entries.append(dict(path=str(destination), device=path.stat().st_dev,
+                                available_bytes=stats.f_bavail * stats.f_frsize,
+                                load_bytes=load_bytes, archive_bytes=transfer_bytes))
+        reports = filesystem_budget(entries)
+        print('SPACE_CHECK ' + json.dumps(reports), flush=True)
+        require(not any(item['shortfall_bytes'] for item in reports),
+                'Insufficient release capacity; archive/load headroom must remain above the 15 GiB reserve')
+        return reports
 
     def wait(self, image, timeout=180):
         deadline = time.monotonic() + timeout
@@ -196,7 +292,9 @@ def install(host, manifest, bundle, registry, origin, record):
     record('PREFLIGHT', target=manifest['target'], version=manifest['version'])
     archive = Path(bundle) / manifest['archive']
     require(digest(archive) == manifest['archive_sha256'], 'Archive checksum mismatch')
-    validate_archive(archive, manifest)
+    plan = capacity_plan(bundle, manifest)
+    record('CAPACITY_PLANNED', **{key: value for key, value in plan.items() if key != 'manifest'})
+    host.space(headroom=plan['load_headroom_bytes'], archive_path=archive)
     old, old_info = preflight(host, manifest, registry, origin)
     old_image = old['Image']
     old_snapshot = snapshot(old)
@@ -214,7 +312,7 @@ def install(host, manifest, bundle, registry, origin, record):
                                    '--entrypoint', 'node', manifest['image'], '-e',
                                    "process.stdout.write(require('fs').readFileSync('/app/public/release-info.json','utf8'))"))
     verify_metadata(candidate, manifest)
-    host.space()  # Recheck after image extraction, while old app is still running.
+    host.space(archive_path=archive)  # After loading, preserve the full reserve on every filesystem.
     require(host.git('rev-parse', 'HEAD') == manifest['base'] and host.current()['Image'] == old_image,
             'Server changed during preparation')
     host.run('docker', 'image', 'tag', old_image, 'portal-app:rollback-before-' + manifest['version'])
@@ -306,6 +404,7 @@ def prepare(host, base, target, output, receipts_enabled):
     validate_manifest(manifest)
     validate_archive(archive, manifest)
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    (output / 'capacity.json').write_text(json.dumps(capacity_plan(output, manifest), indent=2) + '\n')
     print(json.dumps(manifest, indent=2), flush=True)
 
 
@@ -322,7 +421,32 @@ def main():
     deploy.add_argument('--bundle', required=True)
     deploy.add_argument('--origin', required=True)
     deploy.add_argument('--apply', action='store_true', help='Explicitly install; otherwise validate manifest/archive only')
+    planner = sub.add_parser('plan', help='Measure an existing bundle locally, without rebuilding it')
+    planner.add_argument('--bundle', required=True)
+    planner.add_argument('--output', required=True, help='New capacity JSON file; transfer this small file first')
+    checker = sub.add_parser('check-space', help='Read-only VPS capacity check before transferring the archive')
+    checker.add_argument('--plan', required=True)
+    checker.add_argument('--archive-directory', required=True)
+    checker.add_argument('--archive-present', action='store_true')
     args = parser.parse_args()
+    if args.command == 'check-space':
+        plan = validate_plan(json.loads(Path(args.plan).read_text()))
+        archive = Path(args.archive_directory).resolve() / 'image.tar.gz'
+        if args.archive_present:
+            require(archive.is_file() and archive.stat().st_size == plan['archive_bytes']
+                    and digest(archive) == plan['manifest']['archive_sha256'], 'Transferred archive does not match capacity plan')
+        with LOCK.open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return Host().space(headroom=plan['load_headroom_bytes'], archive_path=archive,
+                                archive_bytes=0 if args.archive_present else plan['archive_bytes'])
+    if args.command == 'plan':
+        bundle = Path(args.bundle).resolve()
+        manifest = validate_manifest(json.loads((bundle / 'manifest.json').read_text()))
+        plan = capacity_plan(bundle, manifest)
+        with Path(args.output).open('x') as stream:
+            stream.write(json.dumps(plan, indent=2) + '\n')
+        print(json.dumps(plan, indent=2), flush=True)
+        return
     if args.command == 'prepare':
         return prepare(Host(Path.cwd()), args.base, args.target, args.output, args.receipts_enabled)
     bundle = Path(args.bundle).resolve()
@@ -366,6 +490,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ReleaseError, OSError, ValueError, subprocess.SubprocessError) as error:
+    except (ReleaseError, OSError, ValueError, subprocess.SubprocessError, tarfile.TarError, EOFError) as error:
         print('RELEASE_FAILED: ' + str(error), file=sys.stderr)
         sys.exit(1)

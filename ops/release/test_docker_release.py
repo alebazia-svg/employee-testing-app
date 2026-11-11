@@ -144,7 +144,7 @@ CMD ["node", "/app/server.cjs"]
                 def public_routes(self, origin):
                     if self.fail == 'route' and self.current()['Image'] == new:
                         raise r.ReleaseError('Injected external HTTP 502')
-                def space(self):
+                def space(self, **kwargs):
                     pass  # No production host paths in the local fixture.
                 def git(self, *args):
                     if args[0] == 'checkout' and args[-1] == fixture_target:

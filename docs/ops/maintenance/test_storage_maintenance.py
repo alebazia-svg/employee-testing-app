@@ -56,13 +56,39 @@ class RetentionTests(unittest.TestCase):
                  patch.object(maintenance.shutil, 'disk_usage', return_value=Mock(free=free)), \
                  patch.object(maintenance.subprocess, 'run') as command:
                 if free < 15 * 1024**3:
-                    with self.assertRaisesRegex(RuntimeError, 'Less than 15 GiB'):
+                    with self.assertRaisesRegex(RuntimeError, 'Insufficient release capacity'):
                         maintenance.main()
                 else:
                     maintenance.main()
                 args = command.call_args.args[0]
                 self.assertEqual(args[args.index('--min-free-space') + 1], str(15 * 1024**3))
                 self.assertEqual(args[:3], ['docker', 'buildx', 'prune'])
+
+    def test_release_headroom_cannot_be_negative_or_combined_with_registration(self):
+        for arguments in (['--release-headroom-bytes', '-1'],
+                          ['--register-verified', '--release-headroom-bytes', '1']):
+            with patch('sys.argv', ['maintenance', *arguments]), patch.object(maintenance.subprocess, 'run') as command:
+                with self.assertRaises(ValueError):
+                    maintenance.main()
+                command.assert_not_called()
+
+    def test_release_headroom_changes_target_without_lowering_reserve_or_broadening_cleanup(self):
+        current = 'sha256:' + 'a' * 64
+        state = Mock()
+        state.read_text.return_value = __import__('json').dumps([current, 'sha256:'+'b'*64, 'sha256:'+'c'*64])
+        def inspect(kind, ids):
+            return [{'Image': current}] if kind == 'container' and ids == ['portal-app'] else []
+        target = 19 * 1024**3
+        with patch('sys.argv', ['maintenance', '--apply', '--release-headroom-bytes', str(4*1024**3)]), \
+             patch('builtins.open', mock_open()), patch.object(maintenance.fcntl, 'flock'), \
+             patch.object(maintenance, 'STATE', state), patch.object(maintenance, 'inspect', side_effect=inspect), \
+             patch.object(maintenance, 'docker', return_value=''), \
+             patch.object(maintenance.shutil, 'disk_usage', return_value=Mock(free=target)), \
+             patch.object(maintenance.subprocess, 'run') as command:
+            maintenance.main()
+            command.assert_called_once_with(['docker', 'buildx', 'prune', '--all', '--force',
+                '--max-used-space', '5GB', '--min-free-space', str(target)], check=True)
+            self.assertEqual(maintenance.MIN_FREE_BYTES, 15*1024**3)
 
 
 if __name__ == '__main__':
