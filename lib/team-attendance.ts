@@ -8,7 +8,7 @@ export const usesAppAttendance = (date: string) => date >= APP_ATTENDANCE_FROM;
 type Source = 'app' | 'google' | null;
 export type TeamAttendance = {
   start: string; end: string; shift: string; late: number;
-  startSource: Source; endSource: Source; sourceLabel: string;
+  startSource: Source; endSource: Source; sourceLabel: string; startNote?: string; stateNote?: string;
   active: boolean; marksAvailable: boolean; state: string;
 };
 type AppDay = {

@@ -1,3 +1,6 @@
+import { loadTeamCalendarEvidence } from '@/lib/team-calendar-evidence';
+import { calendarCorrectionSourceId } from '@/lib/team-calendar-fact';
+import { resolveControlCalendarDay } from '@/lib/team-control-calendar';
 import { loadWorkdayCreditDocuments, loadWorkdayCreditFiscal, type WorkdayCreditSource } from '@/lib/workday-credit-source';
 import { loadOpenHandoverReviews } from '@/lib/workday-handover-review-server';
 import { handoverReviewRecord, handoverReviewHref, needsHandoverReview } from '@/lib/workday-handover-review';
@@ -1114,7 +1117,8 @@ export default async function AdminWorkdayPage(
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
 
-  const today = getMoscowDateKey();
+  const calendarNow = new Date();
+  const today = getMoscowDateKey(calendarNow);
   const selectedDate = isDateKey(searchParams?.date) ? searchParams.date : today;
   const selectedControlFilter = adminWorkdayControlFilter(searchParams?.control, selectedDate === today ? 'active' : 'all');
   const previousDate = addDays(selectedDate, -1);
@@ -1301,6 +1305,7 @@ export default async function AdminWorkdayPage(
     select: { sourceId: true },
   }) : [];
   const creditHelpIssueIds = new Set(creditHelpEvents.map(event => event.sourceId));
+  const calendarEvidence = await loadTeamCalendarEvidence(prisma, { userIds: employees.filter(e=>['retail','wholesale','procurement'].includes(e.department)).map(e=>e.id), dates:[selectedDate], now:calendarNow, workdays:workDays });
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
   const vacationByUser = new Map(vacations.map((vacation) => [vacation.userId, vacation]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
@@ -1326,7 +1331,7 @@ export default async function AdminWorkdayPage(
       ? [{ userId: employee.id, oneCCashierRef: employee.oneCCashboxMapping.oneCCashierRef }]
       : []),
   );
-  const nowMinutes = selectedDate === today ? getMoscowMinutes() : selectedDate < today ? 24 * 60 : 0;
+  const nowMinutes = selectedDate === today ? getMoscowMinutes(calendarNow) : selectedDate < today ? 24 * 60 : 0;
   const cashStatementOrganization =
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
@@ -1527,13 +1532,16 @@ export default async function AdminWorkdayPage(
       const googleControl = googleDay(employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
       const plan = resolveTeamSchedule({ name: employee.name, appStatus: schedule?.status, googlePlan: googleControl.plan, googleAvailable: googleSnapshot.planAvailable, vacation: Boolean(vacation) });
       const planState = plan.state;
-      const effectiveScheduleStatus = plan.status;
+      const evidence = calendarEvidence.get(calendarCorrectionSourceId(employee.id, selectedDate));
+      const calendarDay = resolveControlCalendarDay({date:selectedDate, department:employee.department, plan:planState, source:plan.source, vacation:Boolean(vacation), qrAccepted:evidence?.qrAccepted??false, correction:evidence?.history[0], now:calendarNow, hasWorkDay:Boolean(workDay)});
+      const effectiveScheduleStatus = calendarDay.calendarState === 'off' ? 'off' : plan.status;
       const attendance = usesAppAttendance(selectedDate) ? resolveTeamAttendance({
         date: selectedDate, today, workDay, google: googleControl,
         googleAvailable: googleSnapshot.marksAvailable,
         fallbackState: planState === 'vacation' ? 'Отпуск' : planState === 'off' ? 'Выходной' : planState === 'unknown' ? 'План неизвестен' : planState === 'unavailable' ? 'Источник недоступен' : 'Ожидается начало',
       }) : null;
-      const attendanceStartControl = attendance ? teamStartControl(planState, attendance.start !== '—', attendance.marksAvailable, selectedDate, today, nowMinutes, clockMinutes(attendance.shift)) : null;
+      const attendanceStartControl = attendance ? calendarDay.settled ? {missing:false,unknownTime:false} : teamStartControl(planState, attendance.start !== '—', attendance.marksAvailable, selectedDate, today, nowMinutes, clockMinutes(attendance.shift)) : null;
+      if (attendance && calendarDay.state) { attendance.state = calendarDay.state; attendance.marksAvailable = true; attendance.startNote = calendarDay.startNote; attendance.stateNote = calendarDay.stateNote; }
       if (attendance && attendanceStartControl?.missing) attendance.state = 'Не отметился';
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
@@ -1556,7 +1564,7 @@ export default async function AdminWorkdayPage(
         nowMinutes,
         department: employee.department,
         // App timing policy stays separate from the Google display fallback.
-        scheduleStatus: vacation ? 'off' : schedule?.status,
+        scheduleStatus: vacation || calendarDay.settled ? 'off' : schedule?.status,
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
@@ -1601,7 +1609,7 @@ export default async function AdminWorkdayPage(
       ));
       const hasError = employeeRequiredIssues.length > 0 || mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem || terminalFiscalPresentation.tone === 'error';
       const needsAttention = !hasError && (attentionReasons.length > 0 || terminalFiscalPresentation.tone === 'attention');
-      const waitingForWorkdayStart = effectiveScheduleStatus === 'working' && selectedDate === today && !workDay;
+      const waitingForWorkdayStart = effectiveScheduleStatus === 'working' && selectedDate === today && !workDay && !calendarDay.settled;
       const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
         task.status !== 'done'
         && task.status !== 'missed'
@@ -1611,7 +1619,7 @@ export default async function AdminWorkdayPage(
       const isPending = !hasError && !needsAttention && (
         waitingForWorkdayStart
         || pendingTaskCount > 0
-        || (shiftControlRequired && effectiveScheduleStatus === 'working' && !run)
+        || (shiftControlRequired && effectiveScheduleStatus === 'working' && !run && !calendarDay.settled)
       );
       const category: AdminWorkdayControlCategory = resolveAdminWorkdayControlCategory({ hasError, needsAttention, cannotVerify, isPending });
       const reviewText = hasError
@@ -1642,7 +1650,7 @@ export default async function AdminWorkdayPage(
             ? `Проверено вручную: ${manualReviewCount}`
             : terminalFiscalPresentation.tone === 'technical'
               ? terminalFiscalPresentation.text
-              : 'Замечаний нет';
+              : calendarDay.state ?? 'Замечаний нет';
       const completedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'done').length;
       const totalTaskCount = run?.tasks.length ?? 0;
       const activeWorkDay = Boolean(workDay && !workDay.endedAt && workDay.status !== 'completed');
@@ -1662,6 +1670,7 @@ export default async function AdminWorkdayPage(
         employee,
         attendance,
         attendanceStartControl,
+        calendarDay,
         schedule,
         vacation,
         effectiveScheduleStatus,
@@ -1843,8 +1852,8 @@ export default async function AdminWorkdayPage(
             const timing = hasAppControl ? row.timingViolations.filter(v=>!v.taskId || !row.run?.tasks.some(task=>task.id===v.taskId && task.category==='handover' && handoverReviewRecord(task.id,task.manualReviews))).map(v=>v.detail) : [];
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
-            return {id:row.employee.id,sourceUnavailable:row.attendance ? !row.attendance.marksAvailable : !app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,name:row.employee.name,department:row.employee.department,source:row.attendance?.sourceLabel ?? (app?'Приложение · пилот':'Google'),planState,
-              plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
+            return {id:row.employee.id,sourceUnavailable:row.attendance ? !row.attendance.marksAvailable : !app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,calendarState:row.calendarDay.calendarState,name:row.employee.name,department:row.employee.department,source:row.calendarDay.sourceLabel ?? row.attendance?.sourceLabel ?? (app?'Приложение · пилот':'Google'),planState,
+              startNote:row.attendance?.startNote,plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
               state:row.attendance?.state ?? teamShiftState(selectedDate,today,start!=='—',Boolean(row.workDay&&!row.workDay.endedAt),end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:row.attendance?.active ?? (app&&row.activeWorkDay),late:row.attendance?.late ?? (app?row.workDay?.lateMinutes??0:google.lateMinutes),missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
