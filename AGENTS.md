@@ -327,3 +327,20 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
   A larger cleanup target never authorizes deletion of protected/in-use data.
 - Installing the tooling does not release application changes. The working app
   stays on its current version until a separately approved, versioned release.
+
+
+## One Password Per Approved Release — Owner Decision 2026-11-11
+
+- Prepare/test the complete release locally first. Use one native-Terminal sudo
+  `portal-release session-start` for the reviewed, exact release. Its bounded
+  worker performs privileged checks, approved maintenance if explicitly included,
+  installation/rollback and expected-image registration after independent review.
+- Monitor the owner-readable session log and upload the archive using ordinary
+  SSH. After actual independent UI/business checks, use `session-confirm` without
+  sudo. Continue automatically; do not require Bela to send a ready message.
+- Do not split an ordinary release into separate sudo windows for diagnosis,
+  capacity, installation and registration. Do not alter sudoers, NOPASSWD,
+  credential caching, password handling or security timeouts for convenience.
+- Launch/confirmation success is not release completion: require COMPLETE,
+  expected metadata/health and retained verified reserves. A failed/stale attempt
+  must be diagnosed before any new password request; never bypass a guard.

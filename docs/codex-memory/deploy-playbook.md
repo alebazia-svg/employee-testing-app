@@ -5,9 +5,18 @@ repeated mistakes from prior deployments.
 
 ## Default from 11 November 2026
 
+For each approved compatible release, use one native-Terminal sudo
+`portal-release session-start`, then ordinary SSH for log monitoring, upload and
+`session-confirm` after independent UI/business verification. The bounded root
+worker handles installation/rollback and expected-image registration. Do not
+open separate sudo windows for these normal steps. See the session workflow in
+`ops/release/README.md`. No sudo/security-setting changes are part of this.
+
+
 Use the guarded prebuilt-image process in `ops/release/README.md`. Host command
 `/usr/local/sbin/portal-release` and corrected maintenance are installed, tool
-revision `884390f` (initial adoption was `faa53f8`). Normal builds run outside
+revision `f82c912` (includes capacity correction `884390f`; initial adoption
+was `faa53f8`). Normal builds run outside
 the production VPS. Current capacity/rollback evidence is in
 `../ops/release-capacity-20261111.md`. Read
 `../ops/release-process-install-20261111.md` for preservation evidence and tooling
