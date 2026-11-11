@@ -47,3 +47,33 @@ test('buyer and admin use the same release label and responsive footer styling',
   assert.ok(buyer.indexOf('<footer') > buyer.indexOf('{children}'));
   assert.doesNotMatch(buyer, /fixed|sticky|Версия \d/);
 });
+
+test('Docker archive metadata accepts only a full supplied commit and refuses Git mismatches', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, cpSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const root = mkdtempSync(join(tmpdir(), 'portal-release-info-'));
+  try {
+    mkdirSync(join(root, 'scripts'));
+    mkdirSync(join(root, 'public'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '1.0.1' }));
+    cpSync(new URL('../scripts/write-release-info.mjs', import.meta.url), join(root, 'scripts/write-release-info.mjs'));
+    const execute = revision => spawnSync(process.execPath, ['scripts/write-release-info.mjs'], {
+      cwd: root, env: { ...process.env, PORTAL_BUILD_REVISION: revision }, encoding: 'utf8',
+    });
+    // Hide Git discovery of ancestor directories, as in the Docker build context.
+    const full = 'b'.repeat(40);
+    assert.equal(execute(full).status, 0);
+    const metadata = JSON.parse(readFileSync(join(root, 'public/release-info.json'), 'utf8'));
+    assert.equal(metadata.revision, full);
+    assert.equal(metadata.source, 'clean');
+    assert.notEqual(execute('HEAD').status, 0);
+    assert.notEqual(execute('abcdef1').status, 0);
+    assert.equal(spawnSync('git', ['init', '-q'], { cwd: root }).status, 0);
+    assert.equal(spawnSync('git', ['add', 'package.json'], { cwd: root }).status, 0);
+    assert.equal(spawnSync('git', ['-c', 'user.name=Release test', '-c', 'user.email=release@example.test',
+      'commit', '-qm', 'fixture'], { cwd: root }).status, 0);
+    assert.notEqual(execute(full).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

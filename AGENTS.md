@@ -302,3 +302,24 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
   rejected a persistent side-by-side list/detail panel and nested modal chains.
 - These are shared project decisions, not instructions the owner must repeat in
   each module chat. See docs/codex-memory/expense-release-20261011.md for status.
+
+## Default Portal Release Process — Owner Decision 2026-11-11
+
+- Compatible portal releases use prebuilt linux/amd64 images prepared outside the
+  production VPS through `ops/release/portal_release.py prepare`. Preserve the
+  approved build flags, exact live base and every intervening approved change.
+- VPS installation uses the reviewed host command `/usr/local/sbin/portal-release`
+  with an immutable root-owned bundle and the shared storage/release lock. Read
+  `ops/release/README.md` and `docs/ops/vps-deploy-runbook.md` before release.
+- Do not return to ad hoc VPS builds or per-chat deployment scripts by default.
+  The old manual path is a reviewed recovery fallback, not the normal process.
+- Preserve current plus two independently verified rollback images; do not prune
+  test environments, volumes, uploads or backups as part of release delivery.
+- After independent UI/business checks, register the exact verified image using
+  `portal-storage-maintenance --register-verified --expected-current <image-id>`.
+  Registration is separate from installation and must not certify another release.
+- Schema, migration, Compose or startup changes need a separately reviewed release;
+  the compatible-release installer intentionally refuses them. Never bypass a
+  stale-base, pending-migration, low-space or verified-registry guard.
+- Installing the tooling does not release application changes. The working app
+  stays on its current version until a separately approved, versioned release.

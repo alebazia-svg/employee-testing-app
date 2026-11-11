@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+MIN_FREE_BYTES = 15 * 1024**3
+
 STATE = Path('/var/lib/offonika-maintenance/verified-images.json')
 ROLLBACK_TAG = re.compile(r'^(portal-app:rollback-before-\d+\.\d+\.\d+|mobo-access-rollback:\d+\.\d+\.\d+|offonika-portal-access-rollback:pre-\d+\.\d+\.\d+-\d{8})$')
 PORTAL_REPOS = {'portal-app', 'offonika-portal-portal-app', 'mobo-access-rollback', 'offonika-portal-access-rollback'}
@@ -43,10 +45,15 @@ def main():
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--register-verified', action='store_true',
                         help='Only after independently verifying the current release')
+    parser.add_argument('--expected-current', help='Guard registration against a concurrent release (full image ID)')
     args = parser.parse_args()
+    if args.expected_current and (not args.register_verified or not re.fullmatch(r'sha256:[a-f0-9]{64}', args.expected_current)):
+        raise ValueError('--expected-current requires registration and a full image ID')
     lock = open('/run/lock/offonika-portal-storage.lock', 'w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     current = inspect('container', ['portal-app'])[0]['Image']
+    if args.expected_current and current != args.expected_current:
+        raise ValueError('Running image changed since independent verification; refusing registration')
     verified = json.loads(STATE.read_text())
     if not isinstance(verified, list) or not all(re.fullmatch(r'sha256:[a-f0-9]{64}', i) for i in verified):
         raise ValueError('Invalid verified image registry; refusing cleanup')
@@ -78,10 +85,10 @@ def main():
     if args.apply:
         # This is a retention target, not a hard disk quota. Active cache is safe.
         subprocess.run(['docker', 'buildx', 'prune', '--all', '--force',
-                        '--max-used-space', '5GB', '--min-free-space', '15GB'], check=True)
+                        '--max-used-space', '5GB', '--min-free-space', str(MIN_FREE_BYTES)], check=True)
     free = shutil.disk_usage('/').free
     print('Free GiB:', round(free / 1024**3, 2), flush=True)
-    if free < 15 * 1024**3:
+    if free < MIN_FREE_BYTES:
         raise RuntimeError('Less than 15 GiB free: do not deploy; inspect disk usage')
 
 

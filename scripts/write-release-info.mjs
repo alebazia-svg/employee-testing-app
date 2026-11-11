@@ -19,6 +19,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim());
   } catch { /* Archives/Docker without Git must not claim a known clean commit. */ }
+  // Only the release preparer supplies this from the exact git archive it builds.
+  const suppliedRevision = process.env.PORTAL_BUILD_REVISION;
+  if (suppliedRevision) {
+    if (!/^[0-9a-f]{40}$/.test(suppliedRevision)) throw new Error('Invalid build revision');
+    if (revision && revision !== suppliedRevision) throw new Error('Build revision differs from Git');
+    if (!revision) { revision = suppliedRevision; dirty = false; }
+  }
   const info = releaseInfo({ version, revision, dirty, builtAt: new Date().toISOString() });
   writeFileSync(new URL('public/release-info.json', root), JSON.stringify(info, null, 2) + '\n');
   console.log(`Release ${info.version} (${info.source}) built ${info.builtAt}`);

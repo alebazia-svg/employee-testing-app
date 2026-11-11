@@ -3,6 +3,15 @@
 Use `docs/ops/vps-deploy-runbook.md` as the main runbook. This file records the
 repeated mistakes from prior deployments.
 
+## Default from 11 November 2026
+
+Use the guarded prebuilt-image process in `ops/release/README.md`. Host command
+`/usr/local/sbin/portal-release` and corrected maintenance are installed, tool
+revision `faa53f8`. Normal builds run outside the production VPS. Read
+`../ops/release-process-install-20261111.md` for preservation evidence and tooling
+rollback. Installation did not restart or change portal 1.24.6. The following
+manual command is a reviewed recovery fallback, not the default release path.
+
 ## Safe Deploy Shape
 
 On VPS:
@@ -141,3 +150,30 @@ monitor unit Result plus application health. A launch success or EXIT0 alone doe
 not establish installation. Require deploy-ready, independent commit/metadata/UI
 verification and the final verified-registry marker. This does not authorise a
 new release, broaden sudo access or introduce a permanent service.
+
+
+## Release reliability implementation — 2026-11-11
+
+Owner approved hardening after read-only diagnosis. Candidate lives in
+`ops/release/` (README, preparer/installer, failure tests). It extends existing
+Compose and verified registry; does not remove test environments, backups or
+images. Local code is not host installation or production approval. Use the
+candidate's failure/rollback checks before adopting it for an approved release.
+Storage correction unifies the 15 GiB target in bytes; optional expected-current
+registration prevents accidentally verifying another concurrently installed image.
+Keep the independent UI/business and background-job checks before registration.
+No app version is allocated until actual release preparation against live/source.
+
+
+## Host adoption — 2026-11-11
+
+Owner explicitly approved VPS installation for subsequent releases. Installed
+host revision `faa53f8`; app 1.24.6 / runtime source `ade055de` remained running.
+The three-image registry was already current and was not modified. Service-file
+rollback is retained separately from application image rollback. Independent SSH
+checks confirmed installed hashes, CLI validation-only behavior and public health.
+The first attempt conservatively restored old tools because an unsorted Docker
+mount list changed hash; permutation matching proved identical env/mount contents.
+The successful retry normalized order and preserved exact app/DB identities,
+start time, image/volume inventories, registry and timer state. No pruning or
+application release occurred. See the installation report for full identities.
