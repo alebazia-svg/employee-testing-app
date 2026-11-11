@@ -71,6 +71,11 @@ project from scratch.
   future version gates must use live metadata. Server build caused temporary
   overload and was stopped; verified bounded local linux/amd64 artifact installed.
   See incident, final checks and current-plus-two reserve evidence in the report.
+- Diana individual attendance remark: `payroll-individual-note-20261111.md` —
+  released/verified 1.24.7 / 74e6539. From November, short ADMIN-only reason replaces
+  missing day/lateness errors and her correction panel; amounts and other issues
+  retained. No PWA/source/formula change. Includes safe cache cleanup and rollback
+  verification. Astemir QR pay and Timur display name remain separate pending tasks.
 
 - Employee notification lifetime: `../ops/notification-lifetime-20261108.md` —
   released/verified1.22.5 /875ac8c on9November. Explicit informational kinds expire
