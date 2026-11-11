@@ -1,4 +1,5 @@
 'use client';
+import { withPayrollIndividualNote } from '@/lib/payroll-individual-note';
 import { payrollDisplayName } from '@/lib/payroll-display-name';
 import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 
@@ -3878,7 +3879,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     const advanceIssues = isPreliminary
       ? [...advanceResult.issues, ...(oneCAdvancesError ? [oneCAdvancesError] : !advanceRead ? ['Авансы из 1С ещё проверяются.'] : [])]
       : [];
-    const shadowRows: FullPayrollRow[] = advanceResult.rows;
+    const shadowRows: FullPayrollRow[] = advanceResult.rows.map(row => withPayrollIndividualNote(row, selectedPayrollPeriodKey));
     const baselineByEmployee = new Map((oneCShadowBaseline?.employeeResults ?? []).map((row) => [row.employeeName, row]));
     const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
     const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()])).filter((name) => {
@@ -6238,6 +6239,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
           periodPicker={settlementRows || workspaceFinalRun ? <></> : periodPicker}
+          periodKey={selectedPayrollPeriodKey}
           period={`${months[Number(month)]} ${year}`}
           date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
           costVerified={Boolean(oneCShadowSource?.close.ready && !oneCShadowCalculation.payrollCostPendingRows && !oneCShadowSource.blockingIssues.some(issue => /себестоим/i.test(issue)))}
