@@ -50,7 +50,7 @@ test('both real cabinets use the shared receipt eligibility, leaving history on 
     const source=readFileSync(file,'utf8');
     assert.match(source,/const receiptPlans = plans\.filter\(canCollectProcurementReceipt\)/);
     assert.match(source,/<ProcurementReceipts (?:admin )?plans=\{receiptPlans\} allPlans=\{plans\}/);
-    assert.match(source,/<ProcurementPaymentHistory plans=\{(?:completedPlans|paidPlans)\}/);
+    assert.match(source,/<ProcurementPaymentHistory\b[^>]*\bplans=\{(?:completedPlans|paidPlans)\}/);
   }
 });
 test('real reconciliation: partial linked RKO enters receipt queue; unposted/cancelled/unlinked RKO does not',()=>{

@@ -22,7 +22,7 @@ test('first page streams verification separately and never starts forecast-only 
   const page=readFileSync('app/(dashboard)/admin/procurement/page.tsx','utf8');
   const live=readFileSync('app/(dashboard)/admin/procurement/AdminProcurementLive.tsx','utf8');
   for(const name of ['loadOwnerCashForecastShadow','fetchPayrollForecastEvidence','fetchTBankOwnerTransferControl','loadProcurementForecastHistory','fetchProcurementPriorityDebts'])assert.ok(!page.includes(name),name);
-  for(const name of ['matchProcurementPaymentEvidence','preservePaymentEvidenceViews','fetchSupplierCurrencyPaymentSnapshot','historyConcurrency: 2'])assert.ok(live.includes(name),name);
+  for(const name of ['matchProcurementPaymentEvidence','preservePaymentEvidenceViews','fetchSupplierCurrencyPaymentDisplaySnapshot','historyConcurrency: 2'])assert.ok(live.includes(name),name);
   assert.ok(live.includes('Promise.resolve(initialPlans)'));
   assert.ok(page.includes('<Suspense fallback={null}>'));
   assert.ok(page.includes('adminInitialView(plans,'));

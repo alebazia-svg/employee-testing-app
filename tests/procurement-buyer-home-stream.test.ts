@@ -25,7 +25,7 @@ test('actual home publishes cash/planning/delivery without waiting for payment e
     '@/lib/procurement-currency-balance':`export const getProcurementBalances=async()=>({usdt:harness.balance,accountable:harness.balance});`,
     '@/lib/expense-request-source':`export const expenseRequestMoscowCalendarDate=()=> '2026-10-22';export const expenseRequestMoscowDayEnd=()=>new Date();export const fetchExpenseRequestSnapshot=async()=>{await harness.waitEvidence;return {complete:true,rows:[]}};`,
     '@/lib/procurement-usdt-rate':`export const getLatestProcurementUsdtRate=async()=>({rate:90});`,
-    '@/lib/procurement-currency-payment-source':`export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,rubPaymentsSupported:true,payments:[],conversions:[]});`,
+    '@/lib/procurement-currency-payment-source':`export const fetchSupplierCurrencyPaymentDisplaySnapshot=async()=>({complete:true,rubPaymentsSupported:true,payments:[],conversions:[]});`,
     '@/lib/procurement-qr-funding-source':`export const readQrFunding=async()=>null;export const attachQrFunding=()=>{};`,
     '@/lib/procurement-supplier-settlements':`export const fetchSupplierSettlements=async()=>({complete:true,rows:[],checkedAt:harness.stamp});export const summarizeSupplierSettlements=()=>({bySupplier:{Supplier:{debt:1000,advance:0,closingBalance:1000,reviewRequired:false}},debtTotal:1000,unsupportedCurrencyRows:0});`,
   };

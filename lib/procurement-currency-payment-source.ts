@@ -210,7 +210,11 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       const detail=await detailWindow(order_ref,0);
       const supplier=normalize((detail.order as any[])[0].supplier_name||'');
       const today=Date.parse(day(0)+'T00:00:00+03:00');
-      const offsets=new Set(withoutBasis.filter(p=>normalize(p.supplier||'')===supplier).map(p=>{
+      // Historical movements can enrich only RKOs without a header basis:
+      // attachSettlementOrderLinks deliberately ignores header-based payments.
+      // Keep the current order read for every explicit anchor (posted/deleted
+      // and verifiedHeaderOrderRef), but do not scan unused historical periods.
+      const offsets=new Set(withoutBasis.filter(p=>!p.baseDocumentRef&&normalize(p.supplier||'')===supplier).map(p=>{
         const at=parseOneCDateTime(p.date);
         return at?Math.floor((today-Date.parse(expenseRequestMoscowCalendarDate(at)+'T00:00:00+03:00'))/(31*86400000))*31:0;
       }).filter(offset=>offset>0));
@@ -257,4 +261,20 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       payments.length === rawPayments.length && rawPayments.length < 1000 && rawConversions.length < 1000 &&
       rubPayments.length === rawRub.length && rubPayload.events.length < 1000,
   };
+}
+
+const displayReadInFlight = createInFlightRead<Awaited<ReturnType<typeof fetchSupplierCurrencyPaymentSnapshot>>>();
+
+/** Display consumers may join an identical reconciliation that is still running.
+ * No completed result is cached. Financial commands keep the fresh source above.
+ * Include every source-relevant plan field, but not saved display timestamps.
+ */
+export function fetchSupplierCurrencyPaymentDisplaySnapshot(input: Parameters<typeof fetchSupplierCurrencyPaymentSnapshot>[0]) {
+  const env = readOneCRuntimeEnv();
+  const key = createHash('sha256').update(JSON.stringify([
+    env.baseUrl, env.user, env.password, input.from, input.to, input.timeoutMs ?? 15_000,
+    input.plans?.map(plan => [plan.orderRefs, plan.supplierPartner, plan.supplierCounterparty,
+      plan.paymentPurpose, manualPaymentLinks(plan.oneCCashEvidence)]),
+  ])).digest('hex');
+  return displayReadInFlight(key, () => fetchSupplierCurrencyPaymentSnapshot(input));
 }
