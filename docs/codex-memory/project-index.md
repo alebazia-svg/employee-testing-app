@@ -30,6 +30,13 @@ project from scratch.
 
 ## Read First By Task
 
+- Employee cash-status copy: `../ops/kkm-status-copy-release-20261111.md` -
+  released/verified1.24.5 /6501f2f from installed1.24.4. Four owner-approved
+  wording substitutions only; completed-shift title/time and all mechanisms,
+  source rules, cash/photos/history/notifications retained. Same-image four-state
+  visual review and public employee-bundle hash verified. No migration; current
+  plus two verified reserves registered. Known partial-OFD outage gap unchanged.
+
 - KKM unopened-shift check: `../ops/kkm-not-opened-release-20261111.md` -
   released/verified1.24.2 /913fdeb. OFD-primary no-opening proof skips closing/photo;
   explicit1C fallback keeps ADMIN-only OFD recheck open. Existing empty/open,
