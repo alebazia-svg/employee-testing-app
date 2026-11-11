@@ -471,6 +471,8 @@ export type OneCCashShift = {
 };
 
 export type OneCCashShiftsResult = {
+  /** Explicit completeness is required only for proving absence of a shift. */
+  complete?: boolean;
   ok: boolean;
   path: '/cash-shifts';
   status?: number;
@@ -1504,8 +1506,15 @@ async function requestCashShifts(config: OneCConfig, dateFrom: string, dateTo: s
     });
     const data = await readResponseBody(response);
     const payload = findCashShiftsPayload(data);
+    const root = readRecord(data);
+    const source = readRecord(root?.data) ?? root;
+    const complete = response.ok && root?.ok === true && Array.isArray(source?.shifts)
+      && source.shifts.length < 300 && payload.warnings.length === 0 && payload.diagnostics.length === 0
+      && source.date_from === dateFrom && source.date_to === dateTo
+      && payload.shifts.every(s => s.ref && s.cashRegister.ref && s.deletionMark !== null);
     return {
       ok: response.ok && payload.diagnostics.length === 0,
+      complete,
       path,
       status: response.status,
       durationMs: Date.now() - startedAt,

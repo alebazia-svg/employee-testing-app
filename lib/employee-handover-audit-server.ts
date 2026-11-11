@@ -8,7 +8,7 @@ import { readHandoverContext, type HandoverServerStage } from './employee-handov
 /** No new 1C calls and no latency added to the business response. */
 export function scheduleHandoverCheckAudit(req: Request, userId: number, taskId: number, attemptId: string, status: string) {
   try {
-    const stages: Record<string, HandoverServerStage> = { one_c_open: 'check_open', ofd_missing: 'check_missing', unavailable: 'check_unavailable', confirmed: 'check_confirmed' };
+    const stages: Record<string, HandoverServerStage> = { one_c_open: 'check_open', ofd_missing: 'check_missing', unavailable: 'check_unavailable', confirmed: 'check_confirmed', not_opened: 'check_not_opened', one_c_not_opened: 'check_not_opened_one_c' };
     const context = readHandoverContext({ taskId, attemptId, stage: stages[status] }, true);
     if (!context) return;
     const token = (req.headers.get('cookie') || '').split(';').map(v => v.trim()).find(v => v.startsWith(`${sessionCookieName}=`))?.slice(sessionCookieName.length + 1);
