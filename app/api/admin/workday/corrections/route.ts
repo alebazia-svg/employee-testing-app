@@ -1,3 +1,4 @@
+import { markCalendarWorking } from '@/lib/team-calendar-correction';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
 import { activeVacationOverlapWhere } from '@/lib/employee-vacation';
@@ -18,6 +19,20 @@ export async function POST(req: Request) {
   const userId = Number(payload?.userId);
   const employee = Number.isInteger(userId) ? await prisma.user.findFirst({ where: { id: userId, role: 'EMPLOYEE', isActive: true } }) : null;
   if (!employee) return Response.json({ error: 'Сотрудник не найден.' }, { status: 404, headers: noStoreHeaders });
+
+  if (payload?.action === 'mark_calendar_working') {
+    try {
+      await markCalendarWorking(prisma, { employeeId: employee.id, date: payload.date, reason: payload.reason, status: payload.status, requestId: payload.requestId, expectedCorrectionId: payload.expectedCorrectionId, actor: admin });
+      revalidatePath('/admin/attendance');
+      return Response.json({ ok: true }, { headers: noStoreHeaders });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('CALENDAR_')) {
+        if (error.message === 'CALENDAR_STALE_CORRECTION') return Response.json({ error: 'Этот день уже исправили. Обновите календарь и проверьте запись.' }, { status: 409, headers: noStoreHeaders });
+        return Response.json({ error: error.message === 'CALENDAR_EMPLOYEE_NOT_FOUND' ? 'Сотрудник не найден.' : 'Укажите прошедшую или сегодняшнюю дату и причину исправления (до 500 символов).' }, { status: 400, headers: noStoreHeaders });
+      }
+      throw error;
+    }
+  }
 
   if (payload?.action === 'change_shift') {
     if (typeof payload.date !== 'string' || !isValidScheduleDateKey(payload.date) || typeof payload.toShiftCode !== 'string') {
