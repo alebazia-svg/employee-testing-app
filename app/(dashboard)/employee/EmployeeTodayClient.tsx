@@ -5591,7 +5591,7 @@ export function EmployeeTodayClient({
                     {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
                     {closedWithoutEncashment ? (
                       <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · согласовано</p>
-                    ) : kkmOneCNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>По 1С кассовая смена не открывалась · сверка ОФД продолжается</p> : kkmNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Кассовая смена не открывалась · закрытие не требуется</p> : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : kkmCloseConfirmation(handoverTask?.handoverData) ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>{kkmCloseConfirmation(handoverTask?.handoverData)?.method==='photo'?'Чек закрытия сохранён':'Закрытие кассы проверяется'}</p> : null}
+                    ) : kkmOneCNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Кассу сегодня не открывали · проверка продолжается</p> : kkmNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Проверено: кассу сегодня не открывали</p> : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Закрытие кассы подтверждено</p> : kkmCloseConfirmation(handoverTask?.handoverData) ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>{kkmCloseConfirmation(handoverTask?.handoverData)?.method==='photo'?'Чек сохранён · проверяем закрытие кассы':'Закрытие кассы проверяется'}</p> : null}
                   </div>
                 </Card>
               )}
