@@ -21,6 +21,8 @@ NEW = 'sha256:' + '2' * 64
 REGISTRY = [OLD, 'sha256:' + '3' * 64, 'sha256:' + '4' * 64]
 OLD_INFO = dict(version='1.0.0', revision=BASE, source='clean', builtAt='2026-11-01T00:00:00Z')
 NEW_INFO = dict(version='1.0.1', revision=TARGET, source='clean', builtAt='2026-11-11T00:00:00Z')
+ARTIFACT = dict(format=1, routes=['/api/procurement/receipts/route', '/employee/page'],
+                assets=['manifest.webmanifest'], capabilities={'procurement_receipts': True})
 
 
 def container(image):
@@ -85,6 +87,8 @@ class FakeHost:
 
     def run(self, *args, **kwargs):
         self.calls.append(args)
+        if args[-1] == r.contract.ARTIFACT_PROBE:
+            return json.dumps(ARTIFACT)
         if 'migrate' in args and self.fail == 'pending':
             raise r.ReleaseError('pending migrations')
         if args[:3] == ('docker', 'image', 'tag'):
@@ -119,7 +123,8 @@ class ReleaseTests(unittest.TestCase):
         self.bundle = Path(self.folder.name)
         self.archive = self.bundle / 'image.tar.gz'
         self.manifest = dict(format=1, base=BASE, target=TARGET, version='1.0.1', image=NEW,
-                             archive='image.tar.gz', platform='linux/amd64')
+                             archive='image.tar.gz', platform='linux/amd64',
+                             build_args=dict(r.contract.BUILD_ARGS), artifact=ARTIFACT)
         self.write_archive(['offonika-portal-release:1.0.1-' + TARGET[:12]])
         self.events = []
 
@@ -325,7 +330,7 @@ class ReleaseTests(unittest.TestCase):
         for code in ('500', '502', '503', '404', '000', '302'):
             with patch.object(host, 'run', return_value=code), self.assertRaises(r.ReleaseError):
                 host.public_routes('https://example.test')
-        with patch.object(host, 'run', side_effect=['200', '307', '307', '200']):
+        with patch.object(host, 'run', side_effect=['200'] + ['307'] * 9):
             host.public_routes('https://example.test')
 
     def test_snapshot_does_not_depend_on_env_order(self):

@@ -109,13 +109,57 @@ From the reviewed checkout, use full committed identities:
 ```sh
 python3 ops/release/portal_release.py prepare \
   --base <exact-live-commit> --target <approved-new-commit> \
-  --receipts-enabled <existing-production-0-or-1> \
   --output /tmp/portal-approved-release-bundle
 ```
 
-The explicit receipts flag preserves the existing build-time feature decision;
-it is not permission to enable or disable receipt collection. Check its approved
-baseline and demonstrate the relevant UI during independent release verification.
+Build arguments are now derived from the trusted capability policy and checked
+against committed Compose configuration. `--receipts-enabled 1` remains an
+optional compatibility argument; `0` is rejected before any build. No operator
+guess or absent runner environment entry may disable an approved capability.
+
+**Confirmed production baseline: `--receipts-enabled 1`.** The disabled flag in
+1.24.7/1.24.8 was a release regression, not an owner decision; 1.24.11 restores
+the approved module. Do not infer this argument from the runner's environment:
+it is compiled in the builder stage. Before certifying a release, verify the
+compiled receipt loader and open a saved document in ADMIN and employee context.
+See `docs/ops/procurement-receipts-restore-20261112.md`. Passing `/api/health`
+alone is insufficient; disabling the module requires separate owner approval.
+
+## Mandatory compiled-capability guard — 12 November 2026
+
+`portal_release_contract.py` is part of the immutable installed tooling. It checks
+declared Docker arguments and public source flags, then runs a bounded read-only
+probe of the exact image (no network, secrets, volumes or application startup).
+The receipt/requisite client loader and compiled read endpoint must exist. Its
+capability report and page/API/public-file inventories are pinned in the manifest.
+
+The installed guard rejects old manifests without this evidence, altered build
+arguments and false reports. Before replacing the app it independently probes
+both the running and candidate images: existing pages, API entries and public
+files must remain present. A baseline already missing a required loader can be
+repaired, but the candidate always has to satisfy required capabilities. New
+routes/files may be added. Deliberate removals or build-feature changes require
+an explicitly reviewed policy update, not a force/skip option.
+
+The running compiled artifact is checked again after restart and after the
+independent review, before registration. The existing source/version/schema,
+environment, mounts, DB-container, capacity, rollback and registration guards
+remain mandatory. Public probes now cover login/employee and all eight main
+ADMIN destinations. Unauthenticated route status does not verify page content.
+
+Re-prepare unreleased bundles using current tools; do not patch manifests or
+execute an old host installer to bypass a rejection. Inventory changes are
+structural evidence, not verification of every button or calculation. Continue
+the actual affected business scenarios and ADMIN/employee checks before review.
+Runtime incident monitoring/push policy is separate and unchanged.
+
+Preservation is required for separately reviewed schema/configuration releases
+and recovery paths too. This generic installer still refuses those changes;
+their reviewed implementation must reuse the contract checks against the exact
+approved baseline. Explicit rollback retains its original verified baseline;
+it is not an unreviewed missing-capability exception.
+
+Candidate implementation/evidence: `docs/ops/release-capability-guard-20261112.md`.
 
 The preparer exports the target with `git archive`: unrelated dirty/untracked
 files, local `.env` and `.git` do not enter the source. Docker builds linux/amd64

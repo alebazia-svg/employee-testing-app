@@ -328,6 +328,33 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 - Installing the tooling does not release application changes. The working app
   stays on its current version until a separately approved, versioned release.
 
+## Mandatory release capability preservation — Owner Decision 2026-11-12
+
+- The preservation requirement applies to every portal release. A separately
+  reviewed migration/configuration or recovery path must retain the same
+  capability checks and use the exact approved baseline; its approval is not
+  permission to skip preservation. An explicitly approved rollback retains its
+  original verified version/baseline under the existing rollback policy.
+- Every compatible release uses the capability-guarded preparer and installed
+  default host tool. Do not use an older installer or manual path to evade a
+  capability failure. Recovery exceptions require exact owner approval.
+- Approved build flags come from the trusted release policy and committed
+  Compose contract, not a guess from the runner ENV. Receipt/requisite collection
+  is required (`1`); the 1.24.7/1.24.8 omission was a regression, not a baseline.
+- Preparation verifies the actual compiled image and records its capabilities,
+  page/API inventory and public-file inventory in the pinned release manifest.
+  New/unregistered build arguments and public flags stop preparation for review.
+- Installation independently inspects the current and candidate artifacts before
+  switching. Existing pages/APIs/public files may not silently disappear. The
+  running artifact is rechecked after restart and again before registration.
+  Intentional removals require a separately reviewed policy/baseline change.
+- Old bundles without capability evidence must be prepared again with current
+  tools; do not invent successful evidence or edit manifests to bypass checks.
+- These checks preserve compiled capabilities and structure. They do not replace
+  real affected-workflow tests, permissions, cancellation/retry checks, 1C
+  reconciliation or ADMIN/employee UI verification. Health/route presence is
+  never proof that a business action completed or its figures are correct.
+
 
 ## One Password Per Approved Release — Owner Decision 2026-11-11
 
