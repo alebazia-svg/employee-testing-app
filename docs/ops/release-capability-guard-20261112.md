@@ -2,8 +2,9 @@
 
 Owner approved making preservation checks apply to every future release.
 Code `e3efeb2`, branch `codex/release-capability-guard-20261112`.
-Status: locally verified; host installation pending. No application release,
-version bump, restart, migration, production write or notification change.
+Status: **installed and independently verified at 11:16 Moscow on 12 November**.
+No application release, version bump, restart, migration, production business
+write or notification change. Production remains 1.24.11 / `6a8f577`.
 
 ## Scope and established workflow
 
@@ -87,3 +88,36 @@ was changed by the capability guard.
 - `ops/release/test_portal_release_session.py`
 - `ops/release/test_docker_release.py`
 - `ops/release/README.md`, `AGENTS.md`, this verification note
+
+## Installed default host guard
+
+- Entry point `/usr/local/sbin/portal-release` now targets the immutable root-owned
+  `/usr/local/lib/offonika-release/releases/e3efeb2/`. Both old installed source
+  modules were byte-identical to the candidate's base before applying this change.
+- Before activation, all seven pinned source/test hashes were checked, the 41
+  non-Docker unit checks passed on the VPS, the actual running 1.24.11 artifact
+  passed, and the actual reserve 1.24.8 artifact was rejected for its absent loader.
+  No active release worker was interrupted; activation held the existing lock.
+- Before/after equality preserved the app and DB container identities, images,
+  start times/restart counts, source HEAD, metadata, sorted env/mount hashes,
+  image/volume inventories, registry (current plus two reserves), maintenance
+  binary and storage timer. There was no application recreation or cleanup.
+- Ordinary SSH independently compared all seven installed source hashes and the
+  default entry hash with reviewed local bytes. The actual default CLI rejected
+  a clearly isolated legacy-manifest fixture without `--apply`, before archive
+  loading or any application action. The external verification initially looked
+  for the diagnostic on stdout; the tool correctly uses stderr. Checking both
+  streams confirmed the expected safe rejection; no tool correction was needed.
+- Public metadata on both origins and server HEAD remained exactly 1.24.11 /
+  `6a8f57753998a1ed8974706111367b0f8036e6ac`, build
+  `2026-11-12T06:15:24.929Z`; public health returned `ok:true`.
+- Entry SHA-256:
+  `26a25266db08025cc2ae839796bd4b4249c1d271f3a77be1a0fb6c34fc08552f`.
+  The old entry is retained under
+  `/var/lib/offonika-maintenance/tooling-backups/20261112-e3efeb2/` together with
+  before/after hashes and server unit-check output. Old immutable tool versions
+  remain available for an explicitly approved tooling rollback.
+- Owner-readable activation evidence:
+  `/home/bela/portal-release-capability-e3efeb2-result.json` and
+  `/home/bela/portal-release-capability-e3efeb2-install.log`.
+  No secret values or business rows are included in this repository evidence.
