@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ import urllib.request
 GIB = 1024 ** 3
 SPACE_FLOOR = 15 * GIB
 APP = Path('/docker/employee-testing-app')
+STORAGE_LAYOUT = Path('/usr/local/lib/offonika-release/storage-layout.json')
 LOCK = Path('/run/lock/offonika-portal-storage.lock')
 REGISTRY = Path('/var/lib/offonika-maintenance/verified-images.json')
 COMPOSE_IMAGE = 'offonika-portal-portal-app:latest'
@@ -35,9 +37,28 @@ class ReleaseError(RuntimeError):
     pass
 
 
+class CapacityError(ReleaseError):
+    pass
+
+
 def require(ok, message):
     if not ok:
         raise ReleaseError(message)
+
+
+def read_storage_layout():
+    """Root-published paths only; read-only checks never invoke Docker or sudo."""
+    fd = os.open(STORAGE_LAYOUT, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        require(info.st_uid == 0 and not info.st_mode & 0o022 and stat.S_ISREG(info.st_mode)
+                and info.st_nlink == 1 and info.st_size <= 16384, 'Untrusted storage layout')
+        data = json.load(stream)
+    require(data.get('format') == 1, 'Unsupported storage layout')
+    for key in ('docker_root', 'containerd_root', 'app_root'):
+        require(isinstance(data.get(key), str) and Path(data[key]).is_absolute(), 'Invalid storage path: ' + key)
+    require(data['app_root'] == str(APP), 'Storage layout belongs to another application')
+    return data
 
 
 def digest(path):
@@ -207,11 +228,16 @@ class Host:
                             '--output', '/dev/null', '--write-out', '%{http_code}', origin + route)
             require(int(code) in accepted, 'Unexpected HTTP status ' + code + ' for ' + route)
 
-    def space(self, headroom=0, archive_path=None, archive_bytes=0):
+    def space(self, headroom=0, archive_path=None, archive_bytes=0, storage_layout=None):
         # Predict destination capacity before transfer; check again after transfer
         # and extraction. Existing archive bytes are already reflected in f_bavail.
-        root = self.run('docker', 'info', '--format', '{{.DockerRootDir}}')
-        roles = [(Path(root), headroom, 0), (Path('/var/lib/containerd'), headroom, 0), (self.app, 0, 0)]
+        if storage_layout is None:
+            root = self.run('docker', 'info', '--format', '{{.DockerRootDir}}')
+            containerd = Path('/var/lib/containerd')
+        else:
+            root = storage_layout['docker_root']
+            containerd = Path(storage_layout['containerd_root'])
+        roles = [(Path(root), headroom, 0), (containerd, headroom, 0), (self.app, 0, 0)]
         if archive_path is not None:
             roles.append((Path(archive_path), 0, archive_bytes))
         entries = []
@@ -225,8 +251,8 @@ class Host:
                                 load_bytes=load_bytes, archive_bytes=transfer_bytes))
         reports = filesystem_budget(entries)
         print('SPACE_CHECK ' + json.dumps(reports), flush=True)
-        require(not any(item['shortfall_bytes'] for item in reports),
-                'Insufficient release capacity; archive/load headroom must remain above the 15 GiB reserve')
+        if any(item['shortfall_bytes'] for item in reports):
+            raise CapacityError('Insufficient release capacity; archive/load headroom must remain above the 15 GiB reserve')
         return reports
 
     def wait(self, image, timeout=180):
@@ -438,6 +464,10 @@ def main():
         if args.archive_present:
             require(archive.is_file() and archive.stat().st_size == plan['archive_bytes']
                     and digest(archive) == plan['manifest']['archive_sha256'], 'Transferred archive does not match capacity plan')
+        if os.geteuid() != 0:
+            return Host().space(headroom=plan['load_headroom_bytes'], archive_path=archive,
+                                archive_bytes=0 if args.archive_present else plan['archive_bytes'],
+                                storage_layout=read_storage_layout())
         with LOCK.open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return Host().space(headroom=plan['load_headroom_bytes'], archive_path=archive,

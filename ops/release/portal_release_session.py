@@ -79,7 +79,7 @@ def wait_review(request, record, clock=time.monotonic, sleep=time.sleep):
     return 'timeout'
 
 
-def receive(request, attempt, record, host, clock=time.monotonic, sleep=time.sleep):
+def _receive(request, attempt, record, host, clock=time.monotonic, sleep=time.sleep):
     plan = core.validate_plan(request['plan'])
     source = Path(request['incoming'])
     archive = source / 'image.tar.gz'
@@ -117,10 +117,66 @@ def receive(request, attempt, record, host, clock=time.monotonic, sleep=time.sle
     record('ARCHIVE_RECEIVED')
 
 
+def publish_diagnostic(request, attempt, report):
+    data = json.dumps(report, indent=2).encode()
+    root_file(Path(attempt) / 'diagnostic.json', data)
+    directory = Path(request['exchange'])
+    temporary = directory / ('diagnostic-' + uuid.uuid4().hex + '.tmp')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        if os.geteuid() == 0:
+            os.fchown(stream.fileno(), request['owner_uid'], -1)
+        else:
+            core.require(os.geteuid() == request['owner_uid'], 'Wrong diagnostic owner')
+        stream.write(data); stream.flush(); os.fsync(stream.fileno())
+    os.replace(temporary, directory / 'diagnostic.json')
+
+
+def receive(request, attempt, record, host, clock=time.monotonic, sleep=time.sleep):
+    try:
+        return _receive(request, attempt, record, host, clock=clock, sleep=sleep)
+    except core.ReleaseError as error:
+        if not isinstance(error, core.CapacityError) and 'Insufficient release capacity' not in str(error):
+            raise
+        report = dict(format=1, session=request['session'], target=request['manifest']['target'],
+                      state='BLOCKED_CAPACITY', app_switched_by_this_session=False, error=str(error))
+        if hasattr(host, 'storage_diagnostic'):
+            report.update(host.storage_diagnostic(request))
+        publish_diagnostic(request, attempt, report)
+        record('DIAGNOSTIC_AVAILABLE', path=str(Path(request['exchange']) / 'diagnostic.json'))
+        raise core.CapacityError(str(error)) from error
+
+
 class SessionHost(core.Host):
     def __init__(self, record):
         super().__init__()
         self.record = record
+
+    def run(self, *args, **kwargs):
+        if args and args[0] == MAINTENANCE:
+            result = subprocess.run(args, cwd=self.app, text=True, capture_output=True, timeout=120)
+            self.record('MAINTENANCE_RESULT', exit_code=result.returncode,
+                        stdout=result.stdout[-16384:], stderr=result.stderr[-8192:])
+            if result.returncode:
+                if 'Insufficient release capacity' in result.stderr:
+                    raise core.CapacityError('Insufficient release capacity after the approved maintenance pass')
+                raise core.ReleaseError('Storage maintenance failed; technical output is in this session log')
+            return result.stdout.strip()
+        return super().run(*args, **kwargs)
+
+    def storage_diagnostic(self, request):
+        data = dict(plan=request['plan'], last_space_report=getattr(self, 'last_space_report', None))
+        try:
+            raw = self.run(MAINTENANCE, '--report-json', '--release-headroom-bytes',
+                           str(request['plan']['before_transfer_bytes'] - core.SPACE_FLOOR))
+            data['storage'] = json.loads(raw)
+        except Exception as error:
+            data['storage_report_error'] = type(error).__name__
+        try:
+            data['docker_disk'] = self.run('docker', 'system', 'df', '--format', '{{json .}}', timeout=30)
+        except Exception as error:
+            data['docker_report_error'] = type(error).__name__
+        return data
 
     def space(self, *args, **kwargs):
         output = io.StringIO()
@@ -129,7 +185,8 @@ class SessionHost(core.Host):
                 return super().space(*args, **kwargs)
         finally:
             if output.getvalue():
-                self.record('CAPACITY_DETAIL', output=output.getvalue().strip())
+                self.last_space_report = output.getvalue().strip()
+                self.record('CAPACITY_DETAIL', output=self.last_space_report)
 
 
 def execute(request, attempt, record, host=None, review=wait_review, receive_bundle=receive):
@@ -161,7 +218,18 @@ def execute(request, attempt, record, host=None, review=wait_review, receive_bun
     if request['remove_archive']:
         # Only the archive created/promoted into this root-owned attempt.
         (bundle / 'image.tar.gz').unlink()
-    record('COMPLETE', image=manifest['image'], target=manifest['target'])
+    storage_status = 'not_available'
+    if hasattr(host, 'storage_diagnostic'):
+        try:
+            report = dict(format=1, session=request['session'], target=manifest['target'],
+                          state='VERIFIED_RELEASE_STORAGE_REPORT', **host.storage_diagnostic(request))
+            publish_diagnostic(request, attempt, report)
+            storage_status = 'reported'
+            record('STORAGE_REPORT_AVAILABLE', path=str(Path(request['exchange']) / 'diagnostic.json'))
+        except Exception as error:
+            storage_status = 'report_failed'
+            record('STORAGE_REPORT_UNAVAILABLE', error_type=type(error).__name__)
+    record('COMPLETE', image=manifest['image'], target=manifest['target'], storage_report=storage_status)
     return True
 
 
@@ -189,6 +257,9 @@ def worker(attempt):
     try:
         record('STARTED', target=request['manifest']['target'])
         return execute(request, attempt, record)
+    except core.CapacityError as error:
+        record('BLOCKED_CAPACITY', message=str(error), app_switched_by_this_session=False)
+        return False
     except BaseException as error:
         record('FAILED', error_type=type(error).__name__,
                message=str(error) if isinstance(error, core.ReleaseError) else 'See private attempt evidence')

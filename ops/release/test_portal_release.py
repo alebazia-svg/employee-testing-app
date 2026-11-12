@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 import tarfile
 import tempfile
+import sys
+import stat
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 spec = importlib.util.spec_from_file_location('release', Path(__file__).with_name('portal_release.py'))
 r = importlib.util.module_from_spec(spec)
@@ -276,6 +279,40 @@ class ReleaseTests(unittest.TestCase):
                 self.install(host)
         self.assertEqual(host.calls, [])
         self.assertEqual(host.image, OLD)
+
+    def test_ordinary_user_capacity_check_never_opens_root_lock_or_runs_docker(self):
+        plan = r.capacity_plan(self.bundle, self.manifest)
+        plan_path = self.bundle / 'plan.json'; plan_path.write_text(json.dumps(plan))
+        layout = dict(format=1, docker_root='/var/lib/docker', containerd_root='/var/lib/containerd', app_root=str(r.APP))
+        with patch('sys.argv', ['release', 'check-space', '--plan', str(plan_path), '--archive-directory', str(self.bundle)]), \
+             patch.object(r.os, 'geteuid', return_value=1003), patch.object(r, 'read_storage_layout', return_value=layout), \
+             patch.object(r, 'LOCK') as lock, patch.object(r, 'Host') as host:
+            r.main()
+            lock.open.assert_not_called()
+            host.return_value.space.assert_called_once_with(headroom=plan['load_headroom_bytes'],
+                archive_path=self.bundle.resolve() / 'image.tar.gz', archive_bytes=plan['archive_bytes'], storage_layout=layout)
+
+    def test_public_layout_must_be_root_owned_and_not_writable_by_other_accounts(self):
+        layout = self.bundle / 'storage-layout.json'
+        raw = json.dumps(dict(format=1, docker_root='/var/lib/docker', containerd_root='/var/lib/containerd', app_root=str(r.APP)))
+        layout.write_text(raw)
+        def metadata(uid, mode):
+            return SimpleNamespace(st_uid=uid, st_mode=stat.S_IFREG|mode, st_nlink=1, st_size=len(raw))
+        with patch.object(r, 'STORAGE_LAYOUT', layout):
+            for uid, mode in ((1003,0o644),(0,0o666)):
+                with patch.object(r.os, 'fstat', return_value=metadata(uid,mode)), self.assertRaises(r.ReleaseError):
+                    r.read_storage_layout()
+            with patch.object(r.os, 'fstat', return_value=metadata(0,0o644)):
+                self.assertEqual(r.read_storage_layout()['docker_root'], '/var/lib/docker')
+
+    def test_readonly_space_uses_filesystem_facts_without_docker_command(self):
+        host = r.Host(self.bundle)
+        layout = dict(docker_root=str(self.bundle), containerd_root=str(self.bundle))
+        stats = SimpleNamespace(f_bavail=30*r.GIB, f_frsize=1)
+        with patch.object(host, 'run') as command, patch.object(r.os, 'statvfs', return_value=stats):
+            reports = host.space(headroom=r.GIB, archive_path=self.archive, archive_bytes=100, storage_layout=layout)
+            command.assert_not_called()
+            self.assertEqual(reports[0]['required_bytes'],16*r.GIB+100)
 
     def test_manifest_rejects_wrong_architecture_paths_and_invalid_identities(self):
         for key, value in [('platform', 'linux/arm64'), ('archive', '../image.tar.gz'),

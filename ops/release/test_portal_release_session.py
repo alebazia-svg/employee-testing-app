@@ -193,6 +193,29 @@ class SessionTests(unittest.TestCase):
                 session.main(['session-worker', '--attempt', '/not-a-live-session'])
             self.assertEqual(result.exception.code, 2)
 
+    def test_failed_storage_pass_keeps_technical_details_in_same_owner_readable_log(self):
+        host = session.SessionHost(self.record)
+        result = SimpleNamespace(returncode=1, stdout='Free GiB: 17.39', stderr='RuntimeError: Insufficient release capacity above 15 GiB reserve')
+        with patch.object(session.subprocess, 'run', return_value=result):
+            with self.assertRaises(core.CapacityError):
+                host.run(session.MAINTENANCE, '--apply', '--release-headroom-bytes', '123')
+        self.assertEqual(self.events[-1][0], 'MAINTENANCE_RESULT')
+        self.assertEqual(self.events[-1][1]['stdout'], 'Free GiB: 17.39')
+
+    def test_capacity_block_publishes_private_and_owner_diagnostics_without_switching_app(self):
+        host = self.host()
+        host.space = Mock(side_effect=core.CapacityError('Insufficient release capacity'))
+        host.storage_diagnostic = Mock(return_value={'storage':{'verified_images':REGISTRY}})
+        with self.assertRaises(core.CapacityError):
+            session.receive(self.request, self.attempt, self.record, host)
+        public = json.loads((self.exchange / 'diagnostic.json').read_text())
+        private = json.loads((self.attempt / 'diagnostic.json').read_text())
+        self.assertEqual(public, private)
+        self.assertEqual(public['state'], 'BLOCKED_CAPACITY')
+        self.assertEqual(public['storage']['verified_images'],REGISTRY)
+        self.assertFalse(public['app_switched_by_this_session'])
+        self.assertFalse(any(call[0]=='compose' for call in host.calls))
+
     def test_data_reader_rejects_symlinks_and_unbounded_input(self):
         large = self.root / 'large.json'; large.write_bytes(b'x'*100)
         with self.assertRaises(core.ReleaseError): session.read_data(large, limit=10)

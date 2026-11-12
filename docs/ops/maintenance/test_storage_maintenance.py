@@ -90,6 +90,19 @@ class RetentionTests(unittest.TestCase):
                 '--max-used-space', '5GB', '--min-free-space', str(target)], check=True)
             self.assertEqual(maintenance.MIN_FREE_BYTES, 15*1024**3)
 
+    def test_report_never_applies_cleanup_or_claims_ready_with_insufficient_space(self):
+        current='sha256:'+'a'*64
+        images=[{'Id':current,'RepoTags':['portal-app:rollback-before-1.0.1']},
+                {'Id':'old','RepoTags':['offonika-portal-release:1.0.0-'+'b'*12]}]
+        report=maintenance.inventory(images,[current],set(),current,20*1024**3,17*1024**3)
+        self.assertEqual(report['capacity']['shortfall_bytes'],3*1024**3)
+        self.assertEqual(report['images'][0]['reason'],'protected')
+        self.assertFalse(report['images'][1]['eligible'])
+        for flags in (['--report-json','--apply'],['--report-json','--register-verified']):
+            with patch('sys.argv',['maintenance',*flags]),patch.object(maintenance.subprocess,'run') as command:
+                with self.assertRaises(ValueError): maintenance.main()
+                command.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
