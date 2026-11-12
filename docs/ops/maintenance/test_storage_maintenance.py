@@ -1,5 +1,9 @@
 import importlib.util
+import json
+import os
 from pathlib import Path
+import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, mock_open, Mock
 
@@ -27,6 +31,28 @@ class RetentionTests(unittest.TestCase):
         for tags in ([tag, 'portal-app:unknown'], [tag+'f'], [tag.replace('1.2.3','1.2.2')]):
             self.assertEqual(maintenance.candidates([self.image(tags)], set(), set(), history), [])
         self.assertEqual(maintenance.candidates([self.image([tag], ['other@sha256:'+'c'*64])], set(), set(), history), [])
+
+    def test_persisted_history_rejects_writable_linked_and_invalid_evidence(self):
+        self.history_patch.stop()
+        with tempfile.TemporaryDirectory() as directory, patch.object(maintenance,'HISTORY',Path(directory)/'history.json'):
+            values={'sha256:'+'a'*64:dict(version='1.2.3',revision='b'*40)}
+            maintenance.save_history(values)
+            original=os.fstat
+            def root_stat(fd):
+                info=original(fd)
+                return SimpleNamespace(st_uid=0,st_mode=info.st_mode,st_nlink=info.st_nlink,st_size=info.st_size)
+            with patch.object(maintenance.os,'fstat',side_effect=root_stat):
+                self.assertEqual(maintenance.load_history(),values)
+                maintenance.HISTORY.chmod(0o666)
+                with self.assertRaisesRegex(ValueError,'Untrusted'):maintenance.load_history()
+                maintenance.HISTORY.chmod(0o600)
+                os.link(maintenance.HISTORY,Path(directory)/'other-link')
+                with self.assertRaisesRegex(ValueError,'Untrusted'):maintenance.load_history()
+                (Path(directory)/'other-link').unlink()
+                maintenance.HISTORY.write_text(json.dumps({'sha256:'+'a'*64:dict(version='1.2.3',revision='wrong')}))
+                with self.assertRaisesRegex(ValueError,'identity'):maintenance.load_history()
+                maintenance.HISTORY.unlink();maintenance.HISTORY.symlink_to(Path(directory)/'missing')
+                with self.assertRaises(OSError):maintenance.load_history()
 
     def image(self, tags=None, digest=None):
         return {'Id': 'old', 'RepoTags': tags if tags is not None else ['portal-app:rollback-before-1.4.0'], 'RepoDigests': digest or []}
