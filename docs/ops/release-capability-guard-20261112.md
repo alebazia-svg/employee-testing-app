@@ -63,6 +63,20 @@ the installer's full env/mount snapshot and compatible-source restrictions.
 - No new runtime synthetic monitor, automatic incident notification or changes
   to existing System/attention/push policy are included.
 
+## Separate retention-policy finding; unchanged in this scope
+
+A pure local replay against the byte-identical installed maintenance script
+(`051a48946b6ee340fa3fc90231115e8fd3582066ae6001305ea9bfe2a353bf2f`)
+confirmed that an unused image carrying the new standard
+`offonika-portal-release:<version>-<commit>` tag remains excluded even after it
+leaves the three protected images. The legacy rollback-only equivalent is
+eligible. This is established policy behavior, not an observed new outage or
+evidence that any protected/test data may be deleted. Capacity gates still stop
+an unsafe release. Review this separately before broadening cleanup eligibility;
+preserve all container-used images, current plus two verified reserves and
+unknown/debug artifacts. No maintenance code, cleanup, retention limit or timer
+was changed by the capability guard.
+
 ## Files
 
 - `ops/release/portal_release_contract.py`
