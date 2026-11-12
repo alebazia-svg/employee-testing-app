@@ -31,6 +31,14 @@ The explicit receipts flag preserves the existing build-time feature decision;
 it is not permission to enable or disable receipt collection. Check its approved
 baseline and demonstrate the relevant UI during independent release verification.
 
+**Confirmed production baseline: `--receipts-enabled 1`.** The disabled flag in
+1.24.7/1.24.8 was a release regression, not an owner decision; 1.24.11 restores
+the approved module. Do not infer this argument from the runner's environment:
+it is compiled in the builder stage. Before certifying a release, verify the
+compiled receipt loader and open a saved document in ADMIN and employee context.
+See `docs/ops/procurement-receipts-restore-20261112.md`. Passing `/api/health`
+alone is insufficient; disabling the module requires separate owner approval.
+
 The preparer exports the target with `git archive`: unrelated dirty/untracked
 files, local `.env` and `.git` do not enter the source. Docker builds linux/amd64
 (the VPS architecture) and records the full source revision using the existing
