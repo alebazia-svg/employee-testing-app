@@ -101,6 +101,20 @@ class SessionTests(unittest.TestCase):
                             receive_bundle=lambda *args: None)
         self.assertEqual(json.loads(self.registry.read_text()), REGISTRY)
 
+    def test_capabilities_are_rechecked_after_review_before_registration(self):
+        host=self.host();original=host.run
+        def review(request,record):
+            def run(*args,**kwargs):
+                if args[-1]==core.contract.ARTIFACT_PROBE:
+                    return json.dumps({**fixtures.ARTIFACT,'capabilities':{'procurement_receipts':False}})
+                return original(*args,**kwargs)
+            host.run=run
+            return 'verified'
+        with self.assertRaisesRegex(core.ReleaseError,'capabilities changed'):
+            session.execute(self.request,self.attempt,self.record,host=host,review=review,receive_bundle=lambda *a:None)
+        self.assertEqual(json.loads(self.registry.read_text()),REGISTRY)
+        self.assertFalse(any(call[0]==session.MAINTENANCE for call in host.calls))
+
     def test_confirmation_is_bound_to_exact_session_image_and_commit(self):
         good = dict(session=self.request['session'], target=TARGET, image=NEW, decision='verified')
         self.assertTrue(session.review_matches(good, self.request))

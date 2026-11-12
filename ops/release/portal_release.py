@@ -21,6 +21,7 @@ import tempfile
 import tarfile
 import time
 import urllib.request
+import portal_release_contract as contract
 
 GIB = 1024 ** 3
 SPACE_FLOOR = 15 * GIB
@@ -156,6 +157,7 @@ def validate_manifest(data):
     require(re.fullmatch(r'[a-f0-9]{64}', data.get('archive_sha256', '')), 'Invalid archive checksum')
     require(data.get('platform') == 'linux/amd64', 'VPS requires linux/amd64')
     require(data.get('archive') == 'image.tar.gz', 'Unexpected archive name')
+    contract.validate_manifest_contract(data)
     return data
 
 
@@ -202,7 +204,10 @@ class Host:
 
     def public_routes(self, origin):
         for route, accepted in [('/login', {200}), ('/employee', {200, 307}),
-                                ('/admin/workday', {200, 307}), ('/admin/payroll', {200, 307})]:
+                                ('/admin', {200, 307}), ('/admin/workday', {200, 307}),
+                                ('/admin/procurement', {200, 307}), ('/admin/expense-requests', {200, 307}),
+                                ('/admin/attendance', {200, 307}), ('/admin/employees', {200, 307}),
+                                ('/admin/payroll', {200, 307}), ('/admin/taxes', {200, 307})]:
             code = self.run('curl', '--silent', '--show-error', '--max-time', '15',
                             '--output', '/dev/null', '--write-out', '%{http_code}', origin + route)
             require(int(code) in accepted, 'Unexpected HTTP status ' + code + ' for ' + route)
@@ -296,6 +301,7 @@ def install(host, manifest, bundle, registry, origin, record):
     record('CAPACITY_PLANNED', **{key: value for key, value in plan.items() if key != 'manifest'})
     host.space(headroom=plan['load_headroom_bytes'], archive_path=archive)
     old, old_info = preflight(host, manifest, registry, origin)
+    old_artifact = contract.probe(host)
     old_image = old['Image']
     old_snapshot = snapshot(old)
     db_id = host.inspect('container', 'portal-postgres')['Id']
@@ -312,6 +318,10 @@ def install(host, manifest, bundle, registry, origin, record):
                                    '--entrypoint', 'node', manifest['image'], '-e',
                                    "process.stdout.write(require('fs').readFileSync('/app/public/release-info.json','utf8'))"))
     verify_metadata(candidate, manifest)
+    candidate_artifact = contract.probe(host, manifest['image'])
+    require(candidate_artifact == manifest['artifact'], 'Compiled artifact differs from reviewed release manifest')
+    contract.verify_continuity(old_artifact, candidate_artifact)
+    record('CAPABILITIES_VERIFIED', routes=len(candidate_artifact['routes']), assets=len(candidate_artifact['assets']))
     host.space(archive_path=archive)  # After loading, preserve the full reserve on every filesystem.
     require(host.git('rev-parse', 'HEAD') == manifest['base'] and host.current()['Image'] == old_image,
             'Server changed during preparation')
@@ -331,6 +341,7 @@ def install(host, manifest, bundle, registry, origin, record):
         public = host.public_json(origin, '/release-info.json')
         verify_metadata(public, manifest)
         require(public == candidate, 'Public and image build identities differ')
+        require(contract.probe(host) == candidate_artifact, 'Running compiled artifact differs after restart')
         require(host.git('rev-parse', 'HEAD') == manifest['target'], 'Server commit changed')
         # Registration is deliberately separate, after independent business/UI checks.
         record('AWAITING_INDEPENDENT_VERIFICATION', previous_image=old_image, target_image=manifest['image'])
@@ -360,7 +371,8 @@ def install(host, manifest, bundle, registry, origin, record):
         raise
 
 
-def prepare(host, base, target, output, receipts_enabled):
+def prepare(host, base, target, output, receipts_enabled=None):
+    require(receipts_enabled in (None, '1'), 'Approved receipt module cannot be disabled during release preparation')
     require(re.fullmatch(r'[a-f0-9]{40}', base) and re.fullmatch(r'[a-f0-9]{40}', target), 'Use full commits')
     host.git('merge-base', '--is-ancestor', base, target)
     require(not host.git('diff', '--name-only', base, target, '--', *PROTECTED_PATHS), 'Incompatible schema/config change')
@@ -379,14 +391,20 @@ def prepare(host, base, target, output, receipts_enabled):
         host.git('archive', '--format=tar', '--output=' + str(tar), target)
         host.run('tar', '-xf', str(tar), '-C', directory)
         tar.unlink()
+        compose = json.loads(host.run('docker', 'compose', '--env-file', '/dev/null', '-f',
+                                     str(source / 'docker-compose.portal.yml'), 'config', '--no-interpolate',
+                                     '--no-env-resolution', '--format', 'json', cwd=source))
+        build_args = contract.build_arguments(source, compose, receipts_enabled)
         build_started = time.monotonic()
         print('BUILDING linux/amd64 from committed archive ' + target, flush=True)
+        arguments = [arg for key, value in sorted(build_args.items()) for arg in ('--build-arg', key + '=' + value)]
         host.run('docker', 'buildx', 'build', '--platform', 'linux/amd64', '--load',
                  '--build-arg', 'PORTAL_BUILD_REVISION=' + target,
-                 '--build-arg', 'NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=' + receipts_enabled, '-t', tag, directory, timeout=1800)
+                 *arguments, '-t', tag, directory, timeout=1800)
         print('BUILD_COMPLETE seconds=' + str(round(time.monotonic() - build_started, 2)), flush=True)
         image = host.inspect('image', tag)
         require(image['Os'] == 'linux' and image['Architecture'] == 'amd64', 'Builder produced wrong platform')
+        artifact = contract.validate_artifact(contract.probe(host, image['Id']))
         archive = output / 'image.tar.gz'
         # Streaming prevents a multi-GB image from entering Python memory.
         with archive.open('wb') as stream:
@@ -400,12 +418,16 @@ def prepare(host, base, target, output, receipts_enabled):
                     save.terminate()
                     save.wait()
     manifest = dict(format=1, base=base, target=target, version=pkg['version'], image=image['Id'],
-                    platform='linux/amd64', archive='image.tar.gz', archive_sha256=digest(archive))
+                    platform='linux/amd64', archive='image.tar.gz', archive_sha256=digest(archive),
+                    build_args=build_args, artifact=artifact)
     validate_manifest(manifest)
     validate_archive(archive, manifest)
-    (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    (output / 'capacity.json').write_text(json.dumps(capacity_plan(output, manifest), indent=2) + '\n')
-    print(json.dumps(manifest, indent=2), flush=True)
+    (output / 'manifest.json').write_text(json.dumps(manifest, separators=(',', ':')) + '\n')
+    plan = json.dumps(capacity_plan(output, manifest), separators=(',', ':'))
+    require(len(plan.encode()) <= 65536, 'Capacity/manifest exceeds bounded session input')
+    (output / 'capacity.json').write_text(plan + '\n')
+    print(json.dumps({k: v for k, v in manifest.items() if k != 'artifact'}), flush=True)
+    print('COMPILED_CAPABILITIES_VERIFIED routes=' + str(len(artifact['routes'])) + ' assets=' + str(len(artifact['assets'])), flush=True)
 
 
 def main():
@@ -418,8 +440,8 @@ def main():
     build.add_argument('--base', required=True)
     build.add_argument('--target', required=True)
     build.add_argument('--output', required=True)
-    build.add_argument('--receipts-enabled', required=True, choices=('0', '1'),
-                       help='Use the already approved production build flag; do not change it during release hardening')
+    build.add_argument('--receipts-enabled', choices=('1',),
+                       help='Optional compatibility argument; the approved build contract always enables receipts')
     deploy = sub.add_parser('install')
     deploy.add_argument('--bundle', required=True)
     deploy.add_argument('--origin', required=True)

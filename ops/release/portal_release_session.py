@@ -152,6 +152,7 @@ def execute(request, attempt, record, host=None, review=wait_review, receive_bun
     core.verify_metadata(host.metadata(), manifest)
     core.verify_metadata(host.public_json(request['origin'], '/release-info.json'), manifest)
     core.require(host.public_json(request['origin'], '/api/health').get('ok') is True, 'Public health failed after review')
+    core.require(core.contract.probe(host) == manifest['artifact'], 'Running capabilities changed during independent review')
     host.public_routes(request['origin'])
     host.run(MAINTENANCE, '--register-verified', '--expected-current', manifest['image'])
     registry = json.loads(core.REGISTRY.read_text())
@@ -191,7 +192,7 @@ def worker(attempt):
         return execute(request, attempt, record)
     except BaseException as error:
         record('FAILED', error_type=type(error).__name__,
-               message=str(error) if isinstance(error, core.ReleaseError) else 'See private attempt evidence')
+               message=str(error) if isinstance(error, (core.ReleaseError, core.contract.ContractError)) else 'See private attempt evidence')
         raise
 
 
@@ -232,6 +233,7 @@ def start(args):
                    exchange=str(exchange), owner_uid=owner.pw_uid, review_timeout=args.review_timeout,
                    upload_timeout=args.upload_timeout, remove_archive=args.remove_archive,
                    approved_maintenance=args.approved_storage_maintenance)
+    core.require(len(json.dumps(request).encode()) <= 65536, 'Capability/session request exceeds bounded input; review inventory size before release')
     root_file(attempt / 'request.json', json.dumps(request).encode())
     root_file(bundle / 'manifest.json', json.dumps(manifest).encode())
     ready = exchange / 'ready.json'

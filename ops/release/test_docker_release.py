@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import uuid
 
-from test_portal_release import FakeHost, BASE, TARGET, NEW_INFO, OLD_INFO, r
+from test_portal_release import ARTIFACT, FakeHost, BASE, TARGET, NEW_INFO, OLD_INFO, r
 
 
 @unittest.skipUnless(os.getenv('PORTAL_RELEASE_DOCKER_TEST') == '1', 'Opt-in Docker fixture test')
@@ -27,17 +27,27 @@ class DockerReleaseTests(unittest.TestCase):
                         source / 'scripts/write-release-info.mjs')
             (source / 'Dockerfile').write_text("""FROM node:22-bookworm-slim
 WORKDIR /app
+ARG TARGETARCH
 ARG PORTAL_BUILD_REVISION
+ARG NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=0
 ENV PORTAL_BUILD_REVISION=$PORTAL_BUILD_REVISION
+ENV NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=$NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED
 COPY . .
 RUN mkdir -p public && node scripts/write-release-info.mjs
+RUN mkdir -p .next/static/chunks && node -e "require('fs').writeFileSync('.next/static/chunks/receipt.js',process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED==='1'?'/api/procurement/receipts?':'disabled')"
 """)
+            (source/'docker-compose.portal.yml').write_text(json.dumps({'services':{'portal-app':{'build':{'context':'.','args':dict(r.contract.BUILD_ARGS)}}}}))
+            (source/'.next/server').mkdir(parents=True)
+            (source/'.next/static/chunks').mkdir(parents=True)
+            (source/'.next/server/app-paths-manifest.json').write_text(json.dumps({p:'fixture.js' for p in ARTIFACT['routes']}))
+            (source/'public').mkdir()
+            (source/'public/manifest.webmanifest').write_text('{}')
             host = r.Host(source)
             host.run('git', 'init', '-q')
             def commit(value):
                 (source / 'package.json').write_text(json.dumps(dict(version=value)))
                 (source / 'package-lock.json').write_text(json.dumps(dict(version=value, packages={'': dict(version=value)})))
-                host.run('git', 'add', 'Dockerfile', 'scripts/write-release-info.mjs', 'package.json', 'package-lock.json')
+                host.run('git', 'add', 'Dockerfile', 'docker-compose.portal.yml', '.next', 'public', 'scripts/write-release-info.mjs', 'package.json', 'package-lock.json')
                 host.run('git', '-c', 'user.name=Release fixture', '-c', 'user.email=release@example.test', 'commit', '-qm', value)
                 return host.git('rev-parse', 'HEAD')
             base = commit('1.0.0')
@@ -48,7 +58,7 @@ RUN mkdir -p public && node scripts/write-release-info.mjs
             tag = 'offonika-portal-release:1.0.1-' + target[:12]
             try:
                 output = root / 'bundle'
-                r.prepare(host, base, target, output, '0')
+                r.prepare(host, base, target, output)
                 data = r.validate_manifest(json.loads((output / 'manifest.json').read_text()))
                 self.assertEqual(data['archive_sha256'], r.digest(output / 'image.tar.gz'))
                 result = json.loads(host.run('docker', 'run', '--rm', '--network', 'none', '--entrypoint', 'node', data['image'],
@@ -56,6 +66,7 @@ RUN mkdir -p public && node scripts/write-release-info.mjs
                 r.verify_metadata(result['meta'], data)
                 self.assertFalse(result['secret'])
                 self.assertEqual(result['meta']['version'], '1.0.1')
+                self.assertEqual(data['artifact']['capabilities'],{'procurement_receipts':True})
             finally:
                 subprocess.run(['docker', 'image', 'rm', tag], capture_output=True)
 
@@ -78,8 +89,15 @@ http.createServer((q,s)=>{s.end(q.url==='/release-info.json'?meta:JSON.stringify
 WORKDIR /app
 COPY metadata.json /app/public/release-info.json
 COPY server.cjs /app/server.cjs
+COPY fixture-artifact /app/
 CMD ["node", "/app/server.cjs"]
 ''')
+            (root/'fixture-artifact/.next/server').mkdir(parents=True)
+            (root/'fixture-artifact/.next/static/chunks').mkdir(parents=True)
+            (root/'fixture-artifact/public').mkdir()
+            (root/'fixture-artifact/.next/server/app-paths-manifest.json').write_text(json.dumps({p:'fixture.js' for p in ARTIFACT['routes']}))
+            (root/'fixture-artifact/.next/static/chunks/receipt.js').write_text('/api/procurement/receipts?')
+            (root/'fixture-artifact/public/manifest.webmanifest').write_text('{}')
             ids = []
             for index, meta in enumerate((OLD_INFO, dict(NEW_INFO, revision=fixture_target), dict(OLD_INFO, version='0.9.0'), dict(OLD_INFO, version='0.8.0'))):
                 tag = prefix + ':' + str(index)
@@ -113,7 +131,8 @@ CMD ["node", "/app/server.cjs"]
             command = ['docker', 'compose', '-p', prefix, '-f', str(compose)]
             subprocess.run(command + ['up', '-d'], check=True, capture_output=True)
             manifest = dict(format=1, base=BASE, target=fixture_target, version='1.0.1', image=new,
-                            archive='image.tar.gz', platform='linux/amd64', archive_sha256=r.digest(archive))
+                            archive='image.tar.gz', platform='linux/amd64', archive_sha256=r.digest(archive),
+                            build_args=dict(r.contract.BUILD_ARGS), artifact=ARTIFACT)
             real = r.Host(root)
             class DockerHost(FakeHost):
                 def current(self):
@@ -127,7 +146,7 @@ CMD ["node", "/app/server.cjs"]
                 def run(self, *args, **kwargs):
                     if 'migrate' in args:
                         return ''  # No real database/schema in this isolated transition fixture.
-                    args = tuple(compose_tag if arg == r.COMPOSE_IMAGE else arg for arg in args)
+                    args = tuple(names[0] if arg=='portal-app' else compose_tag if arg == r.COMPOSE_IMAGE else arg for arg in args)
                     if args[:4] == ('docker', 'image', 'tag', old) and args[-1].startswith('portal-app:rollback-'):
                         return ''  # Production rollback tags must never be touched by a fixture.
                     return real.run(*args, **kwargs)
