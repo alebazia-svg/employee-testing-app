@@ -1,13 +1,11 @@
 # Guarded portal image delivery
 
-Installed on the VPS on 11 November 2026, initially at 18:24 Moscow. Current
-host tool revision is `f82c912` (one-password workflow installed at 20:06 Moscow;
-capacity correction `884390f` remains included). This is now the default for subsequent compatible releases. The
-installation did not deploy an application image. Existing application behavior,
-background schedules, database, uploads, backups and rollback policy are preserved.
-See `docs/ops/release-single-auth-20261111.md` for current evidence/rollback,
-`docs/ops/release-capacity-20261111.md` for capacity evidence, and
-`docs/ops/release-process-install-20261111.md` for the initial installation.
+Current host tooling: `fb9cd89`, installed on 12 November 2026 at 14:35 Moscow.
+This includes the previous capacity/session work and capability guard `e3efeb2`.
+See `docs/ops/release-follow-up-20261112.md` for current evidence, remaining
+capacity limits and rollback. Installing the tooling did not restart or replace
+application 1.24.11 / `6a8f577`. Existing application behavior, background
+schedules, database, uploads, backups and test environments were preserved.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
@@ -15,22 +13,25 @@ with one checked-in installer. It does not introduce another hosting service.
 
 ## Normal release: one sudo entry point
 
-Prepared follow-up (not yet installed): ordinary-user `check-space` reads current
-filesystem availability using the root-owned
-`/usr/local/lib/offonika-release/storage-layout.json` paths. Run it with the exact
-plan and intended incoming archive path before opening Terminal. This is an
-advisory check without Docker access or a root lock; the worker still repeats
-the authoritative locked checks. Installation must publish the actual Docker,
-containerd and application paths as a root-owned, non-writable JSON file with
-`format: 1`, `docker_root`, `containerd_root` and `app_root` fields.
+Owner-approved follow-up (12 November): use ordinary-user `check-space` before
+opening Terminal. It reads current filesystem availability from root-published
+`/usr/local/lib/offonika-release/storage-layout.json` paths, without Docker or
+sudo. This advisory check takes no root lock; the worker repeats authoritative
+locked checks. See `docs/ops/release-follow-up-20261112.md` for activation evidence.
 
-The follow-up also publishes `diagnostic.json` in the owner-readable session
-exchange on `BLOCKED_CAPACITY`, including the approved maintenance result and
-protected/used/skipped image inventory. Read that evidence before considering
-another password request. After verification a storage report is advisory:
-`COMPLETE` certifies this release, not capacity for a future archive. This patch
-does not expand deletion eligibility or enable automatic post-release deletion.
-See `docs/ops/release-follow-up-20261112.md` for test limits and installation status.
+Capacity failure publishes `diagnostic.json` in the owner-readable session
+exchange, including maintenance output and protected/used/skipped image inventory.
+Read that evidence before any new password request. After exact independent
+verification and registration, the same worker applies approved retention and
+reports storage. `COMPLETE` certifies this release, not capacity for a future
+archive; retention/report warnings do not mislabel a verified installation.
+
+Only previously verified images recorded in root-owned history are eligible.
+Every tag must be a recognised legacy rollback tag or the exact generated
+version/commit tag recorded for that image. Current plus two verified reserves,
+every container-used image (including stopped containers), unknown/mixed tags
+and foreign digests are excluded. No force removal, container/volume pruning,
+upload/backup/test-environment deletion or sudo-policy change is allowed.
 
 Use the session workflow below for an already approved compatible release.
 Prepare and test the image locally before requesting a password. Create a private
@@ -43,7 +44,7 @@ Start once in native Terminal, with the password only there:
 sudo portal-release session-start \
   --plan /home/bela/<attempt>/capacity.json --plan-sha256 <reviewed-sha256> \
   --incoming /home/bela/<attempt>/incoming --origin https://team.mobo-opt.ru \
-  --remove-archive --apply
+  --remove-archive --approved-storage-maintenance --apply
 ```
 
 The incoming directory must already exist, be Bela-owned mode 700 and on the
@@ -51,8 +52,13 @@ same filesystem as the root session store. Leave `image.tar.gz` absent until the
 worker reports `READY_FOR_TRANSFER`. Do not open another sudo window to perform
 capacity checks or registration for this session. When the exact operation also
 includes an approved existing-policy storage pass, include
-`--approved-storage-maintenance`; this permits one pass only if capacity is short.
-No cleanup happens implicitly or outside the existing retention policy.
+`--approved-storage-maintenance` as shown above; this permits one pre-transfer
+pass only if capacity is short. For the known current shortfall, include it in
+the exact reviewed session rather than opening a separate maintenance window.
+The ordinary precheck may report a shortage that this approved pass can resolve;
+review the existing diagnostics first, never bypass the repeated capacity gate.
+The approved pre-transfer pass is optional; verified post-release retention runs
+in the same worker after successful registration, under the same protections.
 
 The command validates and pins the small plan and starts one bounded, detached
 transient systemd worker. `STARTED_NOT_COMPLETE` means launch only. It prints the
@@ -190,11 +196,11 @@ performs this check internally before `READY_FOR_TRANSFER`. For a separately
 needed standalone diagnostic, check the intended receive directory on the VPS:
 
 ```sh
-sudo portal-release check-space --plan /tmp/portal-approved-release-capacity.json \
+portal-release check-space --plan /tmp/portal-approved-release-capacity.json \
   --archive-directory /home/bela/<attempt>-bundle
 ```
 
-This is read-only apart from the shared lock; it does not build, load, clean,
+For ordinary users this is read-only without the shared root lock; it does not build, load, clean,
 register or restart anything. It prints required/available/shortfall bytes for
 every involved filesystem. A failed check is not permission to remove protected
 images, backups, volumes or test environments.
@@ -267,7 +273,8 @@ image rollback must not be claimed safe across schema changes.
 
 The measured release headroom must be available above the 15 GiB reserve
 before loading, and the reserve must still remain after extraction. The budget
-is conservative planning, not a prediction that every future image will fit. No automatic cleanup is performed. A stale
+is conservative planning, not a prediction that every future image will fit. The lower-level installer performs no cleanup; the session runs approved
+retention only after exact independent verification and registration. A stale
 verified registry stops installation; reconcile it only after independent
 verification of the actual release, never by bypassing the guard.
 

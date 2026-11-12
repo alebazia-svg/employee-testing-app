@@ -371,3 +371,21 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 - Launch/confirmation success is not release completion: require COMPLETE,
   expected metadata/health and retained verified reserves. A failed/stale attempt
   must be diagnosed before any new password request; never bypass a guard.
+
+
+## Verified Release Retention — Owner Approval 2026-11-12
+
+- Before requesting sudo, run ordinary-user `portal-release check-space` with the
+  exact capacity plan and incoming directory. Inspect a shortfall before starting
+  a session; never repeat password requests to rediscover the same disk limit.
+- After independent verification and expected-image registration, the same
+  session performs retention of obsolete, previously verified portal images.
+  Use root-owned verified history, not tag-prefix guesses. Preserve current plus
+  two verified reserves and every image used by any container, including stopped
+  containers. Unknown or mixed tags/digests are excluded; no force deletion.
+- Keep volumes, uploads, backups and test environments untouched. Capacity
+  diagnostics and reports stay owner-readable in the existing session. Retention
+  warnings do not invalidate an already verified release or guarantee next-archive
+  capacity. The 15 GiB reserve plus measured release headroom remains mandatory.
+- Preserve the installed capability guard when updating release tooling. See
+  `docs/ops/release-follow-up-20261112.md` for installation and rollback evidence.

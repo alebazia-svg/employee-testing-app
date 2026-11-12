@@ -28,8 +28,13 @@ restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
 `docs/ops/release-process-install-20261111.md`. Application source/Docker cache
 changes are in the maintained branch for the next approved, versioned image;
 they were not injected into the running application. Current host tooling is
-`f82c912`, with the single-password session and pre-transfer capacity planning; see
-`docs/ops/release-single-auth-20261111.md` for current installation and rollback.
+`fb9cd89`, retaining capability guard `e3efeb2`, the single-password session,
+ordinary-user precheck and verified-image retention. See
+`docs/ops/release-follow-up-20261112.md` for current installation and rollback.
+Before requesting sudo, run ordinary `portal-release check-space`. Diagnose a
+shortfall using existing owner-readable reports; include the approved storage
+pass in the same reviewed session, not another sudo window. Never lower the
+15 GiB reserve or delete protected/used data to make a plan pass.
 
 The installer refuses schema/migration/Compose/startup changes, stale bases,
 pending migrations, stale verified registries and insufficient space. Never

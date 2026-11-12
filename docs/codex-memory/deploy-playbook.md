@@ -15,8 +15,12 @@ open separate sudo windows for these normal steps. See the session workflow in
 
 Use the guarded prebuilt-image process in `ops/release/README.md`. Host command
 `/usr/local/sbin/portal-release` and corrected maintenance are installed, tool
-revision `f82c912` (includes capacity correction `884390f`; initial adoption
-was `faa53f8`). Normal builds run outside
+revision `fb9cd89` (includes capability guard `e3efeb2`; initial adoption
+was `faa53f8`). Ordinary-user capacity precheck precedes sudo; the approved
+maintenance pass, if needed, belongs inside the same exact release session.
+Verified post-registration retention preserves current plus two reserves, all
+container-used images and unknown identities. Current evidence and the known
+next-bundle shortfall are in `../ops/release-follow-up-20261112.md`. Normal builds run outside
 the production VPS. Current capacity/rollback evidence is in
 `../ops/release-capacity-20261111.md`. Read
 `../ops/release-process-install-20261111.md` for preservation evidence and tooling
