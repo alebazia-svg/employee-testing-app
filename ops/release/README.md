@@ -136,6 +136,12 @@ structural evidence, not verification of every button or calculation. Continue
 the actual affected business scenarios and ADMIN/employee checks before review.
 Runtime incident monitoring/push policy is separate and unchanged.
 
+Preservation is required for separately reviewed schema/configuration releases
+and recovery paths too. This generic installer still refuses those changes;
+their reviewed implementation must reuse the contract checks against the exact
+approved baseline. Explicit rollback retains its original verified baseline;
+it is not an unreviewed missing-capability exception.
+
 Candidate implementation/evidence: `docs/ops/release-capability-guard-20261112.md`.
 
 The preparer exports the target with `git archive`: unrelated dirty/untracked

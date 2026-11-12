@@ -330,6 +330,11 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 
 ## Mandatory release capability preservation — Owner Decision 2026-11-12
 
+- The preservation requirement applies to every portal release. A separately
+  reviewed migration/configuration or recovery path must retain the same
+  capability checks and use the exact approved baseline; its approval is not
+  permission to skip preservation. An explicitly approved rollback retains its
+  original verified version/baseline under the existing rollback policy.
 - Every compatible release uses the capability-guarded preparer and installed
   default host tool. Do not use an older installer or manual path to evade a
   capability failure. Recovery exceptions require exact owner approval.
