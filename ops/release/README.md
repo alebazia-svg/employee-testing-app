@@ -15,6 +15,23 @@ with one checked-in installer. It does not introduce another hosting service.
 
 ## Normal release: one sudo entry point
 
+Prepared follow-up (not yet installed): ordinary-user `check-space` reads current
+filesystem availability using the root-owned
+`/usr/local/lib/offonika-release/storage-layout.json` paths. Run it with the exact
+plan and intended incoming archive path before opening Terminal. This is an
+advisory check without Docker access or a root lock; the worker still repeats
+the authoritative locked checks. Installation must publish the actual Docker,
+containerd and application paths as a root-owned, non-writable JSON file with
+`format: 1`, `docker_root`, `containerd_root` and `app_root` fields.
+
+The follow-up also publishes `diagnostic.json` in the owner-readable session
+exchange on `BLOCKED_CAPACITY`, including the approved maintenance result and
+protected/used/skipped image inventory. Read that evidence before considering
+another password request. After verification a storage report is advisory:
+`COMPLETE` certifies this release, not capacity for a future archive. This patch
+does not expand deletion eligibility or enable automatic post-release deletion.
+See `docs/ops/release-follow-up-20261112.md` for test limits and installation status.
+
 Use the session workflow below for an already approved compatible release.
 Prepare and test the image locally before requesting a password. Create a private
 incoming directory as Bela and transfer **only** the small capacity plan first.
