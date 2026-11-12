@@ -35,6 +35,7 @@ class DockerSessionWorkflow(unittest.TestCase):
             sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
         origin='http://127.0.0.1:'+str(port)
         names=[prefix+'-app',prefix+'-db']
+        stopped=prefix+'-stopped'; history={}
         def docker(*args):
             return subprocess.check_output(['docker',*args],text=True).strip()
         try:
@@ -60,6 +61,7 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                 'db':dict(image=records[0]['tag'],container_name=names[1])})))
             command=['docker','compose','-p',prefix,'-f',str(compose)]
             subprocess.run(command+['up','-d'],capture_output=True,check=True)
+            docker('create','--name',stopped,records[1]['tag'])
             registry=root/'registry.json'; registry.write_text(json.dumps([records[2]['image'],records[1]['image'],records[0]['image']]))
             spec=importlib.util.spec_from_file_location('cycle_maintenance',Path(__file__).resolve().parents[2]/'docs/ops/maintenance/portal-storage-maintenance.py')
             maintenance=importlib.util.module_from_spec(spec); spec.loader.exec_module(maintenance)
@@ -72,6 +74,8 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                 ids=[names[0] if item=='portal-app' else item for item in ids]
                 return json.loads(docker(kind,'inspect',*ids)) if ids else []
             def scoped_docker(*args):
+                if args[:2]==('exec','portal-app'):
+                    return docker('exec',names[0],*args[2:])
                 if args[:3]==('image','ls','-aq'):
                     present=set(docker('image','ls','-aq','--no-trunc').split())
                     return '\n'.join(item['image'] for item in records if item['image'] in present)
@@ -119,11 +123,15 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                 stack.enter_context(patch.object(core,'LOCK',root/'storage.lock'))
                 stack.enter_context(patch.object(core,'REGISTRY',registry))
                 stack.enter_context(patch.object(maintenance,'STATE',registry))
+                stack.enter_context(patch.object(maintenance,'load_history',side_effect=lambda:dict(history)))
+                stack.enter_context(patch.object(maintenance,'save_history',side_effect=lambda values:history.update(values)))
                 stack.enter_context(patch.object(maintenance,'inspect',side_effect=inspect))
                 stack.enter_context(patch.object(maintenance,'docker',side_effect=scoped_docker))
                 stack.enter_context(patch.object(maintenance,'open',side_effect=lambda path,*a,**k: builtins.open(root/'storage.lock' if str(path)=='/run/lock/offonika-portal-storage.lock' else path,*a,**k),create=True))
                 stack.enter_context(patch.object(maintenance.subprocess,'run',side_effect=scoped_run))
                 stack.enter_context(patch.object(session.os,'chown'))
+                for item in records[:3]:
+                    history[item['image']]={key:item['meta'][key] for key in ('version','revision')}
                 for index in (3,4,5):
                     target=records[index]
                     incoming=root/('incoming-'+str(index)); incoming.mkdir(mode=0o700)
@@ -181,7 +189,12 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                     self.assertEqual(events[-1],'COMPLETE')
                     self.assertFalse((attempt/'bundle/image.tar.gz').exists())
                     self.assertEqual(host.current()['Image'],target['image'])
+                    docker('image','inspect',records[0]['image'])
+                    docker('image','inspect',records[1]['image'])
+                    if index==5:
+                        self.assertNotEqual(subprocess.run(['docker','image','inspect',records[2]['image']],capture_output=True).returncode,0)
         finally:
+            subprocess.run(['docker','rm',stopped],capture_output=True)
             if (root/'compose.json').exists():
                 subprocess.run(['docker','compose','-p',prefix,'-f',str(root/'compose.json'),'down'],capture_output=True)
             if tags: subprocess.run(['docker','image','rm',*set(tags)],capture_output=True)

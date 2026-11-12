@@ -3,22 +3,64 @@
 import argparse
 import fcntl
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
+import tempfile
 from pathlib import Path
 
 MIN_FREE_BYTES = 15 * 1024**3
 
 STATE = Path('/var/lib/offonika-maintenance/verified-images.json')
+HISTORY = Path('/var/lib/offonika-maintenance/verified-history.json')
 ROLLBACK_TAG = re.compile(r'^(portal-app:rollback-before-\d+\.\d+\.\d+|mobo-access-rollback:\d+\.\d+\.\d+|offonika-portal-access-rollback:pre-\d+\.\d+\.\d+-\d{8})$')
 PORTAL_REPOS = {'portal-app', 'offonika-portal-portal-app', 'mobo-access-rollback', 'offonika-portal-access-rollback'}
 
 
-def portal_digest(digest):
+def portal_digest(digest, generated=False):
     repo, separator, checksum = digest.partition('@')
     repo = repo.removeprefix('docker.io/library/')
-    return bool(separator and repo in PORTAL_REPOS and re.fullmatch(r'sha256:[a-f0-9]{64}', checksum))
+    return bool(separator and repo in PORTAL_REPOS | ({'offonika-portal-release'} if generated else set())
+                and re.fullmatch(r'sha256:[a-f0-9]{64}', checksum))
+
+
+def release_tag(value):
+    if not isinstance(value, dict) or not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', str(value.get('version', ''))) \
+            or not re.fullmatch(r'[a-f0-9]{40}', str(value.get('revision', ''))):
+        raise ValueError('Invalid verified history identity')
+    return 'offonika-portal-release:' + value['version'] + '-' + value['revision'][:12]
+
+
+def load_history():
+    try:
+        fd = os.open(HISTORY, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return {}
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 4*1024**2:
+            raise ValueError('Untrusted verified history')
+        values = json.load(stream)
+    if not isinstance(values, dict):
+        raise ValueError('Invalid verified history')
+    for image, value in values.items():
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}', image):
+            raise ValueError('Invalid verified image identity')
+        release_tag(value)
+    return values
+
+
+def save_history(values):
+    fd, temporary = tempfile.mkstemp(prefix='.verified-history-', dir=HISTORY.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(values, stream, indent=2); stream.flush(); os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, HISTORY)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
 
 
 def docker(*args):
@@ -33,15 +75,19 @@ def used_images():
     return {c['Image'] for c in inspect('container', docker('ps', '-aq').split())}
 
 
-def candidates(images, protected, used):
+def candidates(images, protected, used, history=None):
+    history = history or {}
+    def allowed(item):
+        known = release_tag(history[item['Id']]) if item['Id'] in history else None
+        return all(ROLLBACK_TAG.fullmatch(t) or (known is not None and t == known) for t in item['RepoTags']) \
+            and all(portal_digest(d, generated=known is not None) for d in item.get('RepoDigests', []))
     return [i for i in images if i['Id'] not in protected | used
             and i.get('RepoTags')
-            and all(ROLLBACK_TAG.fullmatch(t) for t in i['RepoTags'])
-            and all(portal_digest(d) for d in i.get('RepoDigests', []))]
+            and allowed(i)]
 
 
-def inventory(images, protected, used, current, required, available):
-    eligible = {image['Id'] for image in candidates(images, set(protected), used)}
+def inventory(images, protected, used, current, required, available, history=None):
+    eligible = {image['Id'] for image in candidates(images, set(protected), used, history)}
     rows = []
     for item in images:
         tags = item.get('RepoTags') or []
@@ -73,13 +119,13 @@ def main():
     if args.report_json and (args.apply or args.register_verified):
         raise ValueError('Storage report cannot apply cleanup or registration')
     target_free_bytes = MIN_FREE_BYTES + args.release_headroom_bytes
-    if args.expected_current and (not args.register_verified or not re.fullmatch(r'sha256:[a-f0-9]{64}', args.expected_current)):
-        raise ValueError('--expected-current requires registration and a full image ID')
+    if args.expected_current and (not (args.register_verified or args.apply) or not re.fullmatch(r'sha256:[a-f0-9]{64}', args.expected_current)):
+        raise ValueError('--expected-current requires registration or cleanup and a full image ID')
     with open('/run/lock/offonika-portal-storage.lock', 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         current = inspect('container', ['portal-app'])[0]['Image']
         if args.expected_current and current != args.expected_current:
-            raise ValueError('Running image changed since independent verification; refusing registration')
+            raise ValueError('Running image changed since independent verification; refusing operation')
         verified = json.loads(STATE.read_text())
         if not isinstance(verified, list) or not all(re.fullmatch(r'sha256:[a-f0-9]{64}', i) for i in verified):
             raise ValueError('Invalid verified image registry; refusing cleanup')
@@ -88,6 +134,14 @@ def main():
             if len(verified) != 3:
                 raise ValueError('Need current release and two verified rollback images')
             inspect('image', verified)
+            history = load_history()
+            metadata = json.loads(docker('exec', 'portal-app', 'cat', '/app/public/release-info.json'))
+            release_tag(metadata)
+            value = dict(version=metadata['version'], revision=metadata['revision'])
+            if current in history and history[current] != value:
+                raise ValueError('Verified image history identity changed')
+            history[current] = value
+            save_history(history)
             temporary = STATE.with_suffix('.tmp')
             temporary.write_text(json.dumps(verified, indent=2) + '\n')
             temporary.replace(STATE)
@@ -96,18 +150,21 @@ def main():
         if len(verified) != 3 or len(set(verified)) != 3 or current != verified[0]:
             raise ValueError('Current release not registered with two rollback images; refusing cleanup')
         inspect('image', verified)
+        history = load_history()
         images = inspect('image', list(set(docker('image', 'ls', '-aq', '--no-trunc').split())))
         if args.report_json:
-            print(json.dumps(inventory(images, verified, used_images(), current, target_free_bytes, shutil.disk_usage('/').free)))
+            print(json.dumps(inventory(images, verified, used_images(), current, target_free_bytes, shutil.disk_usage('/').free, history)))
             return
-        for item in candidates(images, set(verified), used_images()):
+        for item in candidates(images, set(verified), used_images(), history):
             print('Unused old portal rollback:', item['Id'], item['RepoTags'], flush=True)
             if args.apply:
                 # Recheck identity, tags and every container, including stopped ones.
                 fresh = inspect('image', [item['Id']])[0]
-                if not candidates([fresh], set(verified), used_images()):
+                if not candidates([fresh], set(verified), used_images(), history):
                     continue
                 for tag in fresh['RepoTags']:
+                    if item['Id'] in used_images():
+                        raise ValueError('Image became container-used; refusing cleanup')
                     if inspect('image', [tag])[0]['Id'] != item['Id']:
                         raise ValueError('Image tag changed; refusing cleanup')
                     subprocess.run(['docker', 'image', 'rm', tag], check=True)

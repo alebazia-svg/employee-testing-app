@@ -9,6 +9,24 @@ spec.loader.exec_module(maintenance)
 
 
 class RetentionTests(unittest.TestCase):
+    def setUp(self):
+        self.history_patch = patch.object(maintenance, 'load_history', return_value={})
+        self.history_patch.start()
+        self.addCleanup(self.history_patch.stop)
+
+    def test_generated_tags_require_exact_verified_history_and_preserve_all_guards(self):
+        value = dict(version='1.2.3', revision='b'*40)
+        tag = maintenance.release_tag(value)
+        history = {'old': value}
+        image = self.image([tag, 'portal-app:rollback-before-1.2.4'])
+        self.assertEqual(maintenance.candidates([image], set(), set()), [])
+        self.assertEqual(maintenance.candidates([image], set(), set(), history), [image])
+        for protected, used in (({'old'}, set()), (set(), {'old'})):
+            self.assertEqual(maintenance.candidates([image], protected, used, history), [])
+        for tags in ([tag, 'portal-app:unknown'], [tag+'f'], [tag.replace('1.2.3','1.2.2')]):
+            self.assertEqual(maintenance.candidates([self.image(tags)], set(), set(), history), [])
+        self.assertEqual(maintenance.candidates([self.image([tag], ['other@sha256:'+'c'*64])], set(), set(), history), [])
+
     def image(self, tags=None, digest=None):
         return {'Id': 'old', 'RepoTags': tags if tags is not None else ['portal-app:rollback-before-1.4.0'], 'RepoDigests': digest or []}
 

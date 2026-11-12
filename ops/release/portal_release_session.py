@@ -218,6 +218,13 @@ def execute(request, attempt, record, host=None, review=wait_review, receive_bun
     if request['remove_archive']:
         # Only the archive created/promoted into this root-owned attempt.
         (bundle / 'image.tar.gz').unlink()
+    # Owner-approved policy: only after exact verification/registration. Failure
+    # is advisory for future capacity, never false failure of a verified release.
+    try:
+        host.run(MAINTENANCE, '--apply', '--expected-current', manifest['image'])
+        record('VERIFIED_RETENTION_COMPLETE')
+    except Exception as error:
+        record('VERIFIED_RETENTION_WARNING', error_type=type(error).__name__)
     storage_status = 'not_available'
     if hasattr(host, 'storage_diagnostic'):
         try:
