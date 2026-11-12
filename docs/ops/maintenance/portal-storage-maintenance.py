@@ -76,12 +76,14 @@ def used_images():
 
 
 def candidates(images, protected, used, history=None):
+    require_history = history is not None
     history = history or {}
     def allowed(item):
         known = release_tag(history[item['Id']]) if item['Id'] in history else None
         return all(ROLLBACK_TAG.fullmatch(t) or (known is not None and t == known) for t in item['RepoTags']) \
             and all(portal_digest(d, generated=known is not None) for d in item.get('RepoDigests', []))
     return [i for i in images if i['Id'] not in protected | used
+            and (not require_history or i['Id'] in history)
             and i.get('RepoTags')
             and allowed(i)]
 
@@ -136,6 +138,8 @@ def main():
             inspect('image', verified)
             history = load_history()
             metadata = json.loads(docker('exec', 'portal-app', 'cat', '/app/public/release-info.json'))
+            if inspect('container', ['portal-app'])[0]['Image'] != current:
+                raise ValueError('Running image changed while reading verified metadata')
             release_tag(metadata)
             value = dict(version=metadata['version'], revision=metadata['revision'])
             if current in history and history[current] != value:

@@ -226,6 +226,9 @@ def execute(request, attempt, record, host=None, review=wait_review, receive_bun
         record('VERIFIED_RETENTION_COMPLETE')
     except Exception as error:
         record('VERIFIED_RETENTION_WARNING', error_type=type(error).__name__)
+    core.require(json.loads(core.REGISTRY.read_text()) == registry, 'Registry changed during retention')
+    for image in registry:
+        host.inspect('image', image)
     storage_status = 'not_available'
     if hasattr(host, 'storage_diagnostic'):
         try:
@@ -266,7 +269,7 @@ def worker(attempt):
         record('STARTED', target=request['manifest']['target'])
         return execute(request, attempt, record)
     except core.CapacityError as error:
-        record('BLOCKED_CAPACITY', message=str(error), app_switched_by_this_session=False)
+        record('BLOCKED_CAPACITY', message=str(error))
         return False
     except BaseException as error:
         record('FAILED', error_type=type(error).__name__,

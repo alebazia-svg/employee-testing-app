@@ -18,6 +18,7 @@ class RetentionTests(unittest.TestCase):
         value = dict(version='1.2.3', revision='b'*40)
         tag = maintenance.release_tag(value)
         history = {'old': value}
+        self.assertEqual(maintenance.candidates([self.image()], set(), set(), {}), [])
         image = self.image([tag, 'portal-app:rollback-before-1.2.4'])
         self.assertEqual(maintenance.candidates([image], set(), set()), [])
         self.assertEqual(maintenance.candidates([image], set(), set(), history), [image])

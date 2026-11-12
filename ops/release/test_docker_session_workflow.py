@@ -18,7 +18,7 @@ from unittest.mock import patch
 import uuid
 
 import portal_release_session as session
-from test_portal_release import FakeHost
+from test_portal_release import ARTIFACT, FakeHost
 
 core = session.core
 
@@ -42,7 +42,13 @@ class DockerSessionWorkflow(unittest.TestCase):
             (root/'server.cjs').write_text("""const http=require('http'),fs=require('fs');
 const meta=JSON.parse(fs.readFileSync('/app/public/release-info.json','utf8'));
 http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(JSON.stringify(q.url==='/release-info.json'?meta:{ok:true,screenVersion:meta.version}));}).listen(3000,'0.0.0.0');""")
-            (root/'Dockerfile').write_text('FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY meta.json /app/public/release-info.json\nCOPY server.cjs ./server.cjs\nCMD ["node","server.cjs"]\n')
+            (root/'Dockerfile').write_text('FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY meta.json /app/public/release-info.json\nCOPY server.cjs ./server.cjs\nCOPY fixture-artifact /app/\nCMD ["node","server.cjs"]\n')
+            (root/'fixture-artifact/.next/server').mkdir(parents=True)
+            (root/'fixture-artifact/.next/static/chunks').mkdir(parents=True)
+            (root/'fixture-artifact/public').mkdir()
+            (root/'fixture-artifact/.next/server/app-paths-manifest.json').write_text(json.dumps({p:'fixture.js' for p in ARTIFACT['routes']}))
+            (root/'fixture-artifact/.next/static/chunks/receipt.js').write_text('/api/procurement/receipts?')
+            (root/'fixture-artifact/public/manifest.webmanifest').write_text('{}')
             records=[]
             for index in range(6):
                 version=('8.'+str(minor)+'.'+str(8+index)) if index<2 else ('9.'+str(minor)+'.'+str(index-2))
@@ -114,6 +120,8 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                         return ''
                     if 'migrate' in args: return ''  # No application DB in this transport fixture.
                     args=tuple(compose_tag if arg==core.COMPOSE_IMAGE else arg for arg in args)
+                    if args[:2]==('docker','exec') and args[2]=='portal-app':
+                        args=(*args[:2],names[0],*args[3:])
                     if args[:3]==('docker','image','tag') and args[-1].startswith('portal-app:rollback-before-'):
                         tags.append(args[-1])
                     return real.run(*args,**kwargs)
@@ -142,7 +150,8 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                             shutil.copyfileobj(save.stdout,zipped,1024*1024)
                         save.stdout.close(); self.assertEqual(save.wait(),0)
                     manifest=dict(format=1,base=head,target=target['meta']['revision'],version=target['meta']['version'],
-                        image=target['image'],platform='linux/amd64',archive='image.tar.gz',archive_sha256=core.digest(archive))
+                        image=target['image'],platform='linux/amd64',archive='image.tar.gz',archive_sha256=core.digest(archive),
+                        build_args=dict(core.contract.BUILD_ARGS),artifact=ARTIFACT)
                     plan=core.capacity_plan(incoming,manifest)
                     attempt=root/('attempt-'+str(index)); (attempt/'bundle').mkdir(parents=True)
                     (attempt/'bundle/manifest.json').write_text(json.dumps(manifest))

@@ -70,6 +70,21 @@ class SessionTests(unittest.TestCase):
         self.assertFalse((self.attempt / 'bundle/image.tar.gz').exists())
         self.assertFalse(any('sudo' in call for call in host.calls))
         self.assertFalse(any('prune' in call for call in host.calls))
+        maintenance_calls = [call for call in host.calls if call[0] == session.MAINTENANCE]
+        self.assertEqual(maintenance_calls[-1], (session.MAINTENANCE, '--apply', '--expected-current', NEW))
+
+    def test_retention_failure_is_advisory_after_registration_and_is_reported(self):
+        host = self.host()
+        original = host.run
+        def run(*args, **kwargs):
+            if args[:2] == (session.MAINTENANCE, '--apply'):
+                raise RuntimeError('injected retention failure')
+            return original(*args, **kwargs)
+        host.run = run
+        self.assertTrue(self.execute(host))
+        self.assertIn('VERIFIED_RETENTION_WARNING', [event[0] for event in self.events])
+        self.assertEqual(self.events[-1][0], 'COMPLETE')
+        self.assertEqual(json.loads(self.registry.read_text())[0], NEW)
 
     def test_rejected_or_timed_out_review_never_certifies_or_deletes_archive(self):
         for decision in ('reject', 'timeout'):
