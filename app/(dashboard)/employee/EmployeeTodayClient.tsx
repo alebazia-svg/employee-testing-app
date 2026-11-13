@@ -83,7 +83,7 @@ import { actualColleagueWorkday, colleaguePresence } from '@/lib/workday-presenc
 import { expectedColleagueShiftCode, hasColleagueShiftConflict } from '@/lib/workday-colleague-shift';
 import { formatDurationWithSeconds } from '@/lib/workday-duration';
 import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
-import { buildSchedulePlanChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
+import { buildSchedulePlanChanges, toggleSchedulePlanDate, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import { scheduleNearReminder } from '@/lib/schedule-near-reminder';
 import {
   cashOutboxFormData,
@@ -1411,7 +1411,8 @@ export function EmployeeTodayClient({
   const [pushAskOpen, setPushAskOpen] = useState(false);
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkOriginalStatuses, setBulkOriginalStatuses] = useState<Record<string, BulkScheduleStatus | null>>({});
-  const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
+  const [bulkScheduleDraft, setBulkScheduleDraft] = useState<Record<string, BulkScheduleStatus>>({});
+  const [bulkScheduleTool, setBulkScheduleTool] = useState<BulkScheduleStatus>('working');
   const [bulkScheduleConfirmOpen, setBulkScheduleConfirmOpen] = useState(false);
   const [bulkScheduleExitConfirmOpen, setBulkScheduleExitConfirmOpen] = useState(false);
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set(initialScheduleMonth ? [initialScheduleMonth] : []));
@@ -2171,11 +2172,10 @@ export function EmployeeTodayClient({
     .filter((vacation) => vacation.status === 'active' && vacation.dateTo >= today)
     .sort((left, right) => left.dateFrom.localeCompare(right.dateFrom))[0] ?? null;
   const bulkEditableDates = Object.keys(bulkOriginalStatuses).sort();
-  const bulkScheduleChanges = buildSchedulePlanChanges(bulkOriginalStatuses, bulkWorkingDates);
+  const bulkScheduleChanges = buildSchedulePlanChanges(bulkOriginalStatuses, bulkScheduleDraft);
   const bulkCounts = bulkScheduleCounts(bulkScheduleChanges);
-  const selectedWorkDays = bulkEditableDates.filter(date => bulkWorkingDates.has(date));
-  const selectedOffDays = bulkEditableDates.filter(date => !bulkWorkingDates.has(date));
-  const bulkSelectionChanged = bulkEditableDates.some(date => bulkWorkingDates.has(date) !== (bulkOriginalStatuses[date] === 'working'));
+  const bulkHasMixedChanges = bulkCounts.workingDays > 0 && bulkCounts.offDays > 0;
+  const bulkSelectionChanged = bulkCounts.totalDays > 0;
   const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
   const bulkCoverage = bulkScheduleChanges
     .filter((change) => change.previousStatus === 'working' && change.status === 'off')
@@ -2588,7 +2588,8 @@ export function EmployeeTodayClient({
       .filter(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date))
       .map(cell => [cell.date, ownScheduleByDate.get(cell.date)?.status ?? null])) as Record<string, BulkScheduleStatus | null>;
     setBulkOriginalStatuses(original);
-    setBulkWorkingDates(new Set(Object.entries(original).filter(([,status]) => status === 'working').map(([date]) => date)));
+    setBulkScheduleDraft({});
+    setBulkScheduleTool('working');
     setScheduleMode('month');
     setBulkScheduleConfirmOpen(false);
     setBulkScheduleMode(true);
@@ -2599,18 +2600,13 @@ export function EmployeeTodayClient({
     setBulkScheduleMode(false);
     setBulkScheduleConfirmOpen(false);
     setBulkScheduleExitConfirmOpen(false);
-    setBulkWorkingDates(new Set());
+    setBulkScheduleDraft({});
     setBulkOriginalStatuses({});
   }
 
-  function toggleBulkWorkingDate(date: string) {
+  function toggleBulkScheduleDate(date: string) {
     if (isSaving || !bulkEditableDates.includes(date)) return;
-    setBulkWorkingDates((current) => {
-      const next = new Set(current);
-      if (next.has(date)) next.delete(date);
-      else next.add(date);
-      return next;
-    });
+    setBulkScheduleDraft(current => toggleSchedulePlanDate(bulkOriginalStatuses, current, date, bulkScheduleTool));
   }
 
   async function saveBulkSchedule() {
@@ -5359,7 +5355,8 @@ export function EmployeeTodayClient({
               <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setBulkScheduleConfirmOpen(false)} disabled={isSaving} />
                 <p className='text-xs font-bold uppercase tracking-[0.12em] text-slate-600'>{monthTitle(calendarMonth)}</p>
-                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{bulkReducedCount + bulkEmptyCount === 1 ? 'Сохранить выходной?' : 'Сохранить выходные?'}</h2>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{bulkHasMixedChanges ? 'Сохранить изменения?' : bulkReducedCount + bulkEmptyCount === 1 ? 'Сохранить выходной?' : 'Сохранить выходные?'}</h2>
+                {bulkHasMixedChanges && <p className='mt-3 text-sm text-slate-600' aria-label='Выбранные изменения графика'>К сохранению: <strong>{bulkCounts.workingDays}</strong> раб. · <strong>{bulkCounts.offDays}</strong> вых.</p>}
                 <div className='mt-4 space-y-3 text-base leading-relaxed text-slate-700'>
                   {bulkCoverage.filter(({ coverage }) => coverage.state !== 'full').map(({ date, coverage }) => {
                     const rows = getColleagueRows(date);
@@ -5376,7 +5373,7 @@ export function EmployeeTodayClient({
                   })}
                 </div>
                 <Button type='button' className='employee-material-green-action mt-5 h-12 w-full rounded-xl text-base font-bold' disabled={isSaving} onClick={() => void saveBulkSchedule()}>
-                  {isSaving ? 'Сохраняем…' : bulkReducedCount + bulkEmptyCount === 1 ? 'Сохранить выходной' : 'Сохранить выходные'}
+                  {isSaving ? 'Сохраняем…' : bulkHasMixedChanges ? 'Сохранить изменения' : bulkReducedCount + bulkEmptyCount === 1 ? 'Сохранить выходной' : 'Сохранить выходные'}
                 </Button>
                 <Button type='button' className='employee-material-secondary-action mt-2 h-12 w-full rounded-xl text-sm font-bold' disabled={isSaving} onClick={() => setBulkScheduleConfirmOpen(false)}>
                   Вернуться к выбору
@@ -5915,7 +5912,7 @@ export function EmployeeTodayClient({
                   {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
-                      <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
+                      <span>{incompleteScheduleDates.length ? 'Заполнить график' : 'Изменить график'}</span>
                     </button>
                   )}
                   {previewDates.map((date) => (
@@ -5975,17 +5972,24 @@ export function EmployeeTodayClient({
                   {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && canEditOwnScheduleDate(cell.date) && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
-                      <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
+                      <span>{incompleteScheduleDates.length ? 'Заполнить график' : 'Изменить график'}</span>
                     </button>
                   )}
 
                   {bulkScheduleMode && (
                     <div className='schedule-plan-heading'>
-                      <h2>Выберите рабочие дни</h2>
+                      <h2>Изменить график</h2>
                       <button type='button' className='schedule-plan-close' aria-label='Выйти из редактирования графика' disabled={isSaving} onClick={() => bulkSelectionChanged ? setBulkScheduleExitConfirmOpen(true) : cancelBulkSchedule()}>
                         <X className='h-5 w-5' aria-hidden='true' />
                       </button>
-                      <p>Остальные будут выходными.</p>
+                      <p aria-live='polite'>{bulkScheduleTool === 'working' ? 'Отметьте рабочие дни.' : 'Отметьте выходные.'}</p>
+                      <div className='schedule-plan-tools' role='group' aria-label='Какие дни отметить'>
+                        {([['working', 'Работаю'], ['off', 'Выходной']] as const).map(([status, label]) => (
+                          <button key={status} type='button' aria-pressed={bulkScheduleTool === status} data-status={status} disabled={isSaving} onClick={() => setBulkScheduleTool(status)}>
+                            <span aria-hidden='true' />{label}
+                          </button>
+                        ))}
+                      </div>
                       <p className='schedule-plan-month'>{monthTitle(calendarMonth)}</p>
                     </div>
                   )}
@@ -6008,7 +6012,9 @@ export function EmployeeTodayClient({
                       const isOutsideMonth = !cell.inMonth;
                       const isLockedMissing = !ownEntry && isPast && !canEditDianaPastSchedule(user, cell.date, today);
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
-                      const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
+                      const bulkStatus = bulkEligible ? bulkScheduleDraft[cell.date] ?? bulkOriginalStatuses[cell.date] : null;
+                      const bulkChanged = bulkEligible && Object.prototype.hasOwnProperty.call(bulkScheduleDraft, cell.date);
+                      const bulkWorking = bulkEligible && bulkStatus === 'working';
                       const statusClass =
                         !scheduleMonthLoaded
                           ? 'bg-slate-50 text-slate-400 ring-slate-100'
@@ -6016,8 +6022,10 @@ export function EmployeeTodayClient({
                             ? 'bg-transparent text-slate-400 ring-transparent'
                           : bulkWorking
                             ? 'bg-[#9ed3ae] text-[#123d21] ring-green-300'
-                          : bulkEligible
+                          : bulkEligible && bulkStatus === 'off'
                             ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
+                          : bulkEligible
+                            ? 'employee-material-calendar-missing bg-[#fbfcfe] text-slate-600 ring-[#dfe4ea]'
                           : ownVacation
                             ? 'bg-[#e8f1fb] text-[#24476b] ring-[#b8cee5]'
                           : ownEntry?.status === 'working'
@@ -6033,17 +6041,18 @@ export function EmployeeTodayClient({
                           key={cell.date}
                           type='button'
                           onClick={() => {
-                            if (bulkScheduleMode) toggleBulkWorkingDate(cell.date);
+                            if (bulkScheduleMode) toggleBulkScheduleDate(cell.date);
                             else if (cell.inMonth) {
                               setSelectedScheduleDate(cell.date);
                               // Approved 2026-11-08: a tap on an editable day opens «Изменить мой день» at once.
                               if (canEditOwnScheduleDate(cell.date) && !ownVacation) setEditingScheduleDate(cell.date);
                             }
                           }}
-                          aria-label={`${formatDateLabel(cell.date)}${isToday ? ', сегодня' : ''}, ${!scheduleMonthLoaded ? 'загрузка графика' : bulkScheduleMode && !bulkEligible ? 'недоступно для изменения' : bulkEligible ? bulkWorking ? 'рабочий день' : 'выходной' : ownVacation ? 'отпуск' : ownEntry?.status === 'working' ? 'рабочий день' : ownEntry?.status === 'off' ? 'выходной' : 'график не отмечен'}`}
-                          aria-pressed={bulkScheduleMode ? bulkEligible ? bulkWorking : undefined : selected}
+                          aria-label={`${formatDateLabel(cell.date)}${isToday ? ', сегодня' : ''}, ${!scheduleMonthLoaded ? 'загрузка графика' : bulkScheduleMode && !bulkEligible ? 'недоступно для изменения' : bulkEligible ? bulkStatus === 'working' ? 'рабочий день' : bulkStatus === 'off' ? 'выходной' : 'график не отмечен' : ownVacation ? 'отпуск' : ownEntry?.status === 'working' ? 'рабочий день' : ownEntry?.status === 'off' ? 'выходной' : 'график не отмечен'}${bulkChanged ? ', изменено' : ''}`}
+                          aria-pressed={bulkScheduleMode ? bulkEligible ? bulkChanged : undefined : selected}
                           aria-current={isToday ? 'date' : undefined}
-                          data-schedule-status={ownVacation ? 'vacation' : ownEntry?.status ?? (isLockedMissing ? 'past-missing' : 'missing')}
+                          data-schedule-status={bulkEligible ? bulkStatus ?? 'missing' : ownVacation ? 'vacation' : ownEntry?.status ?? (isLockedMissing ? 'past-missing' : 'missing')}
+                          data-schedule-changed={bulkChanged || undefined}
                           disabled={isOutsideMonth || (bulkScheduleMode && (!bulkEligible || isSaving))}
                           className={cn(
                             'employee-material-calendar-day flex aspect-square min-w-0 flex-col overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
@@ -6051,19 +6060,19 @@ export function EmployeeTodayClient({
                             isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkEligible && 'schedule-plan-cell',
-                            bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
+                            bulkChanged && 'schedule-plan-changed',
                             !bulkScheduleMode && selected && 'is-selected',
                             isToday && 'is-today',
                           )}
                         >
                           <span className='flex w-full min-w-0 items-start justify-between gap-0.5'>
-                            <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>{bulkWorking && <Check className='schedule-plan-check' aria-hidden='true' />}
+                            <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>{bulkChanged && <Check className='schedule-plan-check' aria-hidden='true' />}
                             <span className='text-[9px] font-extrabold leading-none'>
                               {scheduleMonthLoaded
                                 ? isOutsideMonth
                                   ? ''
                                   : bulkEligible
-                                    ? (bulkWorking ? 'Раб.' : 'Вых.')
+                                    ? (bulkStatus === 'working' ? 'Раб.' : bulkStatus === 'off' ? 'Вых.' : '—')
                                     : ownVacation
                                       ? 'Отп.'
                                     : isLockedMissing
@@ -6096,7 +6105,7 @@ export function EmployeeTodayClient({
                     <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#9ed3ae] ring-1 ring-[#9ed1a7]' />Работа</span>
                     <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
                     {calendarDays.some((cell) => cell.inMonth && ownVacationForDate(cell.date)) && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#e8f1fb] ring-1 ring-[#b8cee5]' />Отпуск</span>}
-                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Не выбрано</span>}
+                    {incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Не выбрано</span>}
                   </div>
 
                   {scheduleMonthLoaded && !bulkScheduleMode && (
@@ -6128,11 +6137,12 @@ export function EmployeeTodayClient({
                 </>
               )}
               {bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && (
-                <div className='pwa-schedule-savebar sticky z-50 w-full'>
+                <div className='pwa-schedule-savebar schedule-plan-savebar sticky z-50 w-full'>
                   <div>
                     <p aria-live='polite'>
-                      Рабочих: <strong>{selectedWorkDays.length}</strong> · Выходных: <strong>{selectedOffDays.length}</strong>
+                      К сохранению: <strong>{bulkCounts.workingDays}</strong> раб. · <strong>{bulkCounts.offDays}</strong> вых.
                     </p>
+                    <p className='schedule-plan-unchanged'>Остальные дни не изменятся.</p>
                     <Button
                       type='button'
                       className='employee-material-green-action h-11 w-full rounded-xl text-sm font-black'

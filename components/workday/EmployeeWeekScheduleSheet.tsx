@@ -53,7 +53,7 @@ export function EmployeeWeekScheduleSheet({ days, through, lastWeek, saving, err
           </button>
         </div>
         <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Ваши дни на неделю</h2>
-        <p className='mt-2 text-sm font-semibold text-slate-600'>Отметьте всю неделю — и до {through} напоминаний не будет.</p>
+        <p className='mt-2 text-sm font-semibold text-slate-600'>Заполните сегодня и завтра. Остальные дни можно отметить заранее.</p>
         <div className='mt-4 overflow-hidden rounded-2xl border border-slate-200'>
           {days.map((day, index) => {
             const value = draft[day.date];
