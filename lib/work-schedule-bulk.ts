@@ -8,11 +8,22 @@ export type BulkScheduleChange = {
 
 // A snapshot taken when the editor opens protects saved days from background
 // refreshes and lets the server reject concurrent changes instead of overwriting.
-export function buildSchedulePlanChanges(original: Record<string, BulkScheduleStatus | null>, working: ReadonlySet<string>): BulkScheduleChange[] {
-  return Object.entries(original).sort(([a], [b]) => a.localeCompare(b)).flatMap(([date, previousStatus]) => {
-    const status: BulkScheduleStatus = working.has(date) ? 'working' : 'off';
+export function buildSchedulePlanChanges(original: Record<string, BulkScheduleStatus | null>, draft: Readonly<Record<string, BulkScheduleStatus>>): BulkScheduleChange[] {
+  return Object.entries(draft).sort(([a], [b]) => a.localeCompare(b)).flatMap(([date, status]) => {
+    if (!Object.prototype.hasOwnProperty.call(original, date)) return [];
+    const previousStatus = original[date];
     return status === previousStatus ? [] : [{ date, status, previousStatus }];
   });
+}
+
+// Repeating a choice undoes only that draft change, restoring the saved value
+// (or the original empty day). Never infer a day off from an untouched date.
+export function toggleSchedulePlanDate(original: Record<string, BulkScheduleStatus | null>, draft: Readonly<Record<string, BulkScheduleStatus>>, date: string, status: BulkScheduleStatus): Record<string, BulkScheduleStatus> {
+  if (!Object.prototype.hasOwnProperty.call(original, date)) return { ...draft };
+  const next = { ...draft };
+  if (next[date] === status || original[date] === status) delete next[date];
+  else next[date] = status;
+  return next;
 }
 
 export function buildBulkScheduleChanges(missingDates: string[], selectedWorkingDates: ReadonlySet<string>): BulkScheduleChange[] {
