@@ -10,6 +10,7 @@ import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } f
 import { taskTimingLabel } from '@/lib/team-control';
 import type { TeamAttendance } from '@/lib/team-attendance';
 import { getMoscowDateKey } from '@/lib/workday';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 import Link from 'next/link';
 import { CloseExceptionDecisionClient } from './close-exceptions/[id]/CloseExceptionDecisionClient';
@@ -842,7 +843,16 @@ function TaskOverviewRow({
   );
 }
 
-export function AdminShiftControlDetails({
+export function AdminShiftControlDetails(props: Props) {
+  // Unsupported departments have no dialog. Do not mount its effects for a
+  // selected employee URL or an open-card event when nothing can be rendered.
+  if (props.department !== 'retail' && props.department !== 'wholesale') {
+    return <span className='text-sm font-semibold text-slate-400'>—</span>;
+  }
+  return <ShiftControlDetails {...props} />;
+}
+
+function ShiftControlDetails({
   handoverReview = null,
   cashOperations = [],
   closeRequests = [],
@@ -1026,7 +1036,7 @@ export function AdminShiftControlDetails({
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
+    const unlockScroll = lockBodyScroll();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (manualReviewTarget && !manualReviewSaving) {
@@ -1037,10 +1047,9 @@ export function AdminShiftControlDetails({
         closeDetails();
       }
     };
-    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      unlockScroll();
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [closeDetails, manualReviewSaving, manualReviewTarget, open, selectedPhoto]);
