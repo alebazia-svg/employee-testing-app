@@ -7,7 +7,7 @@ import { ArrowRight, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-rea
 import { TeamSourceRefresh } from './TeamSourceRefresh';
 import { teamControlSummary, teamControlHref, controlCountLabel, controlCompositionLabel, type DepartmentControlAction, type OwnerQueueAction } from '@/lib/team-control-summary';
 export type TeamDayRow = {
- id:number;detailAvailable:boolean;sourceUnavailable:boolean;name:string;department:string;source:string;plan:string;planState:string;shift:string;start:string;end:string;state:string;active:boolean;late:number;missing:boolean;review:string;next:string;issueCount:number;needsReview:boolean;alertTargets:Record<string,string>;alerts:string[];timing:string[];issues:Array<{id:number;state?:string;title:string;originDate?:string;meta:string;lifecycle:string;href:string}>;
+ id:number;calendarState?:string;detailAvailable:boolean;sourceUnavailable:boolean;name:string;department:string;source:string;plan:string;planState:string;shift:string;start:string;end:string;state:string;active:boolean;late:number;missing:boolean;review:string;next:string;issueCount:number;needsReview:boolean;alertTargets:Record<string,string>;alerts:string[];timing:string[];issues:Array<{id:number;state?:string;title:string;originDate?:string;meta:string;lifecycle:string;href:string}>;
 };
 export function TeamDailyControl({rows,controls,planControls=[],departmentActions=[],ownerActions=[],date,readAt,sourceWarning,initialTab='overview'}:{ownerActions?:OwnerQueueAction[];departmentActions?:DepartmentControlAction[];rows:TeamDayRow[];controls:ReactNode[];planControls?:ReactNode[];date:string;readAt:string;sourceWarning:string;initialTab?:string}) {
  const [tab,setTab]=useState(initialTab);const [filter,setFilter]=useState('all');

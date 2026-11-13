@@ -1431,6 +1431,7 @@ export function AdminShiftControlDetails({
                   {attendance ? <><span>{attendance.startSource === 'app' ? 'Приложение' : attendance.startSource === 'google' ? 'Google · резерв' : attendance.marksAvailable ? 'Нет отметки' : 'Google недоступен'}</span>{attendance.late > 0 && <span>Позже на {attendance.late} мин</span>}</> : <span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span>}
                 </div>
                 <div><small>Состояние</small><span className={`team-status ${attendance ? attendance.state === 'Не завершил смену' || attendance.state === 'Не отметился' ? 'amber' : attendance.start !== '—' ? 'green' : '' : workDay && !workDay.endedAt && dateKey < getMoscowDateKey() ? 'amber' : workDay ? 'green' : ''}`}>{attendance?.state ?? (workDay?.endedAt?'Рабочий день завершён':workdayStateLabel)}</span>
+                  {attendance?.stateNote && <span>{attendance.stateNote}</span>}
                   {attendance ? attendance.end !== '—' && <span>Завершение: {adminHandoverClosed ? 'администратор' : attendance.endSource === 'google' ? 'Google · резерв' : 'приложение'}</span> : workDay?.endedAt && <span>В {formatTime(workDay.endedAt)}</span>}
                 </div>
               </div>

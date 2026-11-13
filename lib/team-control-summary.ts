@@ -1,6 +1,6 @@
 import { formatTime } from './workday';
 export type ControlSummaryRow = {
- id:number; detailAvailable?:boolean; sourceUnavailable?:boolean; planState:string; missing:boolean; needsReview:boolean; review:string;
+ id:number; calendarState?:string; detailAvailable?:boolean; sourceUnavailable?:boolean; planState:string; missing:boolean; needsReview:boolean; review:string;
  alerts:string[]; alertTargets:Record<string,string>;
  issues:Array<{id:number;title:string;state?:string;originDate?:string;meta:string;href:string}>;
  timing:string[];
@@ -23,12 +23,12 @@ export function teamControlSummary(row:ControlSummaryRow,date:string,ownerAction
  }
  if(row.missing)items.push({key:'missing',label:'По плану нет отметки начала',href:detail('shift-start'),kind:'check'});
  if(row.needsReview&&items.length===inheritedCount&&row.planState!=='unknown'&&!row.review.startsWith('Нет записи графика')&&!row.review.startsWith('Выход запланирован'))items.push({key:'review',label:row.review,href:detail(),kind:'check'});
- const kind=items.some(item=>item.kind==='decision')?'decision':items.some(item=>item.kind==='check')?'check':items.length?'employee':(row.planState==='unavailable'||row.sourceUnavailable)?'unavailable':row.timing.length?'timing':'normal';
+ const kind=items.some(item=>item.kind==='decision')?'decision':items.some(item=>item.kind==='check')?'check':items.length?'employee':(row.planState==='unavailable'&&!row.calendarState||row.sourceUnavailable)?'unavailable':row.timing.length?'timing':'normal';
  const breakdown={decision:items.filter(item=>item.kind==='decision').length,check:items.filter(item=>item.kind==='check').length,employee:items.filter(item=>item.kind==='employee').length};
  const label={decision:'Ждёт разрешения',check:'Нужна проверка',employee:'Есть замечания',unavailable:'Нет данных',timing:'Сроки',normal:'—'}[kind];
  const count=kind==='decision'||kind==='check'||kind==='employee'?breakdown[kind]:kind==='timing'?row.timing.length:0;
  const ordered=items.sort((a,b)=>['decision','check','employee'].indexOf(a.kind)-['decision','check','employee'].indexOf(b.kind));
- return {kind,label,breakdown,count,totalCount:items.length,originDates:[...new Set(items.map(item=>item.originDate??date))],items:ordered,timing:row.timing.map((text,index)=>({key:`timing-${index}`,label:text,href:detail(row.alertTargets[text])})),unavailable:row.planState==='unavailable'||Boolean(row.sourceUnavailable)};
+ return {kind,label,breakdown,count,totalCount:items.length,originDates:[...new Set(items.map(item=>item.originDate??date))],items:ordered,timing:row.timing.map((text,index)=>({key:`timing-${index}`,label:text,href:detail(row.alertTargets[text])})),unavailable:row.planState==='unavailable'&&!row.calendarState||Boolean(row.sourceUnavailable)};
 }
 
 export type DepartmentControlAction = {

@@ -2,7 +2,7 @@ import { getMoscowDateKey, getMoscowMinutes } from './workday';
 import { APP_ATTENDANCE_FROM } from './team-attendance';
 import { isValidScheduleDateKey } from './workday-schedule';
 
-// Owner-approved 2026-11-11. Calendar only: never changes a saved plan, payroll,
+// Owner-approved 2026-11-11. ADMIN day accounting: never changes a saved plan, payroll,
 // QR/start/end timestamps, shift selection, tasks or employee notifications.
 export const CALENDAR_DAY_END: Record<string, number> = { retail: 1200, wholesale: 1140, procurement: 1080 };
 export const CALENDAR_CORRECTION_SOURCE = 'workday_calendar_fact';

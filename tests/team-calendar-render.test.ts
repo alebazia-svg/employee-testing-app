@@ -67,7 +67,7 @@ test('future calendar plans preserve sources, departments and the existing layou
   assert.match(missing, /aria-label="Астемир Тохов, 2026-11-05, Отпуск"/);
   assert.match(await render('2026-11-06'), /Ахобекова Залина<small>Google<\/small>/);
   // Real server projection: saved off + QR, saved working + no QR, empty
-  // plans and an accepted start intent without a completed shift selection.
+  // plans and an abandoned scan without a completed shift selection.
   mocks['@/lib/prisma'].prisma.workDayEntry.findMany = async () => [
     { userId: 4, date: '2026-11-03', qrAcceptedAt: new Date('2026-11-03T09:00:00+03:00') },
   ];
@@ -78,7 +78,7 @@ test('future calendar plans preserve sources, departments and the existing layou
   assert.match(actual, /aria-label="Абшаева Зухра, 2026-11-03, Рабочий день"/);
   assert.match(actual, /aria-label="Ахобекова Залина, 2026-11-03, Выходной"/);
   assert.match(actual, /aria-label="Астемир Тохов, 2026-11-03, Выходной"/);
-  assert.match(actual, /aria-label="Кумыков Мухамед, 2026-11-03, Рабочий день"/);
+  assert.match(actual, /aria-label="Кумыков Мухамед, 2026-11-03, Выходной"/);
   assert.match(await render('2026-11-02', '2026-11-03T20:01:00+03:00'), /aria-label="Кумыков Мухамед, 2026-11-02, Выходной"/);
   assert.equal(JSON.stringify(schedules), before, 'calendar reads never modify saved plans');
   mocks['@/lib/prisma'].prisma.workDayEntry.findMany = async () => { throw new Error('QR database unavailable'); };
