@@ -60,8 +60,8 @@ build cache under the existing policy, then reimports this exact missing image
 before normal guarded release. Separate owner approval is pending. No recovery
 has been executed; never claim the three reserves are present until rechecked.
 
-Evidence:/tmp/schedule-explicit-release-20261113/,especially diagnostic-terminal.log
-(the actual filename is diagnose-terminal.log),reserve-recovery-plan.json and
+Evidence:/tmp/schedule-explicit-release-20261113/,especially diagnose-terminal.log,
+reserve-recovery-plan.json and
 review.json. Temporary code is preparation, not evidence of production repair.
 
 ## Owner-requested data repair and subsequent accounting task
@@ -89,3 +89,15 @@ functional correction32c85ff was prepared but never installed; see
 control-calendar-functional-release-20261112.md. Investigate against exact new
 live source and preserve successful-start boundaries,real shifts,plans,source
 fallbacks and genuine issues. It is a separate task, not part of1.24.14.
+
+## Exact application files
+
+- `app/(dashboard)/employee/EmployeeTodayClient.tsx`
+- `components/workday/EmployeeWeekScheduleSheet.tsx`
+- `lib/work-schedule-bulk.ts`
+- `public/pwa-copper.css`
+- `tests/work-schedule-bulk.test.ts`
+- `package.json`
+- `package-lock.json`
+
+Unrelated dirty files in the original cash-intent-photo worktree were untouched.
