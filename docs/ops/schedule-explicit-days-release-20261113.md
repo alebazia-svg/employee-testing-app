@@ -1,6 +1,63 @@
-# Explicit schedule selection — approved release blocked, 13 November 2026
+# Explicit schedule selection — released and verified, 14 November 2026
 
-Production remains **1.24.11 / 6a8f57753998a1ed8974706111367b0f8036e6ac**.
+## Completed 14 November 2026 (Moscow)
+
+Production is now **1.24.14 / 10b2ecf9983d23d380b9d21bd480d6f0fbb52f4a**,
+image `sha256:ef27530e5a0eb535ee9a30ee29144785ee4d61f7faba8ffb3d3b802f860b3599`,
+built `2026-11-13T10:51:19.499Z`. This retries the exact previously approved
+artifact; no changed bytes were shipped under an existing version.
+
+The intervening reserve recovery/tooling b9ce19e was independently checked,
+not repeated. Current maintained source cbd7f4d, installed entry and completed
+recovery evidence were read. Ordinary reserve/capacity precheck passed with
+22,050,783,232 bytes available against 19,931,048,155 required. No cache cleanup
+was requested in the new installation session.
+
+Normal session `5a9d9912b12f4aa2bb823ee9a80a9969` passed archive identity,
+source/schema/migration, capability inventory (187 routes/275 assets),
+env/mount/DB-container and public checks, then reached
+AWAITING_INDEPENDENT_VERIFICATION. Actual authenticated ADMIN displayed1.24.14;
+the served CSS SHA matched committed source. Actor-bound employee preview
+verified work/off modes, one explicit draft, repeat-tap undo, off selection,
+exit confirmation and discard without changing the saved graph. Actual saved
+Tural receipt opened in ADMIN and employee procurement Phone preview; both
+images loaded at1206×2622. No employee schedule test writes were made in prod.
+Physical iPhone and new production receipt upload remain untested.
+
+Independent confirmation was submitted only after those checks. The same worker
+registered the exact expected image, rotated its validated dormant references,
+retained current plus1.24.11/1.24.8 reserves and emitted COMPLETE. Removal of
+obsolete1.24.7 after this verified rotation was normal approved retention;
+its original archive remains preserved. Published reserve status confirms all
+three registered images present/pinned/healthy. Both public health endpoints,
+server commit and release metadata were independently rechecked.
+
+Exact verified archive retained outside temporary storage under:
+`/Users/bela/Library/Application Support/Offonika/portal-release-archives/ef27530e5a0eb535ee9a30ee29144785ee4d61f7faba8ffb3d3b802f860b3599/`.
+New local evidence:/tmp/schedule-explicit-release-20261114/.
+
+### Completed scoped Zalina restoration
+
+A separate owner-authorized data operation first passed a read-only dry run,
+then atomically restored only18–30November(user7) to missing. All13reviewed
+ID/status/update/history pins still matched; no workday/vacation conflict.
+It preserved the original audit and added13existing-source admin off→unset audit
+records. All61other own schedule rows were compared unchanged inside the
+serializable transaction. Readback:0 remaining saved entries in the target
+range,13admin restoration records. No application/schema/financial/QR/payroll
+write or notification-creation call was part of this repair.
+
+Immutable private backup/code/result/readback:
+`/var/lib/offonika-maintenance/schedule-repairs/20261114-zalina-18-30/`.
+Actual PWA preview shows18–30blank and14–17working. Actual ADMIN source
+comparison for18November shows both Google/app empty and primary “Нет записи”.
+Screenshots:local evidence `zalina-restored.jpg` and `calendar-released.jpg`.
+Physical handset synchronization was not observed.
+
+The end-of-day no-QR alignment request remains a separate next task below.
+Historical blocked-attempt evidence follows; it is not the current live state.
+
+Production during the earlier blocked attempt remained **1.24.11 / 6a8f57753998a1ed8974706111367b0f8036e6ac**.
 No new app image or archive was transferred to the VPS by this attempt.
 Public health and authenticated ADMIN access passed after the stop.
 
