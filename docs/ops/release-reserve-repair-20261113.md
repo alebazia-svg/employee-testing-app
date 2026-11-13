@@ -33,7 +33,7 @@ at the last verified installation snapshot. Configuration establishes a concrete
 conflicting deletion mechanism, not by itself an image-specific execution trace.
 Privileged audit searched retained Docker image events, storage/Docker/sudo/cron
 journals and known shell histories. No image-specific deletion event or definitive
-caller attribution survived. The maintenance journal has matching image/error
+caller attribution was found in those inspected sources. The maintenance journal has matching image/error
 entries at 04:35 UTC on 13 November, before the failed release. The independent
 cron is a verified conflicting mechanism and a plausible cause; do not claim a
 proven image-specific invocation from configuration alone. Cron service is active.
@@ -50,6 +50,11 @@ portal storage command. Private scripts/user crontabs are not thereby excluded.
 - Restore original 1.24.7 archive (328,719,836 bytes, SHA256
   `5b6f4d3a4d43f369b7cf05f99d112c006a46064908701025003490699ada6cc3`).
   No rebuild under an old version, registry rewrite, app switch or migration.
+  This restores the existing registry baseline; it does not recertify old
+  business behavior. The known receipt-loader omission in 1.24.7/1.24.8 remains
+  documented in the previous capability-guard evidence. Automatic installation
+  rollback uses the immediately preceding live image (currently healthy 1.24.11),
+  not an arbitrary older reserve; an older manual rollback needs exact approval.
 - Keep one never-started, network-none, read-only, unprivileged `/bin/true`
   container per protected image. This makes Docker consider reserves used.
   They have no mounted or declared volumes, application secrets or published
