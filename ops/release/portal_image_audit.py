@@ -8,7 +8,7 @@ import stat
 import subprocess
 import sys
 
-LOG = Path('/var/log/offonika-release/image-events.jsonl')
+LOG = Path('/var/lib/offonika-maintenance/image-audit/image-events.jsonl')
 MAX_BYTES = 8*1024**2
 
 
