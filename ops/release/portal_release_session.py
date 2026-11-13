@@ -136,21 +136,23 @@ def receive(request, attempt, record, host, clock=time.monotonic, sleep=time.sle
     try:
         return _receive(request, attempt, record, host, clock=clock, sleep=sleep)
     except core.ReleaseError as error:
-        if not isinstance(error, core.CapacityError) and 'Insufficient release capacity' not in str(error):
-            raise
+        capacity = isinstance(error, core.CapacityError) or 'Insufficient release capacity' in str(error)
         report = dict(format=1, session=request['session'], target=request['manifest']['target'],
-                      state='BLOCKED_CAPACITY', app_switched_by_this_session=False, error=str(error))
+                      state='BLOCKED_CAPACITY' if capacity else 'BLOCKED_PREFLIGHT', app_switched_by_this_session=False, error=str(error))
         if hasattr(host, 'storage_diagnostic'):
             report.update(host.storage_diagnostic(request))
         publish_diagnostic(request, attempt, report)
         record('DIAGNOSTIC_AVAILABLE', path=str(Path(request['exchange']) / 'diagnostic.json'))
-        raise core.CapacityError(str(error)) from error
+        if capacity:
+            raise core.CapacityError(str(error)) from error
+        raise
 
 
 class SessionHost(core.Host):
-    def __init__(self, record):
+    def __init__(self, record, private_record=None):
         super().__init__()
         self.record = record
+        self.private_record = private_record
 
     def run(self, *args, **kwargs):
         if args and args[0] == MAINTENANCE:
@@ -162,10 +164,21 @@ class SessionHost(core.Host):
                     raise core.CapacityError('Insufficient release capacity after the approved maintenance pass')
                 raise core.ReleaseError('Storage maintenance failed; technical output is in this session log')
             return result.stdout.strip()
-        return super().run(*args, **kwargs)
+        try:
+            return super().run(*args, **kwargs)
+        except core.CommandError as error:
+            if self.private_record:
+                self.private_record(error.private_detail)
+            self.record('COMMAND_FAILED', operation=error.operation, exit_code=error.code)
+            raise
 
     def storage_diagnostic(self, request):
         data = dict(plan=request['plan'], last_space_report=getattr(self, 'last_space_report', None))
+        try:
+            result=subprocess.run([MAINTENANCE,'--check-reserves'],text=True,capture_output=True,timeout=30)
+            data['reserves']=json.loads(result.stdout)
+        except Exception as error:
+            data['reserve_report_error']=type(error).__name__
         try:
             raw = self.run(MAINTENANCE, '--report-json', '--release-headroom-bytes',
                            str(request['plan']['before_transfer_bytes'] - core.SPACE_FLOOR))
@@ -267,7 +280,11 @@ def worker(attempt):
         signal.signal(signum, interrupted)
     try:
         record('STARTED', target=request['manifest']['target'])
-        return execute(request, attempt, record)
+        def private_record(detail):
+            with (attempt/'command-failures.jsonl').open('a') as stream:
+                os.chmod(attempt/'command-failures.jsonl',0o600)
+                stream.write(json.dumps(detail)+'\n');stream.flush();os.fsync(stream.fileno())
+        return execute(request, attempt, record, host=SessionHost(record,private_record))
     except core.CapacityError as error:
         record('BLOCKED_CAPACITY', message=str(error))
         return False

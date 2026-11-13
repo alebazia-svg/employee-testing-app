@@ -28,6 +28,7 @@ GIB = 1024 ** 3
 SPACE_FLOOR = 15 * GIB
 APP = Path('/docker/employee-testing-app')
 STORAGE_LAYOUT = Path('/usr/local/lib/offonika-release/storage-layout.json')
+RESERVE_STATUS = Path('/usr/local/lib/offonika-release/reserve-status.json')
 LOCK = Path('/run/lock/offonika-portal-storage.lock')
 REGISTRY = Path('/var/lib/offonika-maintenance/verified-images.json')
 COMPOSE_IMAGE = 'offonika-portal-portal-app:latest'
@@ -40,6 +41,45 @@ class ReleaseError(RuntimeError):
 
 class CapacityError(ReleaseError):
     pass
+
+
+class CommandError(ReleaseError):
+    def __init__(self, args, code, stdout='', stderr=''):
+        operation = Path(args[0]).name
+        if operation == 'docker':
+            verb=args[1] if len(args)>1 and args[1] in ('image','container','exec','run','info','load','compose') else 'other'
+            operation += '.'+verb
+            if verb in ('image','container') and len(args)>2 and args[2] in ('inspect','ls','rm','tag'):
+                operation += '.'+args[2]
+            if verb=='exec':
+                if 'migrate' in args and 'status' in args: operation='docker.prisma-status'
+                elif 'release-info.json' in args[-1]: operation='docker.release-metadata'
+                elif 'app-paths-manifest.json' in args[-1]: operation='docker.compiled-artifact'
+        if operation=='runuser' and 'git' in args:
+            index=args.index('git')+1
+            operation='git.'+(args[index] if index<len(args) and args[index] in ('fetch','status','rev-parse','merge-base','show','diff','checkout') else 'other')
+        self.operation, self.code = operation, code
+        self.private_detail = dict(operation=operation, exit_code=code,
+                                   stdout=str(stdout or '')[-32768:], stderr=str(stderr or '')[-32768:])
+        super().__init__('Command failed: ' + operation + ' (exit ' + str(code) + ')')
+
+
+def read_reserve_status(base):
+    fd = os.open(RESERVE_STATUS, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as stream:
+        info=os.fstat(stream.fileno())
+        require(info.st_uid==0 and not info.st_mode & 0o022 and stat.S_ISREG(info.st_mode)
+                and info.st_nlink==1 and info.st_size<=65536, 'Untrusted reserve status')
+        value=json.load(stream)
+    require(isinstance(value,dict) and value.get('format')==1, 'Unsupported reserve status')
+    require(value.get('healthy') is True, 'Rollback reserve check failed; see published reserve-status.json before requesting sudo')
+    rows=value.get('reserves'); verified=value.get('verified_images')
+    require(isinstance(verified,list) and len(verified)==len(set(verified))==3
+            and all(re.fullmatch(r'sha256:[a-f0-9]{64}',image) for image in verified)
+            and isinstance(rows,list) and len(rows)==3 and {row['image'] for row in rows}==set(verified)
+            and all(row.get('present') is True and row.get('pinned') is True for row in rows), 'Incomplete reserve status')
+    require(value.get('current_revision')==base, 'Reserve status is for another live base; reconcile before requesting sudo')
+    return value
 
 
 def require(ok, message):
@@ -187,10 +227,14 @@ class Host:
         self.app = Path(app)
 
     def run(self, *args, timeout=300, cwd=None):
-        result = subprocess.run(args, cwd=cwd or self.app, text=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=timeout)
+        try:
+            result = subprocess.run(args, cwd=cwd or self.app, text=True, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            raise CommandError(args, 'timeout', error.stdout, error.stderr) from error
         # Never echo env/config or raw command output on failures: it may contain secrets.
-        require(result.returncode == 0, 'Command failed: ' + args[0] + ' (exit ' + str(result.returncode) + ')')
+        if result.returncode:
+            raise CommandError(args, result.returncode, result.stdout, result.stderr)
         return result.stdout.strip()
 
     def git(self, *args):
@@ -311,7 +355,10 @@ def preflight(host, manifest, registry, origin):
             and registry[0] == current['Image'], 'Verified registry does not match current release plus two rollback images')
     for ident in registry:
         require(re.fullmatch(r'sha256:[a-f0-9]{64}', ident), 'Invalid registry identity')
-        host.inspect('image', ident)
+        try:
+            host.inspect('image', ident)
+        except ReleaseError as error:
+            raise ReleaseError('Protected rollback image missing or unavailable: ' + ident + '; current app unchanged') from error
     # Startup invokes migrate deploy. Refuse pending/drifted migrations before restart.
     host.run('docker', 'exec', 'portal-app', 'node', 'node_modules/prisma/build/index.js', 'migrate', 'status')
     host.space()
@@ -487,6 +534,8 @@ def main():
             require(archive.is_file() and archive.stat().st_size == plan['archive_bytes']
                     and digest(archive) == plan['manifest']['archive_sha256'], 'Transferred archive does not match capacity plan')
         if os.geteuid() != 0:
+            status = read_reserve_status(plan['manifest']['base'])
+            print('RESERVE_STATUS ' + json.dumps(dict(healthy=True, checked_at=status['checked_at'])), flush=True)
             return Host().space(headroom=plan['load_headroom_bytes'], archive_path=archive,
                                 archive_bytes=0 if args.archive_present else plan['archive_bytes'],
                                 storage_layout=read_storage_layout())

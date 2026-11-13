@@ -42,7 +42,7 @@ class DockerSessionWorkflow(unittest.TestCase):
             (root/'server.cjs').write_text("""const http=require('http'),fs=require('fs');
 const meta=JSON.parse(fs.readFileSync('/app/public/release-info.json','utf8'));
 http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(JSON.stringify(q.url==='/release-info.json'?meta:{ok:true,screenVersion:meta.version}));}).listen(3000,'0.0.0.0');""")
-            (root/'Dockerfile').write_text('FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY meta.json /app/public/release-info.json\nCOPY server.cjs ./server.cjs\nCOPY fixture-artifact /app/\nCMD ["node","server.cjs"]\n')
+            (root/'Dockerfile').write_text('FROM node:22-bookworm-slim\nLABEL com.offonika.reserve-test='+prefix+'\nWORKDIR /app\nCOPY meta.json /app/public/release-info.json\nCOPY server.cjs ./server.cjs\nCOPY fixture-artifact /app/\nCMD ["node","server.cjs"]\n')
             (root/'fixture-artifact/.next/server').mkdir(parents=True)
             (root/'fixture-artifact/.next/static/chunks').mkdir(parents=True)
             (root/'fixture-artifact/public').mkdir()
@@ -80,6 +80,9 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                 ids=[names[0] if item=='portal-app' else item for item in ids]
                 return json.loads(docker(kind,'inspect',*ids)) if ids else []
             def scoped_docker(*args):
+                if args[:3]==('ps','-aq','--filter') and args[3]=='label='+maintenance.PIN_LABEL+'=1':
+                    ids=docker(*args).split()
+                    return '\n'.join(item['Id'] for item in inspect('container',ids) if item['Image'] in {record['image'] for record in records})
                 if args[:2]==('exec','portal-app'):
                     return docker('exec',names[0],*args[2:])
                 if args[:3]==('image','ls','-aq'):
@@ -131,6 +134,7 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                 stack.enter_context(patch.object(core,'LOCK',root/'storage.lock'))
                 stack.enter_context(patch.object(core,'REGISTRY',registry))
                 stack.enter_context(patch.object(maintenance,'STATE',registry))
+                stack.enter_context(patch.object(maintenance,'STATUS',root/'reserve-status.json'))
                 stack.enter_context(patch.object(maintenance,'load_history',side_effect=lambda:dict(history)))
                 stack.enter_context(patch.object(maintenance,'save_history',side_effect=lambda values:history.update(values)))
                 stack.enter_context(patch.object(maintenance,'inspect',side_effect=inspect))
@@ -202,7 +206,14 @@ http.createServer((q,s)=>{s.setHeader('content-type','application/json');s.end(J
                     docker('image','inspect',records[1]['image'])
                     if index==5:
                         self.assertNotEqual(subprocess.run(['docker','image','inspect',records[2]['image']],capture_output=True).returncode,0)
+                        docker('image','prune','--all','--force','--filter','label=com.offonika.reserve-test='+prefix)
+                        for image in expected:
+                            docker('image','inspect',image)
+                            self.assertTrue(maintenance.valid_pin(inspect('container',[maintenance.pin_name(image)])[0]))
+                        self.assertTrue(json.loads((root/'reserve-status.json').read_text())['healthy'])
         finally:
+            for item in locals().get('records',[]):
+                subprocess.run(['docker','rm','offonika-portal-reserve-'+item['image'].split(':')[1]],capture_output=True)
             subprocess.run(['docker','rm',stopped],capture_output=True)
             if (root/'compose.json').exists():
                 subprocess.run(['docker','compose','-p',prefix,'-f',str(root/'compose.json'),'down'],capture_output=True)

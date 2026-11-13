@@ -117,6 +117,26 @@ class FakeHost:
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_missing_reserve_names_exact_image_before_load_or_restart(self):
+        host=FakeHost(); original=host.inspect
+        def inspect(kind,ident):
+            if kind=='image' and ident==REGISTRY[-1]:
+                raise r.CommandError(('docker','image','inspect',ident),1,stderr='No such image')
+            return original(kind,ident)
+        host.inspect=inspect
+        with self.assertRaisesRegex(r.ReleaseError,'Protected rollback image missing or unavailable: '+REGISTRY[-1]):
+            self.install(host)
+        self.assertEqual(host.image,OLD)
+        self.assertFalse(any(call[:2]==('docker','load') or call[0]=='compose' for call in host.calls))
+
+    def test_published_unhealthy_reserves_stop_unprivileged_precheck(self):
+        path=self.bundle/'reserve-status.json'
+        value=dict(format=1,healthy=False,current_revision=BASE)
+        path.write_text(json.dumps(value))
+        info=SimpleNamespace(st_uid=0,st_mode=stat.S_IFREG|0o644,st_nlink=1,st_size=path.stat().st_size)
+        with patch.object(r,'RESERVE_STATUS',path),patch.object(r.os,'fstat',return_value=info):
+            with self.assertRaisesRegex(r.ReleaseError,'before requesting sudo'):
+                r.read_reserve_status(BASE)
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
@@ -289,7 +309,8 @@ class ReleaseTests(unittest.TestCase):
         plan = r.capacity_plan(self.bundle, self.manifest)
         plan_path = self.bundle / 'plan.json'; plan_path.write_text(json.dumps(plan))
         layout = dict(format=1, docker_root='/var/lib/docker', containerd_root='/var/lib/containerd', app_root=str(r.APP))
-        with patch('sys.argv', ['release', 'check-space', '--plan', str(plan_path), '--archive-directory', str(self.bundle)]), \
+        with patch.object(r,'read_reserve_status',return_value={'healthy':True,'checked_at':'fixture'}), \
+             patch('sys.argv', ['release', 'check-space', '--plan', str(plan_path), '--archive-directory', str(self.bundle)]), \
              patch.object(r.os, 'geteuid', return_value=1003), patch.object(r, 'read_storage_layout', return_value=layout), \
              patch.object(r, 'LOCK') as lock, patch.object(r, 'Host') as host:
             r.main()

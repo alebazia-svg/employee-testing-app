@@ -17,6 +17,8 @@ class RetentionTests(unittest.TestCase):
         self.history_patch = patch.object(maintenance, 'load_history', return_value={})
         self.history_patch.start()
         self.addCleanup(self.history_patch.stop)
+        for name in ('sync_pins','publish_reserves'):
+            item=patch.object(maintenance,name);item.start();self.addCleanup(item.stop)
 
     def test_generated_tags_require_exact_verified_history_and_preserve_all_guards(self):
         value = dict(version='1.2.3', revision='b'*40)
@@ -147,6 +149,25 @@ class RetentionTests(unittest.TestCase):
             with patch('sys.argv',['maintenance',*flags]),patch.object(maintenance.subprocess,'run') as command:
                 with self.assertRaises(ValueError): maintenance.main()
                 command.assert_not_called()
+
+
+class PinSafetyTests(unittest.TestCase):
+    def test_missing_image_prevents_all_pin_mutations(self):
+        images=['sha256:'+char*64 for char in 'abc']
+        with patch.object(maintenance,'inspect',return_value=[{'Id':images[0]}]),patch.object(maintenance,'docker') as command:
+            with self.assertRaisesRegex(ValueError,'Protected image missing'):maintenance.sync_pins(images)
+            command.assert_not_called()
+
+    def test_modified_or_running_pin_is_preserved_and_refuses_rotation(self):
+        images=['sha256:'+char*64 for char in 'abc']; image=images[0]
+        item=dict(Id='container',Image=image,Name='/'+maintenance.pin_name(image),
+            Config=dict(Labels={maintenance.PIN_LABEL:'1','com.offonika.reserve-image':image},Entrypoint=['/bin/true']),
+            State=dict(Status='running',Running=True),HostConfig=dict(NetworkMode='none',RestartPolicy={'Name':'no'}),Mounts=[])
+        def inspect(kind,ids):
+            return [{'Id':image} for image in images] if kind=='image' else [item]
+        with patch.object(maintenance,'inspect',side_effect=inspect),patch.object(maintenance,'docker',return_value='container') as command:
+            with self.assertRaisesRegex(ValueError,'Modified reserve pin'):maintenance.sync_pins(images)
+            command.assert_called_once_with('ps','-aq','--filter','label='+maintenance.PIN_LABEL+'=1')
 
 
 if __name__ == '__main__':

@@ -16,6 +16,27 @@ core = session.core
 
 
 class SessionTests(unittest.TestCase):
+    def test_command_failure_keeps_raw_output_private_and_public_operation_safe(self):
+        public=[]; private=[]
+        host=session.SessionHost(lambda stage,**data:public.append((stage,data)),private.append)
+        result=SimpleNamespace(returncode=1,stdout='PRIVATE_OUTPUT',stderr='postgres://user:SECRET@db/test')
+        with patch.object(session.subprocess,'run',return_value=result):
+            with self.assertRaises(core.CommandError) as caught:
+                host.run('docker','exec','portal-app','node','-e','PRIVATE_EXPRESSION')
+        self.assertIn('SECRET',private[0]['stderr'])
+        self.assertNotIn('SECRET',json.dumps(public)+str(caught.exception))
+        self.assertNotIn('PRIVATE',json.dumps(public)+str(caught.exception))
+        self.assertEqual(public[0][1]['operation'],'docker.exec')
+
+    def test_noncapacity_preflight_failure_publishes_diagnostic_without_upload_or_switch(self):
+        with patch.object(core,'preflight',side_effect=core.ReleaseError('Protected rollback image missing: exact-image')):
+            with self.assertRaisesRegex(core.ReleaseError,'Protected rollback'):
+                session.receive(self.request,self.attempt,self.record,self.host())
+        report=json.loads((self.exchange/'diagnostic.json').read_text())
+        self.assertEqual(report['state'],'BLOCKED_PREFLIGHT')
+        self.assertFalse(report['app_switched_by_this_session'])
+        self.assertEqual(json.loads(self.registry.read_text()),REGISTRY)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

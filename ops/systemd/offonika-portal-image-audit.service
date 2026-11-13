@@ -1,0 +1,32 @@
+[Unit]
+Description=Bounded Offonika Docker image event audit
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/portal-image-audit
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+RuntimeDirectory=offonika-image-audit
+RuntimeDirectoryMode=0700
+Environment=DOCKER_HOST=unix:///var/run/docker.sock
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/log/offonika-release /run/offonika-image-audit
+MemoryMax=128M
+CPUQuota=5%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
