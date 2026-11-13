@@ -1,11 +1,10 @@
 # Guarded portal image delivery
 
-Current host tooling: `fb9cd89`, installed on 12 November 2026 at 14:35 Moscow.
-This includes the previous capacity/session work and capability guard `e3efeb2`.
-See `docs/ops/release-follow-up-20261112.md` for current evidence, remaining
-capacity limits and rollback. Installing the tooling did not restart or replace
-application 1.24.11 / `6a8f577`. Existing application behavior, background
-schedules, database, uploads, backups and test environments were preserved.
+Current host tooling: `b9ce19e`, installed on 13 November 2026 at 17:52 Moscow.
+The exact missing 1.24.7 reserve was restored; application 1.24.11 / `6a8f577`
+was not restarted or replaced. See `docs/ops/release-reserve-repair-20261113.md`
+for installed evidence, historical audit limits, current headroom and rollback.
+Earlier session/capacity/retention and capability protections remain included.
 
 This extends the existing git/Docker Compose/verified-image mechanism. It avoids
 rebuilding on the shared production server and replaces release-specific scripts
@@ -13,11 +12,12 @@ with one checked-in installer. It does not introduce another hosting service.
 
 ## Normal release: one sudo entry point
 
-Owner-approved follow-up (12 November): use ordinary-user `check-space` before
+Owner-approved follow-up (12–13 November): use ordinary-user `check-space` before
 opening Terminal. It reads current filesystem availability from root-published
 `/usr/local/lib/offonika-release/storage-layout.json` paths, without Docker or
-sudo. This advisory check takes no root lock; the worker repeats authoritative
-locked checks. See `docs/ops/release-follow-up-20261112.md` for activation evidence.
+sudo. It also checks the last root-published three-image/pin status before sudo.
+This advisory snapshot takes no root lock; the worker repeats authoritative
+live locked checks. See `docs/ops/release-reserve-repair-20261113.md` for current activation evidence.
 
 Capacity failure publishes `diagnostic.json` in the owner-readable session
 exchange, including maintenance output and protected/used/skipped image inventory.
@@ -102,6 +102,33 @@ passwords or extend the worker's authority.
 
 The lower-level install/check-space/register commands remain documented recovery
 and diagnostic tools. They are not extra sudo steps in the normal session path.
+
+## Protected reserve references and original archives
+
+Every registered image has one never-started `offonika-portal-reserve-<full-id>`
+container, network-none, no mounts/ports and `/bin/true` entry point. These are
+Docker references, not extra running portal instances. Only this tool's strictly
+validated obsolete dormant pins may be rotated after successful registration;
+ordinary containers (including stopped ones) remain protected. Never force-remove
+pins, run broad container/image/system prune, or rewrite the registry to mask a
+missing reserve. The conflicting `/etc/cron.d/docker-image-prune` is disabled;
+the existing guarded storage timer remains the cleanup authority.
+
+Before requesting sudo, read `reserve-status.json` together with `check-space`.
+It records the time of the last root check, not a promise of live immutability.
+If a release fails, read its `diagnostic.json` and safe COMMAND_FAILED operation;
+bounded raw output is deliberately private in `command-failures.jsonl`. Do not
+open another password window merely to repeat a known failure. Image-event
+observer `offonika-portal-image-audit.service` keeps bounded private evidence.
+
+After actual independent verification and expected-image registration, retain
+the exact original bundle on the build host using `retain_verified_archive.py`
+with the verified image ID. On Bela's Mac, the stable store is
+`/Users/bela/Library/Application Support/Offonika/portal-release-archives`.
+Never rely solely on /tmp or rebuild changed bytes under an old version for
+recovery. This storage helper does not certify, register or deploy an image;
+existing application verification remains mandatory. Do not prune archive backups
+as part of deployment. See the current evidence note for the command and limits.
 
 ## Prepare locally, after an application release is approved
 

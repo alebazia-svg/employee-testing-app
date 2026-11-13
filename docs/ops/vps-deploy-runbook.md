@@ -28,13 +28,20 @@ restarting or replacing portal 1.24.6. Evidence and tooling rollback are in
 `docs/ops/release-process-install-20261111.md`. Application source/Docker cache
 changes are in the maintained branch for the next approved, versioned image;
 they were not injected into the running application. Current host tooling is
-`fb9cd89`, retaining capability guard `e3efeb2`, the single-password session,
+`b9ce19e`, retaining capability guard `e3efeb2`, the single-password session,
 ordinary-user precheck and verified-image retention. See
-`docs/ops/release-follow-up-20261112.md` for current installation and rollback.
+`docs/ops/release-reserve-repair-20261113.md` for current installation and rollback.
 Before requesting sudo, run ordinary `portal-release check-space`. Diagnose a
 shortfall using existing owner-readable reports; include the approved storage
 pass in the same reviewed session, not another sudo window. Never lower the
 15 GiB reserve or delete protected/used data to make a plan pass.
+
+The old broad `/etc/cron.d/docker-image-prune` is disabled; do not reinstate it
+or run broad prune outside the guarded storage policy. Registered images have
+never-started Docker pin containers. Rotate only validated tool-managed obsolete
+pins; never remove ordinary stopped containers. Non-root precheck includes the
+last root-published reserve status; the root worker rechecks live facts. Retain
+exact verified bundles outside temporary storage after actual registration.
 
 The installer refuses schema/migration/Compose/startup changes, stale bases,
 pending migrations, stale verified registries and insufficient space. Never
@@ -47,7 +54,9 @@ capacity plan/check described in `ops/release/README.md`; measured archive/load
 headroom is additional to that reserve. Approved maintenance can use
 `--release-headroom-bytes N` without broadening eligible deletion. The default
 daily maintenance target remains 15 GiB. Its schedule and protection of all container-used/unknown images,
-volumes and backups are unchanged. Installation did not execute cleanup.
+volumes and backups are unchanged. Initial adoption did not execute cleanup;
+the 13 November reserve recovery reclaimed only unused build cache under the
+reviewed capacity target. See the current evidence note.
 
 ## Safe deploy flow
 

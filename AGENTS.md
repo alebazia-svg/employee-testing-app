@@ -389,3 +389,26 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
   capacity. The 15 GiB reserve plus measured release headroom remains mandatory.
 - Preserve the installed capability guard when updating release tooling. See
   `docs/ops/release-follow-up-20261112.md` for installation and rollback evidence.
+
+
+## Docker Reserve Protection — Owner Approval 2026-11-13
+
+- The exact missing reserve was restored and tooling `b9ce19e` installed without
+  replacing production 1.24.11. Read the maintained
+  `docs/ops/release-reserve-repair-20261113.md` before release/recovery.
+- `/etc/cron.d/docker-image-prune` conflicted with verified retention and is
+  disabled. Never reinstate broad image/system/container prune or use it to make
+  a release fit. The existing guarded storage timer remains authoritative.
+- Registered images are pinned by never-started tool-managed Docker containers.
+  Preserve them; only the maintained command may rotate its own strictly
+  validated obsolete dormant pins after successful registration. All ordinary
+  containers, including stopped ones, remain outside deletion authority.
+- Before sudo, read the published reserve status and run ordinary `check-space`;
+  recognise that this is a timestamped snapshot. The worker repeats live checks.
+  Read failure diagnostics in the same session; raw command output remains private.
+- Keep exact verified release archives outside /tmp on the build host. Use
+  `retain_verified_archive.py` only after real independent verification and
+  expected-image registration. Archive existence does not certify a release.
+- The image observer records future events, not guaranteed historical actor
+  attribution. Distinguish the confirmed conflicting cron from an unrecorded
+  individual delete invocation. Preserve all capability/data/rollback guards.
