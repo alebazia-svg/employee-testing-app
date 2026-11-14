@@ -1771,7 +1771,7 @@ export default async function AdminWorkdayPage(
     <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
       {warehouseExceptions.length>0 && <section aria-label="Перемещения без дежурного"><h2>Требуют внимания по складу</h2><ul>{warehouseExceptions.map(e=><li key={e.ref}>Перемещение № {e.number} · {e.exception}</li>)}</ul></section>}
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
-      <div className='space-y-6'>
+      <div className='workday-layout-refined space-y-6'>
         {extensionProposal && <WorkdayExtensionProposal proposal={extensionProposal} name={employees.find(e=>e.id===extensionProposal.userId)?.name??'Сотрудник'} departedName={employees.find(e=>e.id===workDays.find(d=>d.id===extensionProposal.departedId)?.userId)?.name??'Коллега'} />}
         <div className="workday-date-toolbar mb-4 flex flex-wrap items-center gap-2">
             <Link

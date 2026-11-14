@@ -3456,3 +3456,95 @@ body:has(#pwa-copper-theme) .employee-material-nav .attention-preview-nav-label{
 
 /* Explicit review acknowledges the case without marking the handover complete. */
 .team-handover-review-status p{margin:7px 0}.team-handover-review-status .team-button{display:inline-flex;border:1px solid #dac8b7;border-radius:7px;padding:7px 12px;margin:5px 0;background:#fff}.team-handover-review-status small{display:block;color:#85786b;font-size:10px;margin-top:8px}
+
+/* Local approved Day Control composition. Data, order and actions are unchanged. */
+#employees-control.team-layout-refined .team-day-overview .team-employee{
+ align-items:start;gap:16px;padding:14px 20px;min-height:76px;
+}
+#employees-control.team-layout-refined .team-day-overview .team-employee>div{min-width:0;padding-top:4px}
+#employees-control.team-layout-refined .team-day-overview .team-employee>.team-control-anchor{padding-top:0}
+#employees-control.team-layout-refined .team-state-text,
+#employees-control.team-layout-refined .team-time{line-height:21px}
+#employees-control.team-layout-refined .team-plan-cell{align-items:start;line-height:21px;gap:4px}
+#employees-control.team-layout-refined .team-person-meta{margin-top:3px}
+#employees-control.team-layout-refined .team-day-overview a.team-control-indicator{
+ width:100%;min-width:0;max-width:204px;height:auto;min-height:44px;
+ padding:5px 23px 5px 9px;white-space:normal;align-items:center;
+}
+#employees-control.team-layout-refined .team-control-copy{gap:2px;line-height:18px}
+#employees-control.team-layout-refined .team-control-copy>small{line-height:15px}
+#employees-control.team-layout-refined .team-day-overview .team-control-anchor>.team-control-clear{
+ display:block;min-height:44px;padding:6px 10px;color:#756d65;line-height:18px;
+}
+#employees-control.team-layout-refined .team-control-indicator.timing{
+ background:#faf8f5;border-color:#e7e0d8;color:#756b5e;font-weight:500;
+}
+#employees-control.team-layout-refined .team-control-indicator.unavailable{border-color:#e7e0d8}
+@media(min-width:1101px){
+ #employees-control.team-layout-refined .team-day-overview .team-employee,
+ #employees-control.team-layout-refined .team-day-overview .team-column-head{
+  grid-template-columns:minmax(190px,280px) 156px 112px minmax(184px,1.3fr) minmax(144px,1fr);gap:16px;
+ }
+}
+@media(min-width:1301px){
+ #employees-control.team-layout-refined .team-day-overview .team-control-anchor,
+ #employees-control.team-layout-refined .team-day-overview .team-column-head>span:nth-child(4){justify-self:center;width:min(100%,204px)}
+}
+@media(min-width:1101px) and (max-width:1300px){
+ #employees-control.team-layout-refined .team-day-overview .team-employee,
+ #employees-control.team-layout-refined .team-day-overview .team-column-head{
+  grid-template-columns:minmax(140px,210px) 140px 104px 170px minmax(116px,1fr);gap:12px;
+ }
+}
+@media(max-width:1100px){
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-state-cell::before,
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-start-cell::before,
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-plan-cell::before{
+  content:attr(data-label);display:block;font-size:10px;font-weight:500;line-height:14px;
+  letter-spacing:.015em;color:#84796f;margin:0 0 3px;
+ }
+ #employees-control.team-layout-refined .team-day-overview .team-plan-cell{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 4px;
+ }
+ #employees-control.team-layout-refined .team-day-overview .team-plan-cell::before{grid-column:1/-1}
+}
+@media(min-width:701px) and (max-width:1100px){
+ #employees-control.team-layout-refined .team-day-overview .team-employee{
+  grid-template-columns:minmax(0,1fr) 144px 88px;gap:12px;
+ }
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-person-cell{grid-column:1;grid-row:1}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-state-cell{grid-column:2;grid-row:1}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-start-cell{grid-column:3;grid-row:1}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-plan-cell{grid-column:1;grid-row:2}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-control-anchor{grid-column:2/4;grid-row:2}
+}
+@media(max-width:700px){
+ .admin-shell:has(.workday-layout-refined) .admin-page-top{margin-bottom:12px;padding-bottom:10px}
+ .admin-shell:has(.workday-layout-refined) .admin-page-top header>div{font-size:12px;line-height:1.45}
+ .workday-layout-refined> :not([hidden])~ :not([hidden]){margin-top:14px}
+ .workday-layout-refined .workday-date-toolbar{flex-wrap:wrap;gap:5px;margin-bottom:10px!important}
+ .workday-layout-refined .workday-date-toolbar>.admin-material-control{padding:7px 8px;font-size:12px;white-space:nowrap}
+ .workday-layout-refined .workday-date-toolbar>button{margin-left:auto;min-height:36px;padding:6px 8px;font-size:11px;gap:5px;white-space:nowrap}
+ .workday-layout-refined .workday-date-toolbar>.admin-material-primary{padding:7px 8px;font-size:11px}
+ #employees-control.team-layout-refined>.admin-section-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:0;scrollbar-width:thin}
+ #employees-control.team-layout-refined>.admin-section-tabs>.admin-section-tab{flex:0 0 auto;min-height:42px;padding:10px;font-size:12px;white-space:nowrap;gap:7px}
+ #employees-control.team-layout-refined .team-context-line{margin:8px 0;gap:8px;font-size:11px;flex-wrap:wrap}
+ #employees-control.team-layout-refined .team-panel{margin:10px 0}
+ #employees-control.team-layout-refined .team-panel-title-compact{padding:11px 14px;gap:3px}
+ #employees-control.team-layout-refined .team-panel-title-compact h2{font-size:17px}
+ #employees-control.team-layout-refined .team-presence-note{font-size:10px}
+ #employees-control.team-layout-refined .team-filters-compact{margin:0 14px;padding:8px 0;gap:3px}
+ #employees-control.team-layout-refined .team-filters-compact button{padding:6px 7px}
+ #employees-control.team-layout-refined .team-filters-compact select{flex:1;min-width:130px;max-width:none;font-size:12px}
+ #employees-control.team-layout-refined .team-department{padding:7px 14px;min-height:36px}
+ #employees-control.team-layout-refined .team-day-overview .team-employee{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 16px;padding:12px 14px}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-person-cell{grid-column:1/-1;grid-row:1;padding-top:0}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-state-cell{grid-column:1;grid-row:2;padding-top:0}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-start-cell{grid-column:2;grid-row:2;padding-top:0}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-plan-cell{grid-column:1;grid-row:3;padding-top:0}
+ #employees-control.team-layout-refined .team-day-overview .team-employee>.team-control-anchor{grid-column:2;grid-row:3;padding-top:14px}
+ #employees-control.team-layout-refined .team-day-overview .team-control-anchor>.team-control-clear{padding-left:0;padding-right:0}
+ #employees-control.team-layout-refined .team-day-overview a.team-control-indicator{font-size:11px;min-height:44px;padding-left:8px}
+ #employees-control.team-layout-refined .team-control-copy>small{font-size:10px}
+ #employees-control.team-layout-refined .team-plan-cell .team-employee-plan-controls>.team-plan-edit-icon{width:32px!important;height:36px!important;min-height:36px!important}
+}
