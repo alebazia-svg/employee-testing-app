@@ -30,6 +30,13 @@ project from scratch.
 
 ## Read First By Task
 
+- ADMIN Day Control composition: `../ops/day-control-layout-release-20261114.md` —
+  released/verified1.24.16 /de24fd7. Approved desktop/mobile spacing, aligned
+  controls, historical-neutral heading and mobile date-toolbar wrapping.
+  Existing calculations, QR, shifts, schedules, sources and notifications unchanged.
+  Actual iPhone Safari checked locally; production seven-row comparison and
+  card/filter/editor/QR/document checks passed. Installed-PWA limits are explicit.
+
 - QR day accounting / Day Control: `../ops/qr-day-control-release-20261114.md` —
   released/verified1.24.15 /47a5c1f. Successful committed QR start, not scan intent;
   Calendar/Control/Home aligned, saved plans/real shifts retained; approved concise
