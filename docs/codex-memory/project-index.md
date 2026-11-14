@@ -30,6 +30,12 @@ project from scratch.
 
 ## Read First By Task
 
+- QR day accounting / Day Control: `../ops/qr-day-control-release-20261114.md` —
+  released/verified1.24.15 /47a5c1f. Successful committed QR start, not scan intent;
+  Calendar/Control/Home aligned, saved plans/real shifts retained; approved concise
+  source labels and Employee→State→Start→Control→Plan order. Existing free shift
+  choice preserved. Expected-second-start linkage is a separate unimplemented idea.
+
 - Employee cash-status copy: `../ops/kkm-status-copy-release-20261111.md` -
   released/verified1.24.5 /6501f2f from installed1.24.4. Four owner-approved
   wording substitutions only; completed-shift title/time and all mechanisms,

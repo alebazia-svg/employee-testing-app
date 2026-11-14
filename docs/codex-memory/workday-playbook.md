@@ -805,3 +805,17 @@ Released and verified 1.24.0 / b37a9aa from live1.23.4, on the approved narrow
 release branch. Feature-only change is retained in design-local-updates. See
 `../ops/qr-calendar-release-20261111.md` for exact files, tests, preservation and
 the next-release disk-capacity gate.
+
+
+## ADMIN accounting consistency — released1.24.15,14November2026
+
+Supersedes the1.24.0 paragraph above only for proof of a started day and its
+connected ADMIN consumers. Use successful WorkDayEntry QR evidence after shift
+confirmation; unconsumed/expired start intents do not count. Calendar,Control and
+Home share the same read-only projection/cutoffs. Keep the saved plan, real app
+shift and derived accounting distinct; never auto-close/hide real existing shifts.
+Manual source«Отметка админа»,automatic off source«Нет отметки». UI approved order:
+Employee→State→Start→Control→Plan. No payroll, matching or employee notification
+change. Google fallback/actual times are preserved. See
+`../ops/qr-day-control-release-20261114.md` for tests, production evidence and the
+separate pending expected-second-start discussion; free actual shift choice stays.
