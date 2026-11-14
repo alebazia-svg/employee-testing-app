@@ -67,7 +67,7 @@ test('an existing app shift without a QR field is never auto-closed or hidden',(
 
 test('compact status and source describe the result without changing the plan or real shift lifecycle',()=>{
  const off=resolveControlCalendarDay(base);
- assert.equal(off.sourceLabel,'Автоматически — без QR');
+ assert.equal(off.sourceLabel,'Нет отметки');
  assert.equal(off.stateNote,'Выходной учтён автоматически: нет QR-отметки начала смены');
  assert.equal(resolveControlCalendarDay({...base,qrAccepted:true}).sourceLabel,undefined);
  const real=resolveControlCalendarDay({...base,qrAccepted:true,hasWorkDay:true});

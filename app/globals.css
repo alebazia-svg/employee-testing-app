@@ -3321,6 +3321,29 @@ body:has(#pwa-copper-theme) .employee-material-nav .attention-preview-nav-label{
 
 @media(max-width:1100px){#employees-control .team-plan-cell,#employees-control .team-start-cell{padding-top:0}#employees-control .team-plan-cell::before,#employees-control .team-start-cell::before{display:none}}
 
+/* Approved overview order: employee, state, start, control, saved plan. */
+#employees-control .team-day-overview .team-employee>div{grid-column:auto;grid-row:auto}
+#employees-control .team-day-overview .team-employee>.team-state-cell::before{content:none;display:none}
+@media(min-width:1101px){
+ #employees-control .team-day-overview .team-employee,#employees-control .team-day-overview .team-column-head{grid-template-columns:minmax(115px,1.15fr) minmax(115px,1fr) 104px 204px minmax(100px,1fr)}
+}
+@media(min-width:701px) and (max-width:1100px){
+ #employees-control .team-day-overview .team-employee{grid-template-columns:minmax(150px,1fr) minmax(100px,1fr) 204px}
+ #employees-control .team-day-overview .team-employee>.team-person-cell{grid-column:1;grid-row:1}
+ #employees-control .team-day-overview .team-employee>.team-state-cell{grid-column:2;grid-row:1}
+ #employees-control .team-day-overview .team-employee>.team-start-cell{grid-column:1;grid-row:2}
+ #employees-control .team-day-overview .team-employee>.team-control-anchor{grid-column:3;grid-row:1/3}
+ #employees-control .team-day-overview .team-employee>.team-plan-cell{grid-column:2;grid-row:2}
+}
+@media(max-width:700px){
+ #employees-control .team-day-overview .team-employee{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ #employees-control .team-day-overview .team-employee>.team-person-cell{grid-column:1;grid-row:1}
+ #employees-control .team-day-overview .team-employee>.team-state-cell{grid-column:2;grid-row:1}
+ #employees-control .team-day-overview .team-employee>.team-start-cell{grid-column:1;grid-row:3}
+ #employees-control .team-day-overview .team-employee>.team-control-anchor{grid-column:1/-1;grid-row:2}
+ #employees-control .team-day-overview .team-employee>.team-plan-cell{grid-column:2;grid-row:3}
+}
+
 /* Workday material finish: shared warm surfaces, graphite facts and restrained semantic accents. */
 #employees-control{--team-ink:#383b3d;--team-muted:#776f66;--team-line:#e7e1da;--team-surface:#f1ece6}
 #employees-control .team-panel,#employees-control .team-queue-group{border-color:#e1d9d0;box-shadow:0 1px 2px #25282b05}

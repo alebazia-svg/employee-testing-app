@@ -9,7 +9,7 @@ export function resolveControlCalendarDay(input: Parameters<typeof resolveCalend
     : fact.state === 'working' ? 'Рабочий день'
     : fact.state === 'vacation' ? 'Отпуск' : null;
   const sourceLabel = settled && fact.source === 'Автоматически'
-    ? 'Автоматически — без QR'
+    ? 'Нет отметки'
     : settled && fact.source === 'Исправлено администратором' ? 'Отметка админа' : undefined;
   const stateNote = settled && fact.state === 'off' && fact.source === 'Автоматически'
     ? 'Выходной учтён автоматически: нет QR-отметки начала смены' : undefined;

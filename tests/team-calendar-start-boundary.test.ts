@@ -11,7 +11,7 @@ test('an abandoned or expired scan is not a working day; a committed QR workday 
  assert.equal(result.get(`5:${date}`)?.qrAccepted,false);
  for(const department of ['retail','wholesale','procurement']){
  const day=resolveControlCalendarDay({date,department,plan:'working',source:'Приложение',vacation:false,qrAccepted:result.get(`5:${date}`)!.qrAccepted,hasWorkDay:false,now});
- assert.equal(day.state,'Выходной');assert.equal(day.sourceLabel,'Автоматически — без QR');
+ assert.equal(day.state,'Выходной');assert.equal(day.sourceLabel,'Нет отметки');
  }
 });
 test('a manually corrected day does not pretend the employee has an active shift',()=>{
