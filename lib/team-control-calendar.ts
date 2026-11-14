@@ -8,9 +8,9 @@ export function resolveControlCalendarDay(input: Parameters<typeof resolveCalend
   const state = !settled ? null : fact.state === 'off' ? 'Выходной'
     : fact.state === 'working' ? 'Рабочий день'
     : fact.state === 'vacation' ? 'Отпуск' : null;
-  const sourceLabel = fact.factual && (!input.hasWorkDay || input.qrAccepted || fact.source === 'Исправлено администратором')
-    ? fact.source === 'Автоматически' ? 'Автоматически — без QR' : fact.source === 'Приложение' ? 'План из приложения' : fact.source
-    : !input.hasWorkDay && input.source === 'Приложение' ? 'План из приложения' : undefined;
+  const sourceLabel = settled && fact.source === 'Автоматически'
+    ? 'Нет отметки'
+    : settled && fact.source === 'Исправлено администратором' ? 'Отметка админа' : undefined;
   const stateNote = settled && fact.state === 'off' && fact.source === 'Автоматически'
     ? 'Выходной учтён автоматически: нет QR-отметки начала смены' : undefined;
   return { fact, sourceLabel, stateNote, startNote: undefined, settled: settled && state !== null, state,

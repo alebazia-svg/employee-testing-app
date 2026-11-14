@@ -22,7 +22,7 @@ for(const plan of ['working','off','unset','unknown','unavailable'])test(`${plan
 });
 test('manual accounting after auto off does not invent an active shift',()=>{
  const noQr=resolveControlCalendarDay(base),late=resolveControlCalendarDay({...base,qrAccepted:true,now:new Date('2026-11-11T20:45:00+03:00')});
- assert.equal(noQr.calendarState,'off');assert.equal(late.calendarState,'working');assert.equal(late.startNote,undefined);
+ assert.equal(noQr.calendarState,'off');assert.equal(late.calendarState,'working');assert.equal(late.sourceLabel,undefined);
  const row={id:4,name:'Зухра',start:'—',end:'—',planState:'working',missing:false,sourceUnavailable:false,state:late.state!,calendarState:late.calendarState};
  assert.equal(teamRowStatus(row),'recorded');assert.notEqual(teamRowStatus(row),'working');assert.notEqual(teamRowStatus(row),'expected');
 });
@@ -32,7 +32,7 @@ test('real active, unclosed and completed app shifts retain their existing lifec
   const workDay={startedAt:`${date}T09:00:00+03:00`,endedAt,shiftLabel:'09:00–18:00',lateMinutes:0,status};
   const attendance=resolveTeamAttendance({date,today:'2026-11-11',workDay,google,googleAvailable:false,fallbackState:'Ожидается начало'});
   const fact=resolveControlCalendarDay({...base,date,hasWorkDay:true,qrAccepted:true});
-  assert.equal(fact.settled,false);assert.equal(fact.state,null);assert.equal(fact.startNote,undefined);assert.equal(fact.calendarState,undefined);assert.equal(attendance.state,expected);assert.equal(attendance.start,'09:00');
+  assert.equal(fact.settled,false);assert.equal(fact.state,null);assert.equal(fact.sourceLabel,undefined);assert.equal(fact.calendarState,undefined);assert.equal(attendance.state,expected);assert.equal(attendance.start,'09:00');
  }
 });
 test('vacation is distinct, but actual QR during vacation means a working day',()=>{
@@ -67,12 +67,12 @@ test('an existing app shift without a QR field is never auto-closed or hidden',(
 
 test('compact status and source describe the result without changing the plan or real shift lifecycle',()=>{
  const off=resolveControlCalendarDay(base);
- assert.equal(off.sourceLabel,'Автоматически — без QR');
+ assert.equal(off.sourceLabel,'Нет отметки');
  assert.equal(off.stateNote,'Выходной учтён автоматически: нет QR-отметки начала смены');
- assert.equal(resolveControlCalendarDay({...base,qrAccepted:true}).sourceLabel,'По QR');
+ assert.equal(resolveControlCalendarDay({...base,qrAccepted:true}).sourceLabel,undefined);
  const real=resolveControlCalendarDay({...base,qrAccepted:true,hasWorkDay:true});
- assert.equal(real.sourceLabel,'По QR');assert.equal(real.state,null);assert.equal(real.stateNote,undefined);
+ assert.equal(real.sourceLabel,undefined);assert.equal(real.state,null);assert.equal(real.stateNote,undefined);
  assert.equal(resolveControlCalendarDay({...base,hasWorkDay:true}).sourceLabel,undefined);
- assert.equal(resolveControlCalendarDay({...base,now:new Date('2026-11-11T12:00:00+03:00')}).sourceLabel,'План из приложения');
- assert.equal(resolveControlCalendarDay({...base,date:'2026-11-12'}).sourceLabel,'План из приложения');
+ assert.equal(resolveControlCalendarDay({...base,now:new Date('2026-11-11T12:00:00+03:00')}).sourceLabel,undefined);
+ assert.equal(resolveControlCalendarDay({...base,date:'2026-11-12'}).sourceLabel,undefined);
 });

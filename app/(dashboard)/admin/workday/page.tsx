@@ -1541,7 +1541,7 @@ export default async function AdminWorkdayPage(
         fallbackState: planState === 'vacation' ? 'Отпуск' : planState === 'off' ? 'Выходной' : planState === 'unknown' ? 'План неизвестен' : planState === 'unavailable' ? 'Источник недоступен' : 'Ожидается начало',
       }) : null;
       const attendanceStartControl = attendance ? calendarDay.settled ? {missing:false,unknownTime:false} : teamStartControl(planState, attendance.start !== '—', attendance.marksAvailable, selectedDate, today, nowMinutes, clockMinutes(attendance.shift)) : null;
-      if (attendance && calendarDay.state) { attendance.state = calendarDay.state; attendance.marksAvailable = true; attendance.startNote = calendarDay.startNote; attendance.stateNote = calendarDay.stateNote; }
+      if (attendance && calendarDay.state) { attendance.state = calendarDay.state; attendance.marksAvailable = true; attendance.stateNote = calendarDay.stateNote; }
       if (attendance && attendanceStartControl?.missing) attendance.state = 'Не отметился';
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
@@ -1853,7 +1853,7 @@ export default async function AdminWorkdayPage(
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
             return {id:row.employee.id,sourceUnavailable:row.attendance ? !row.attendance.marksAvailable : !app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,calendarState:row.calendarDay.calendarState,name:row.employee.name,department:row.employee.department,source:row.calendarDay.sourceLabel ?? row.attendance?.sourceLabel ?? (app?'Приложение · пилот':'Google'),planState,
-              startNote:row.attendance?.startNote,plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
+              plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
               state:row.attendance?.state ?? teamShiftState(selectedDate,today,start!=='—',Boolean(row.workDay&&!row.workDay.endedAt),end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:row.attendance?.active ?? (app&&row.activeWorkDay),late:row.attendance?.late ?? (app?row.workDay?.lateMinutes??0:google.lateMinutes),missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
