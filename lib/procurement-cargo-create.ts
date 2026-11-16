@@ -9,7 +9,7 @@ import {planningRequestOverlap} from './procurement-planning-overlap';
 import {notifyAdminsAboutProcurementPlans} from './procurement-payment-notifications';
 
 /** Same plan, audit and notification flow as goods; no synthetic supplier order. */
-export async function createCargoPayment(payload:Record<string,unknown>,user:{id:number;name:string;oneCManagerName:string|null},readEvidence:typeof freshEvidence=freshEvidence) {
+export async function createCargoPayment(payload:Record<string,unknown>,user:{id:number;name:string;oneCManagerName:string|null},readEvidence:typeof freshEvidence=freshEvidence,actor:{id:number;name:string}=user) {
   const error=cargoRequestError(payload,user.oneCManagerName?.trim()||user.name);
   if(error)return Response.json({error},{status:400});
   const checked=validatePaymentPlan({...payload,paymentPurpose:'DELIVERY',supplierPartner:PROCUREMENT_CARGO.supplierPartner,
@@ -26,8 +26,8 @@ export async function createCargoPayment(payload:Record<string,unknown>,user:{id
       if(planningRequestOverlap([checked.data],existing,evidence))return null;
       const plan=await tx.supplierPaymentPlan.create({data:{...checked.data,managerUserId:user.id,planCode:buildPaymentPlanCode(),
         plannedDate:new Date(checked.data.plannedDate+'T00:00:00Z'),plannedAmount:new Prisma.Decimal(checked.data.plannedAmount!)}});
-      const event=await tx.supplierPaymentPlanEvent.create({data:{planId:plan.id,actorUserId:user.id,action:'SUBMITTED',snapshot:JSON.parse(JSON.stringify(plan))}});
-      await notifyAdminsAboutProcurementPlans({db:tx,eventKey:`procurement-payment:${event.id}:submitted`,action:'SUBMITTED',managerName:user.name,plans:[plan]});
+      const event=await tx.supplierPaymentPlanEvent.create({data:{planId:plan.id,actorUserId:actor.id,action:'SUBMITTED',snapshot:JSON.parse(JSON.stringify(plan))}});
+      await notifyAdminsAboutProcurementPlans({db:tx,eventKey:`procurement-payment:${event.id}:submitted`,action:'SUBMITTED',managerName:actor.name,plans:[plan]});
       return plan;
     });
     return result?Response.json(JSON.parse(JSON.stringify(result)),{status:201,headers:{'X-Portal-Activity-Ref':result.id}}):Response.json({error:'Оплата перевозчику уже есть в календаре. Измените существующую заявку.'},{status:409});

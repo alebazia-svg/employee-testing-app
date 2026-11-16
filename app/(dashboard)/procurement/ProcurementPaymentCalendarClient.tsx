@@ -378,7 +378,7 @@ export default function ProcurementPaymentCalendarClient({
     (draft.orderRefs.includes(order.ref) || ['order', 'prepayment'].includes(buyerOrderPurpose(order, supplierBalances[draft.supplier])))))
     .filter(order => matchesPaymentOrderSearch(order, editOrderQuery));
   const existingPlanForOrder = (order: Order) => workingPlans.find(plan =>
-    plan.orderRefs.includes(order.ref) || (!plan.orderRefs.length && plan.supplierPartner === order.supplierPartner));
+    plan.orderRefs.includes(order.ref));
   const newPaymentOrders = ordersForRequest(planningOrders, todayKey).filter(order => !existingPlanForOrder(order));
   const activeOrderRefs = workingPlans.flatMap(plan => plan.orderRefs);
   const workingCatalogue = procurementWorkingOrders(missingOrders, todayKey, activeOrderRefs);

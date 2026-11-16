@@ -36,7 +36,7 @@ export async function decidePaymentCompletion(id:string, actorId:number, input:{
     // Matching depends on all requests, not only the request being completed.
     if(plans.length!==preview.evidence.versions.size || plans.some(p=>preview.evidence.versions.get(p.id)!==p.updatedAt.toISOString()))throw Error('Заявки изменились во время проверки. Повторите действие.');
     const before=plans.find(p=>p.id===id)!;
-    if(input.action==='REOPEN' && planningRequestOverlap([{supplierPartner:before.supplierPartner,orderRefs:Array.isArray(before.orderRefs)?before.orderRefs.map(String):[]}],plans.filter(p=>p.id!==id),preview.evidence))throw Error('Уже есть другая незавершённая заявка на эту оплату.');
+    if(input.action==='REOPEN' && planningRequestOverlap([{supplierPartner:before.supplierPartner,plannedDate:before.plannedDate,orderRefs:Array.isArray(before.orderRefs)?before.orderRefs.map(String):[]}],plans.filter(p=>p.id!==id),preview.evidence))throw Error('Уже есть другая незавершённая заявка на эту оплату.');
     const previous=before.oneCCashEvidence&&typeof before.oneCCashEvidence==='object'&&!Array.isArray(before.oneCCashEvidence)?before.oneCCashEvidence:{};
     const completion=input.action==='COMPLETE'?{
       at:new Date().toISOString(),actorId,reason,remainingAmount:preview.remainingAmount,remainingForeignAmount:preview.remainingForeignAmount,

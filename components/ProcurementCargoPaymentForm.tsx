@@ -9,7 +9,8 @@ import {ProcurementUsdtFields} from './ProcurementUsdtFields';
 import {cnyCommentDraftPatch,cnyRateFromComment,plannedFxRubles,type PlannedRateReference} from '@/lib/procurement-planned-fx';
 
 const input='mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold';
-export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCancel,onCreated,onDraftStateChange,cnyRateReference,usdtRateReference,availableUsdt=null}:{
+export function ProcurementCargoPaymentForm({managerUserId,preview=false,blocked=false,onCancel,onCreated,onDraftStateChange,cnyRateReference,usdtRateReference,availableUsdt=null}:{
+  managerUserId?:number;
   availableUsdt?:number|null;
   preview?:boolean;blocked?:boolean;onCancel:()=>void;onCreated:(plans:{id:string;plannedDate:string;[key:string]:unknown}[])=>void;
   onDraftStateChange:(state:{hasDraft:boolean;saving:boolean})=>void;
@@ -36,7 +37,7 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
     setSaving(true);
     try{
       const response=await employeeObservedFetch('/api/procurement/payment-plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        paymentPurpose:'DELIVERY',supplierPartner:PROCUREMENT_CARGO.supplierPartner,orderRefs:[],orderNumbers:[],plannedDate:date,
+        ...(managerUserId==null?{}:{managerUserId}),paymentPurpose:'DELIVERY',supplierPartner:PROCUREMENT_CARGO.supplierPartner,orderRefs:[],orderNumbers:[],plannedDate:date,
         plannedAmount:total,paymentMethod:method,currency:fx?method:'RUB',foreignAmount:fx?amount:null,exchangeRate:fx?rate:null,condition:comment,
         fundingSource:null,
       })});

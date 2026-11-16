@@ -19,7 +19,7 @@ import {cnyCommentDraftPatch,cnyRateFromComment} from '@/lib/procurement-planned
 import {singlePaymentRequest,paymentOrderExcess} from '@/lib/procurement-single-payment';
 import {supplierAdvanceChoices,isAdvanceChoice,isSupplierChoice,SUPPLIER_ADVANCE_LABEL} from '@/lib/procurement-supplier-advance';
 
-type Props=ComponentProps<typeof ProcurementPaymentBatchForm>;
+type Props=ComponentProps<typeof ProcurementPaymentBatchForm> & {managerUserId?: number};
 type Order=Props['orders'][number];
 type Basis='ORDER'|'DEBT'|'ADVANCE';
 const choiceBasis=(ref?:string):Basis=>ref&&isAdvanceChoice(ref)?'ADVANCE':ref?.startsWith('debt:')?'DEBT':'ORDER';
@@ -28,10 +28,10 @@ const orderDate=(value:string)=>/^\d{4}-\d{2}-\d{2}/.test(value)?value.slice(0,1
 const empty=()=>({plannedAmount:'',paymentMethod:'CASH',foreignAmount:'',exchangeRate:'',fundingSource:'',condition:''});
 const input='mt-1.5 w-full rounded-xl border border-[var(--portal-border)] bg-white px-3 py-2.5 text-sm font-semibold';
 
-export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,initialSelectedRefs,onCreated,onCancel,onDraftStateChange,usdtRateReference,cnyRateReference,basisPreview=false,submissionBlocked=false,supplierDebtError=false,todayKey='',activeOrderRefs=[],activeSupplierNames=[],cargoAllowed=false,availableUsdt=null}:Props){
+export function ProcurementPaymentForm({managerUserId,orders:sourceOrders,supplierBalances,initialSelectedRefs,onCreated,onCancel,onDraftStateChange,usdtRateReference,cnyRateReference,basisPreview=false,submissionBlocked=false,supplierDebtError=false,todayKey='',activeOrderRefs=[],activeSupplierNames=[],cargoAllowed=false,availableUsdt=null}:Props){
   const inspection = useEmployeePreview();
-  const orders:Order[]=[...sourceOrders,...supplierAdvanceChoices(supplierBalances,activeSupplierNames,supplierDebtError),...Object.entries(supplierDebtError?{}:supplierBalances)
-    .filter(([name,b])=>supplierPosition(b)==='debt'&&!activeSupplierNames.includes(name))
+  const orders:Order[]=[...sourceOrders,...supplierAdvanceChoices(supplierBalances,[],supplierDebtError),...Object.entries(supplierDebtError?{}:supplierBalances)
+    .filter(([name,b])=>supplierPosition(b)==='debt')
     .map(([supplierPartner,b])=>({ref:'debt:'+supplierPartner,number:'',supplierPartner,supplierCounterparty:'',orderPaymentGap:0,supplierDebt:b.debt,plannedActiveAmount:0,unplannedAmount:b.debt,orderComment:''}))];
   const purpose=(o:Order)=>isSupplierChoice(o.ref)?'order':buyerOrderPurpose(o,supplierDebtError?undefined:supplierBalances[o.supplierPartner]);
   const selectable=(o:Order)=>!activeOrderRefs.includes(o.ref)&&['order','prepayment'].includes(purpose(o));
@@ -95,7 +95,7 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
     setSaving(true);
     try{
       const request=singlePaymentRequest(selected,{...draft,plannedDate:date});
-      const response=await employeeObservedFetch(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.body)});
+      const response=await employeeObservedFetch(request.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...request.body,...(managerUserId==null?{}:{managerUserId})})});
       const body=await workflowJson(response,'procurement_payment',undefined,'payment_create');
       if(!response.ok){setMessage(body.error||'Не удалось отправить заявку.');return;}
       onCreated(Array.isArray(body.plans)?body.plans:[body]);
@@ -161,7 +161,7 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
         <button disabled={saving||!first||!date||!validAmount||selectionInvalid||submissionBlocked} className="admin-material-primary rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{saving?'Отправка…':'Отправить заявку'}</button>
       </div>
     </form></div>
-    {cargoAllowed?<div hidden={category!=='DELIVERY'}><ProcurementCargoPaymentForm key={cargoKey} preview={basisPreview} blocked={submissionBlocked} onCancel={onCancel} onCreated={onCreated} onDraftStateChange={setCargoDraft} cnyRateReference={cnyRateReference} usdtRateReference={usdtRateReference} availableUsdt={availableUsdt}/></div>:null}
+    {cargoAllowed?<div hidden={category!=='DELIVERY'}><ProcurementCargoPaymentForm managerUserId={managerUserId} key={cargoKey} preview={basisPreview} blocked={submissionBlocked} onCancel={onCancel} onCreated={onCreated} onDraftStateChange={setCargoDraft} cnyRateReference={cnyRateReference} usdtRateReference={usdtRateReference} availableUsdt={availableUsdt}/></div>:null}
     <ProcurementDiscardDraftDialog open={pendingCategory!==null||pendingOrder!==null} editing={false} onKeep={()=>{setPendingCategory(null);setPendingOrder(null)}} onDiscard={()=>{
       if(pendingOrder){applyChoice(pendingOrder);setPendingOrder(null);return;}
       setRefs([]);setDraft(empty());setDate('');setChoosing(true);setOpen(false);setQuery('');setMessage('');setCargoDraft({hasDraft:false,saving:false});setCargoKey(k=>k+1);
