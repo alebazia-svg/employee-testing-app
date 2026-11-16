@@ -1,3 +1,4 @@
+import { resolveProcurementCreator } from '@/lib/procurement-plan-creator';
 import { Prisma } from "@prisma/client";
 import {readFundingBalance,assertFundingBalance} from '@/lib/procurement-usdt-funding-server';
 import { getCurrentUser } from "@/lib/auth";
@@ -35,18 +36,23 @@ function jsonValue(value: unknown) {
 }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: "Необходим вход" }, { status: 401 });
-  if (user.role !== "EMPLOYEE" || user.portalArea !== "PROCUREMENT")
+  const actor = await getCurrentUser();
+  if (!actor) return Response.json({ error: "Необходим вход" }, { status: 401 });
+  if (actor.role !== "ADMIN" && (actor.role !== "EMPLOYEE" || actor.portalArea !== "PROCUREMENT"))
     return Response.json({ error: "Нет доступа" }, { status: 403 });
 
   const payload = (await req.json().catch(() => null)) as {
+    managerUserId?: unknown;
     plannedDate?: unknown;
     rows?: Array<Record<string, unknown>>;
   } | null;
   if (!payload || !Array.isArray(payload.rows) || !payload.rows.length || payload.rows.length > 100 ||
       payload.rows.some(row => !row || typeof row !== 'object' || Array.isArray(row)))
     return Response.json({ error: "Добавьте от 1 до 100 оплат." }, { status: 400 });
+
+  const creator = await resolveProcurementCreator(actor, payload.managerUserId);
+  if (!creator.ok) return Response.json({ error: creator.error }, { status: creator.status });
+  const user = creator.manager;
 
   let phase: 'verify' | 'save' = 'verify';
   try {
@@ -138,11 +144,11 @@ export async function POST(req: Request) {
         }
       }
       for (const row of checkedRows) {
-        if ('data' in row && row.data && !row.data.orderRefs.length && debtRequestConflict(existing, row.data.supplierPartner, currentEvidence)) {
+        if ('data' in row && row.data && !row.data.orderRefs.length && debtRequestConflict(existing, row.data.supplierPartner, currentEvidence, row.data.plannedDate)) {
           throw new Error('DEBT_REQUEST_EXISTS');
         }
       }
-      const requests = checkedRows.flatMap(row => 'data' in row && row.data ? [{ supplierPartner: row.data.supplierPartner, orderRefs: row.data.orderRefs }] : []);
+      const requests = checkedRows.flatMap(row => 'data' in row && row.data ? [{ supplierPartner: row.data.supplierPartner, orderRefs: row.data.orderRefs, plannedDate: row.data.plannedDate }] : []);
       if (planningRequestOverlap(requests, existing, currentEvidence)) throw new Error('DEBT_REQUEST_EXISTS');
     }
     const created = [];
@@ -179,7 +185,7 @@ export async function POST(req: Request) {
       const planEvent = await tx.supplierPaymentPlanEvent.create({
         data: {
           planId: plan.id,
-          actorUserId: user.id,
+          actorUserId: actor.id,
           action: "SUBMITTED",
           snapshot: jsonValue(plan),
         },
@@ -191,7 +197,7 @@ export async function POST(req: Request) {
       db: tx,
       eventKey: `procurement-payment-batch:${notificationKey}:submitted`,
       action: "SUBMITTED",
-      managerName: user.name,
+      managerName: actor.name,
       plans: created,
     });
     return created;

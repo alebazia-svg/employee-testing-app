@@ -1,3 +1,4 @@
+import { resolveProcurementCreator } from '@/lib/procurement-plan-creator';
 import { Prisma } from '@prisma/client';
 import {readFundingBalance,assertFundingBalance} from '@/lib/procurement-usdt-funding-server';
 import { getCurrentUser } from '@/lib/auth';
@@ -28,12 +29,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: 'Необходим вход' }, { status: 401 });
-  if (user.role !== 'EMPLOYEE' || user.portalArea !== 'PROCUREMENT') return Response.json({ error: 'Нет доступа' }, { status: 403 });
+  const actor = await getCurrentUser();
+  if (!actor) return Response.json({ error: 'Необходим вход' }, { status: 401 });
+  if (actor.role !== 'ADMIN' && (actor.role !== 'EMPLOYEE' || actor.portalArea !== 'PROCUREMENT')) return Response.json({ error: 'Нет доступа' }, { status: 403 });
   const payload=await req.json().catch(()=>null);
   if(!payload||typeof payload!=='object'||Array.isArray(payload))return Response.json({error:'Проверьте данные заявки.'},{status:400});
-  if(payload.paymentPurpose==='DELIVERY')return createCargoPayment(payload,user);
+  const creator = await resolveProcurementCreator(actor, payload.managerUserId);
+  if (!creator.ok) return Response.json({ error: creator.error }, { status: creator.status });
+  const user = creator.manager;
+  if(payload.paymentPurpose==='DELIVERY')return createCargoPayment(payload,user,undefined,actor);
   const checked = validatePaymentPlan(payload);
   if (!checked.ok) return Response.json({ error: checked.errors.join(' ') }, { status: 400 });
   let plannedAmount = checked.data.plannedAmount;
@@ -82,12 +86,12 @@ export async function POST(req: Request) {
       commissionAmount: checked.data.commissionAmount == null ? null : new Prisma.Decimal(checked.data.commissionAmount),
       exchangerName: checked.data.exchangerName, supplierConfirmation: checked.data.supplierConfirmation,
     } });
-    const planEvent = await tx.supplierPaymentPlanEvent.create({ data: { planId: created.id, actorUserId: user.id, action: 'SUBMITTED', snapshot: JSON.parse(JSON.stringify(created)) } });
+    const planEvent = await tx.supplierPaymentPlanEvent.create({ data: { planId: created.id, actorUserId: actor.id, action: 'SUBMITTED', snapshot: JSON.parse(JSON.stringify(created)) } });
     await notifyAdminsAboutProcurementPlans({
       db: tx,
       eventKey: `procurement-payment:${planEvent.id}:submitted`,
       action: 'SUBMITTED',
-      managerName: user.name,
+      managerName: actor.name,
       plans: [created],
     });
     return created;
