@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchQrFunding,type QrFundingPlan} from '../lib/procurement-qr-funding';
+import {matchQrFunding,qrMovementTime,type QrFundingPlan} from '../lib/procurement-qr-funding';
 import {qrPaymentStage,needsProcurementReceipt,hasConfirmedReceiptPayment} from '../lib/procurement-receipt-policy';
 import {paymentListRemainder} from '../lib/procurement-list-amount';
 const plan:QrFundingPlan={id:'a',planCode:'PAY-20261020-123456',supplierPartner:'USB Mag',supplierCounterparty:'',plannedAmount:42200,paymentMethod:'ACCOUNTABLE_QR',status:'APPROVED',createdAt:'2026-10-20T08:00:00Z'};
@@ -46,4 +46,27 @@ test('list remainder stays in the request currency and never invents USDT from R
  assert.equal(paymentListRemainder(p),'Доплатить 700 USDT');
  assert.equal(paymentListRemainder({...p,evidence:{...p.evidence,remainingForeignAmount:null}}),null);
  assert.equal(paymentListRemainder({...p,paymentMethod:'CASH'}),'Доплатить 70 000 ₽');
+});
+
+// Native 1C strings use a single hour digit from midnight through 09:59.
+// Keep exact Moscow time: Date.parse on DD.MM is either invalid or ambiguous.
+test('1C single-digit hours preserve the instant and confirm only the existing exact transfer pair',()=>{
+ assert.equal(qrMovementTime('17.11.2026 0:41:16'),Date.parse('2026-11-16T21:41:16Z'));
+ for(const hour of [0,1,9,10,23]){
+  const h=String(hour).padStart(2,'0');
+  assert.equal(qrMovementTime(`21.10.2026 ${hour}:41:16`),Date.parse(`2026-10-21T${h}:41:16+03:00`));
+  assert.equal(qrMovementTime(`21.10.2026 ${h}:41:16`),Date.parse(`2026-10-21T${h}:41:16+03:00`));
+ }
+ const source={...payload,movements:[{...out,period:'21.10.2026 0:41:16'},{...inc,period:'21.10.2026 0:41:22'}]};
+ const before=JSON.stringify(source),funding=match([plan],source).get(plan.id)!;
+ assert.equal(funding.state,'confirmed');assert.equal(funding.amount,42200);
+ assert.equal(JSON.stringify(source),before,'source documents and their identities remain untouched');
+ const view={...plan,evidence:{state:'NO_EVIDENCE',verification:'current',issuedAmount:0,paidAmount:0,paidForeignAmount:0,qrFunding:funding}};
+ assert.equal(qrPaymentStage(view,0),'Ожидает чека');assert.equal(hasConfirmedReceiptPayment(view),false);
+ assert.equal(qrPaymentStage(view,1),'Ожидает расходника');
+ assert.equal(match([{...plan,createdAt:'2026-10-21T00:00:00Z'}],source).get(plan.id)!.state,'none','an earlier transfer never funds a newly created request');
+ const incomplete={...source,movements:[source.movements[0]]};
+ assert.equal(match([plan],incomplete).get(plan.id)!.state,'none');
+ const cancelled={...plan,status:'CANCELLED'};
+ assert.equal(match([plan,cancelled],source).get(plan.id)!.state,'none','cancelled ownership still prevents reassignment');
 });
