@@ -6,8 +6,8 @@ const obj=(v:unknown):Row=>v&&typeof v==='object'&&!Array.isArray(v)?v as Row:{}
 const key=(v:unknown)=>String(v||'').normalize('NFKC').toLocaleLowerCase('ru-RU').replaceAll('ё','е').replace(/[^\p{L}\p{N}]/gu,'');
 const minor=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&Number.isSafeInteger(Math.round(v*100))&&Math.abs(v*100-Math.round(v*100))<0.00001?Math.round(v*100):null;
 export function qrMovementTime(value:unknown) {
- const s=String(value||'');const m=/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{2}):(\d{2}):(\d{2}))?$/.exec(s);
- return Date.parse(m?`${m[3]}-${m[2]}-${m[1]}T${m[4]||'00'}:${m[5]||'00'}:${m[6]||'00'}+03:00`:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)?s+'+03:00':s);
+ const s=String(value||'');const m=/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{1,2}):(\d{2}):(\d{2}))?$/.exec(s);
+ return Date.parse(m?`${m[3]}-${m[2]}-${m[1]}T${(m[4]||'00').padStart(2,'0')}:${m[5]||'00'}:${m[6]||'00'}+03:00`:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)?s+'+03:00':s);
 }
 /** Full cash statement for one organization; reciprocal document/account links,
  * equal posted movements, exact supplier token or code, and one-to-one ownership.
