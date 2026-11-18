@@ -74,3 +74,14 @@ test('cash handoff stops hourly reminders before documents are posted', async ()
  assert.equal(await prisma.workdayNotification.count({where:{userId:f.user.id,kind:'workday_end_reminder',status:'resolved',pushStatus:'cancelled'}}),3);
 });
 test.after(()=>prisma.$disconnect());
+
+test('closing employee access after a physical transfer preserves the queued accounting', async () => {
+  const f = await fixture();
+  const { user, day } = f;
+  const { p } = await ready(f);
+  await confirmRetailCash(prisma, user.id, day.id, p.revision, true, now);
+  await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+  const result = await processRetailCash(prisma, user.id, day.id, now, async params => pair(params));
+  assert.equal(result.status, 'posted');
+  assert.equal((await prisma.user.findUniqueOrThrow({where:{id:user.id}})).isActive, false);
+});

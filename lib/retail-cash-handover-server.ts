@@ -151,18 +151,25 @@ async function recordPhysicalTransfer(tx:Prisma.TransactionClient,h:RetailCashHa
 export async function processRetailCash(db:Db,userId:number,dayId:number,now=new Date(),postPair=postRetailHandoverPair){
   const token=randomUUID();
   const claimed=await db.$transaction(async tx=>{
-    await lock(tx,dayId);await dayFor(tx,userId,dayId,now,true);
+    await lock(tx,dayId);
+    // Once handed over, settlement belongs to the closed day and its recorded
+    // owner. Later changes to login access do not cancel a physical transfer.
+    const day = await tx.workDayEntry.findFirst({
+      where: { id: dayId, userId },
+      select: { id: true, userId: true, date: true, status: true, endedAt: true },
+    });
+    if (!day) throw new HandoverError('Рабочий день не найден.', 404);
     const h=await tx.retailCashHandover.findUnique({where:{workDayEntryId:dayId}});
     if(!h)throw new HandoverError('Передача не найдена.');
-    if(terminal.includes(h.status)||h.status==='review')return {h,run:false};
-    if(!h.handedAt||!h.targetCashboxRef)throw new HandoverError('Фактическая передача ещё не подтверждена.');
-    if(['posting','error'].includes(h.status)&&h.processingStartedAt&&+now-+h.processingStartedAt<120000)return {h,run:false};
-    return {h:await tx.retailCashHandover.update({where:{id:h.id},data:{status:'posting',processingToken:token,processingStartedAt:now}}),run:true};
+    if(terminal.includes(h.status)||h.status==='review')return {h,run:false as const};
+    if(day.status !== 'completed' || !day.endedAt || !h.handedAt || !h.targetCashboxRef)throw new HandoverError('Фактическая передача ещё не подтверждена.');
+    if(['posting','error'].includes(h.status)&&h.processingStartedAt&&+now-+h.processingStartedAt<120000)return {h,run:false as const};
+    return {h:await tx.retailCashHandover.update({where:{id:h.id},data:{status:'posting',processingToken:token,processingStartedAt:now}}),day,run:true as const};
   });
   if(!claimed.run)return claimed.h;
   const h=claimed.h;
   try{
-    const r=await postPair({idempotencyKey:h.operationKey,organizationRef:h.organizationRef,cashboxRef:h.sourceCashboxRef,targetCashboxRef:h.targetCashboxRef!,employeeName:'Сдача личной кассы',amount:Number(h.actual),direction:'employee_handover',employeeComment:`Передача ${h.id}`},h.expected===null?null:Number(h.expected),(await db.workDayEntry.findUniqueOrThrow({where:{id:dayId}})).date);
+    const r=await postPair({idempotencyKey:h.operationKey,organizationRef:h.organizationRef,cashboxRef:h.sourceCashboxRef,targetCashboxRef:h.targetCashboxRef!,employeeName:'Сдача личной кассы',amount:Number(h.actual),direction:'employee_handover',employeeComment:`Передача ${h.id}`},h.expected===null?null:Number(h.expected),claimed.day.date);
     if(!r.ok||!r.pairComplete||!r.document||!r.receiptDocument||r.document.posted!==true||r.receiptDocument.posted!==true||r.document.cashbox.ref!==h.sourceCashboxRef||r.receiptDocument.cashbox.ref!==h.targetCashboxRef||r.receiptDocument.baseDocument.ref!==r.document.ref||r.document.amount!==Number(h.actual)||r.receiptDocument.amount!==Number(h.actual))throw Error(r.error||'Пара РКО → ПКО не подтверждена.');
     return db.$transaction(async tx=>{
       await lock(tx,dayId);const current=await tx.retailCashHandover.findUniqueOrThrow({where:{id:h.id}});if(current.processingToken!==token)return current;
@@ -179,7 +186,8 @@ export async function processRetailCash(db:Db,userId:number,dayId:number,now=new
       if(current.processingToken!==token)return current;
       const failed=await tx.retailCashHandover.update({where:{id:h.id},data:{status:review?'review':'error',error,processingToken:null}});
       if(review){
-        const {day,task}=await dayFor(tx,userId,dayId,now,true);
+        const day = claimed.day;
+        const task = await tx.shiftControlTask.findFirstOrThrow({ where: { run: { workDayEntryId: day.id }, category: 'handover' }, select: { id: true } });
         await issue(tx,day,task.id,failed,'cash_handover_1c',error,'error');
       }
       return failed;
