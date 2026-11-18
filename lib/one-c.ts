@@ -516,7 +516,7 @@ export type CreateOneCCashExpenseOrderParams = {
   targetCashboxRef: string;
   employeeName: string;
   amount: number;
-  direction: 'phone_reserve' | 'deposit_safe';
+  direction: 'phone_reserve' | 'deposit_safe' | 'employee_handover';
   employeeComment: string;
 };
 

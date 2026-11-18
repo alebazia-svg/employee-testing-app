@@ -20,6 +20,7 @@ model User {
   portalArea                       String                            @default("WORKDAY")
   oneCManagerName                  String?
   isActive                         Boolean                           @default(true)
+  workdayControlMode               String                            @default("STANDARD")
   qrScanMode                       String                            @default("SCAN")
   payrollName                      String?
   payrollSalaryType                String?
@@ -785,6 +786,7 @@ model WorkdayStartIntent {
 }
 
 model WorkDayEntry {
+  cashHandover              RetailCashHandover?
   id                     Int                            @id @default(autoincrement())
   userId                 Int
   date                   String
@@ -1710,4 +1712,38 @@ model ProcurementDailyRate {
   actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@unique([day, currency, revision])
+}
+
+// A counted fact and a physical handover survive an unknown external 1C result.
+model RetailCashHandover {
+  id                   String   @id @default(cuid())
+  workDayEntryId       Int      @unique
+  workDay              WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Restrict)
+  revision             Int      @default(1)
+  countRequestKey      String   @unique
+  actual               Decimal  @db.Decimal(18, 2)
+  expected             Decimal? @db.Decimal(18, 2)
+  snapshot             Json
+  countHistory         Json
+  countedAt            DateTime
+  status               String   @default("counted")
+  organizationRef      String
+  sourceCashboxRef     String
+  recipientUserId      Int?
+  recipientWorkDayId   Int?
+  recipientName        String?
+  targetCashboxRef     String?
+  preparedUntil        DateTime?
+  handedAt             DateTime?
+  operationKey         String   @unique @default(cuid())
+  processingToken      String?
+  processingStartedAt DateTime?
+  expenseRef           String?
+  expenseNumber        String?
+  receiptRef           String?
+  receiptNumber        String?
+  error                String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  @@index([status, updatedAt])
 }

@@ -1,4 +1,8 @@
 'use client';
+import { CashChecklistSheet, CashChecklistAmount } from '@/components/CashChecklistSheet';
+import { CashOperationStatusRow } from '@/components/CashOperationStatusRow';
+import { RetailCashHandoverCard } from '@/components/RetailCashHandoverCard';
+import { usesRetailCashHandover } from '@/lib/workday';
 import {employeeObservedFetch} from '@/lib/employee-observed-fetch';
 import { workflowEvent } from '@/lib/employee-workflow-client';
 import { useEmployeeScreenLayer } from '@/components/EmployeeScreenObservation';
@@ -269,6 +273,7 @@ class EmployeeApiError extends Error {
 class EmployeeNetworkError extends Error {}
 
 type UserSummary = {
+  workdayControlMode?: string;
   qrScanMode?: string;
   id: number;
   name: string;
@@ -1709,8 +1714,9 @@ export function EmployeeTodayClient({
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const shiftControlEnabled = usesWorkdayShiftControl(user);
   // The shift menu exists only where the shift list is defined (retail, wholesale); procurement keeps its own day card unchanged.
-  const canShiftMenu = Boolean(supportedShiftCodesByDepartment[user.department]);
-  const canUseCashOperations = shiftControlEnabled;
+  const canShiftMenu = !usesRetailCashHandover(user) && Boolean(supportedShiftCodesByDepartment[user.department]);
+  const retailCashMode = usesRetailCashHandover(user);
+  const canUseCashOperations = shiftControlEnabled && !retailCashMode;
   const shiftCorrectionWindowOpen = Boolean(activeWorkDay && shiftCorrectionState.canCorrect);
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
@@ -2749,7 +2755,7 @@ export function EmployeeTodayClient({
         return;
       }
       if (typeof payload.startIntentId !== 'string') throw new Error('Сервер не подтвердил начало рабочего дня');
-      if (needsWorkdayEndReminder(user)) {
+      if (needsWorkdayEndReminder(user) || usesRetailCashHandover(user)) {
         await startWorkDay('other', department, payload.startIntentId);
         return;
       }
@@ -3724,6 +3730,9 @@ export function EmployeeTodayClient({
   }
 
   function renderShiftTaskAction(task: ShiftControlTask, compact = false, inSheet = false) {
+    if (retailCashMode && task.category === 'handover' && workDay) {
+      return <RetailCashHandoverCard workDayId={workDay.id} taskId={task.id} completed={false} early={getMoscowMinutes(displayNow)<ATTENDANCE_END_MINUTES} request={request} onFinished={()=>void syncCurrentWorkdayState(true)} renderHandle={(close,busy)=><BottomSheetDragHandle onDismiss={close} disabled={busy} />} />;
+    }
     const isEditing = editingShiftTaskId === task.id;
     if (task.status === 'done' && !isEditing) return renderShiftTaskAnswer(task);
     if (!canActOnShiftTask(task)) return null;
@@ -4396,20 +4405,7 @@ export function EmployeeTodayClient({
         {step === 'zReportPhoto' && renderPhotoInput('Чек закрытия смены', 'zReportPhoto', task, 'Закройте смену на кассе и сфотографируйте распечатанный чек.', stepError)}
 
         {step === 'personalCashBalance' && (
-          <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
-            Фактический остаток, ₽
-            <input
-              type='number'
-              inputMode='decimal'
-              min='0'
-              step='0.01'
-              value={handoverDraft.personalCashBalance}
-              onChange={(event) => updateHandoverDraft({ personalCashBalance: event.target.value })}
-              className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-              placeholder='0'
-            />
-            {stepError && <span className='text-xs font-bold text-amber-700'>{stepError}</span>}
-          </label>
+          <CashChecklistAmount value={handoverDraft.personalCashBalance} onChange={personalCashBalance=>updateHandoverDraft({personalCashBalance})} error={stepError} />
         )}
 
         {step === 'reserveCashBalance' && (
@@ -4796,31 +4792,14 @@ export function EmployeeTodayClient({
         reason={staleCloseReason}
         comment={staleCloseComment}
         saving={isSaving}
-        attendanceOnly={needsWorkdayEndReminder(user)}
+        attendanceOnly={needsWorkdayEndReminder(user) || usesRetailCashHandover(user)}
         onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
         onCommentChange={setStaleCloseComment}
         onClose={() => setStaleCloseOpen(false)}
         onSubmit={finishUnfinishedWorkDay}
       />
       {activeHandoverTask && !showCloseResolution && (
-        <div className='employee-workday-sheet-overlay fixed inset-0 z-[115] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-hidden={handoverExitPromptOpen} aria-labelledby='handover-sheet-title'>
-          <div className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:max-h-[calc(100dvh-3rem)] md:rounded-[28px]'>
-            <div className='shrink-0 px-5 pt-4'>
-              <BottomSheetDragHandle onDismiss={closeHandoverSheet} disabled={isSaving} />
-              <div className='flex items-start justify-between gap-3'>
-                <div>
-                  {activeHandoverTask && <HandoverAuditShown taskId={activeHandoverTask.id} attemptId={handoverAuditAttempt.current} stage='form_open' />}
-                  <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ожидает согласования' : showCashEncashmentExceptionForm ? 'Без инкассации' : 'Инкассация' : 'Сдача смены'}</h2>
-                  <p className='mt-1 text-sm font-semibold text-slate-500'>Шаг {handoverStep + 1} из {handoverSteps.length}</p>
-                </div>
-                <button type='button' onClick={closeHandoverSheet} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
-              </div>
-            </div>
-            <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'>
-              {renderHandoverStep(activeHandoverTask)}
-            </div>
-          </div>
-        </div>
+        <CashChecklistSheet hidden={handoverExitPromptOpen} handle={<BottomSheetDragHandle onDismiss={closeHandoverSheet} disabled={isSaving} />} audit={activeHandoverTask && <HandoverAuditShown taskId={activeHandoverTask.id} attemptId={handoverAuditAttempt.current} stage='form_open' />} title={handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ожидает согласования' : showCashEncashmentExceptionForm ? 'Без инкассации' : 'Инкассация' : 'Сдача смены'} step={handoverStep+1} total={handoverSteps.length} onClose={closeHandoverSheet} busy={isSaving}>{renderHandoverStep(activeHandoverTask)}</CashChecklistSheet>
       )}
       {handoverExitPromptOpen && (
         <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/50 md:items-center md:p-6' role='alertdialog' aria-modal='true' aria-labelledby='handover-exit-title' aria-describedby='handover-exit-description'>
@@ -5419,7 +5398,7 @@ export function EmployeeTodayClient({
 
               {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
                 <div className='pwa-composition-start-body'>
-                  <div><h2 id='pwa-composition-start-title'>{needsWorkdayEndReminder(user) ? 'Начать рабочий день' : 'Начать смену'}</h2><p id='pwa-start-qr-hint'>{usesWorkdayQrPhotoFallback(user) ? 'Сфотографируйте' : 'Отсканируйте'} <span className='whitespace-nowrap'>QR-код</span> {user.department === 'procurement' ? 'отдела закупок' : 'в магазине'}.</p></div>
+                  <div><h2 id='pwa-composition-start-title'>{needsWorkdayEndReminder(user) || usesRetailCashHandover(user) ? 'Начать рабочий день' : 'Начать смену'}</h2><p id='pwa-start-qr-hint'>{usesWorkdayQrPhotoFallback(user) ? 'Сфотографируйте' : 'Отсканируйте'} <span className='whitespace-nowrap'>QR-код</span> {user.department === 'procurement' ? 'отдела закупок' : 'в магазине'}.</p></div>
                   <svg className='pwa-start-qr-scanner' width={48} height={48} viewBox='0 0 32 32' fill='none' aria-hidden='true'>
                     <path d='M3 10V5a2 2 0 0 1 2-2h5M22 3h5a2 2 0 0 1 2 2v5M29 22v5a2 2 0 0 1-2 2h-5M10 29H5a2 2 0 0 1-2-2v-5' stroke='currentColor' strokeWidth={1.8} strokeLinecap='round' />
                     <QrCode x={6} y={6} width={20} height={20} stroke='#794b30' strokeWidth={1.7} />
@@ -5493,11 +5472,11 @@ export function EmployeeTodayClient({
                   <div className='pwa-workday-summary-shell'>
                     <div className={cn('pwa-studio-only pwa-workday-summary', canShiftMenu && 'cursor-pointer')} style={{ display: 'none' }} {...(canShiftMenu ? { role: 'button', tabIndex: 0, 'aria-label': 'Моя смена: изменить время или завершить раньше', onClick: () => void openMineShift(), onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openMineShift(); } } } : {})}>
                       <div className='pwa-workday-summary-top'>
-                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{conciseAttendanceSummary ? 'На работе' : needsWorkdayEndReminder(user) ? 'Рабочий день начат' : 'На смене'}</strong>
+                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />{conciseAttendanceSummary ? 'На работе' : needsWorkdayEndReminder(user) || retailCashMode ? 'Рабочий день начат' : 'На смене'}</strong>
                         <span className='pwa-workday-summary-timer' aria-label={`${needsWorkdayEndReminder(user) ? 'Рабочий день' : 'В смене'} ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
                       </div>
                       <div className='pwa-workday-summary-facts'>
-                        <span>Начало {formatTime(workDay!.startedAt)}{!conciseAttendanceSummary && <> · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</>}</span>
+                        <span>Начало {formatTime(workDay!.startedAt)}{!conciseAttendanceSummary && !retailCashMode && <> · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</>}</span>
                         {canShiftMenu && <span className='-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-[#6f655b]' aria-hidden='true'><MoreHorizontal className='h-5 w-5' /></span>}
                       </div>
                     </div>
@@ -5583,20 +5562,23 @@ export function EmployeeTodayClient({
                     <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
-                    <p className='text-sm font-black text-slate-950'>{needsWorkdayEndReminder(user) ? 'Рабочий день завершён' : 'Смена завершена'}</p>
+                    <p className='text-sm font-black text-slate-950'>{needsWorkdayEndReminder(user) || retailCashMode ? 'Рабочий день завершён' : 'Смена завершена'}</p>
                     {workDay?.endedAt && <p className='pwa-shift-summary mt-1 text-lg font-extrabold text-slate-950'>{formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)} <span className='text-xs font-medium text-slate-600'>· фактическое время</span></p>}
                     {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
-                    {closedWithoutEncashment ? (
+                    {retailCashMode && workDay ? <RetailCashHandoverCard workDayId={workDay.id} completed request={request} onFinished={()=>void syncCurrentWorkdayState(true)} /> : closedWithoutEncashment ? (
                       <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · согласовано</p>
                     ) : kkmOneCNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Кассу сегодня не открывали · проверка продолжается</p> : kkmNotOpened ? <p className='mt-0.5 text-xs font-extrabold text-slate-600'>Проверено: кассу сегодня не открывали</p> : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Закрытие кассы подтверждено</p> : kkmCloseConfirmation(handoverTask?.handoverData) ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>{kkmCloseConfirmation(handoverTask?.handoverData)?.method==='photo'?'Чек сохранён · проверяем закрытие кассы':'Закрытие кассы проверяется'}</p> : null}
                   </div>
                 </Card>
               )}
 
-              {showShiftControl && !kkmCloseIssue && !showCloseResolution && (
+
+
+              {retailCashMode && showShiftControl && !kkmCloseIssue && !showCloseResolution && getMoscowMinutes(displayNow)<ATTENDANCE_END_MINUTES && handoverTask && renderShiftTaskAction(handoverTask,true)}
+              {showShiftControl && (!retailCashMode || getMoscowMinutes(displayNow)>=ATTENDANCE_END_MINUTES) && !kkmCloseIssue && !showCloseResolution && (
                 <Card id='pwa-current-action' tabIndex={-1} className='pwa-review-task space-y-3 rounded-[24px] bg-white p-4'>
                   {!activeHandoverTask && cashEncashmentExceptionRequestState?.status !== 'pending' && <div className='pwa-studio-only pwa-checklist-heading' style={{ display: 'none' }}>
-                    <div><h2>Чек-лист смены</h2><span>{visibleShiftControlTasks.length - remainingShiftControlCount}/{visibleShiftControlTasks.length}</span></div>
+                    <div><h2>{retailCashMode ? 'Завершение дня' : 'Чек-лист смены'}</h2><span>{visibleShiftControlTasks.length - remainingShiftControlCount}/{visibleShiftControlTasks.length}</span></div>
                     <div className='pwa-checklist-track' aria-hidden='true'><span style={{ width: `${visibleShiftControlTasks.length ? (visibleShiftControlTasks.length - remainingShiftControlCount) / visibleShiftControlTasks.length * 100 : 0}%` }} /></div>
                   </div>}
                   <div className={!activeHandoverTask && cashEncashmentExceptionRequestState?.status !== 'pending' ? 'pwa-studio-hide' : undefined}>
@@ -5618,6 +5600,7 @@ export function EmployeeTodayClient({
                           {inspectedShiftControlTask && renderShiftTaskAction(inspectedShiftControlTask, true)}
                         </>
                       ) : <>
+                      {!retailCashMode && <>
                       <div className='flex items-center gap-2'>
                         {primaryShiftControlTask && (() => {
                           const Icon = shiftTaskIcon(primaryShiftControlTask);
@@ -5628,14 +5611,15 @@ export function EmployeeTodayClient({
                           );
                         })()}
                         <p className='min-w-0 text-lg font-black leading-tight text-slate-950'>
-                          {primaryShiftControlTask ? shiftTaskTitle(primaryShiftControlTask) : 'Все задачи выполнены'}
+                          {primaryShiftControlTask ? retailCashMode ? 'Закончили работу?' : shiftTaskTitle(primaryShiftControlTask) : 'Все задачи выполнены'}
                         </p>
                       </div>
                       {primaryShiftControlTask && (
-                        <div className='mt-2 flex items-center'>
-                          <span className='text-xs font-bold text-slate-500'>{earlyFinishDeviation ? 'Выполните сейчас для сдачи смены' : primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
+                        <div className={cn('mt-2 flex items-center', retailCashMode && 'pb-6')}>
+                          <span className='text-xs font-bold text-slate-500'>{retailCashMode ? 'Перед уходом укажите, сколько наличных в кассе.' : earlyFinishDeviation ? 'Выполните сейчас для сдачи смены' : primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
                         </div>
                       )}
+                      </>}
                       {inspectedShiftControlTask && renderShiftTaskAction(inspectedShiftControlTask, true)}
                       </>}
                     </div>
@@ -5817,30 +5801,17 @@ export function EmployeeTodayClient({
                   {cashOperationsState.length > 0 && (
                     <div className='grid gap-1.5'>
                       {cashOperationsState.map((operation) => (
-                        <div key={operation.id} className='flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80'>
-                          <div className='min-w-0'>
-                            <p className='text-xs font-extrabold text-slate-900'>
-                              {formatCashOperationAmount(operation.amount)} {cashOperationDirectionLabel(operation.direction)}
-                            </p>
-                            <p className='mt-0.5 text-xs font-bold text-slate-400'>{formatTime(operation.createdAt)}{operation.photoExpectedSha256 && !operation.photoPath ? ' · Фото ожидает отправки' : ''}</p>
-                          </div>
-                          <Badge
-                            className={cn(
-                              'employee-material-status shrink-0 px-2 py-0.5 text-[11px]',
-                              operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual'
-                                ? 'employee-material-status-green'
-                                : 'employee-material-status-amber',
-                            )}
-                          >
-                            {operation.status === 'posted_1c_pair'
+                        <CashOperationStatusRow key={operation.id}
+                          title={formatCashOperationAmount(operation.amount)+' '+cashOperationDirectionLabel(operation.direction)}
+                          detail={formatTime(operation.createdAt)+(operation.photoExpectedSha256 && !operation.photoPath ? ' · Фото ожидает отправки' : '')}
+                          done={operation.status==='posted_1c_pair'||operation.status==='resolved_manual'}
+                          status={operation.status=== 'posted_1c_pair'
                               ? 'Проведено в 1С'
                               : operation.status === 'resolved_manual'
                                 ? 'Подтверждено'
                               : operation.status === 'one_c_error'
                                 ? 'Передано на проверку'
-                                : operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'Оформляется в 1С' : 'Обрабатывается'}
-                          </Badge>
-                        </div>
+                                : operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'Оформляется в 1С' : 'Обрабатывается'} />
                       ))}
                     </div>
                   )}

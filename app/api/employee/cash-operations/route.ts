@@ -8,7 +8,7 @@ import path from 'path';
 import { createCashOperationFailureAlert } from '@/lib/cash-operation-admin-alert';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
+import { getMoscowDateKey, usesWorkdayShiftControl, usesRetailCashHandover } from '@/lib/workday';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { createOneCCashExpenseOrder, getCashStatementDimensions } from '@/lib/one-c';
 import { validateCashPhoto } from '@/lib/cash-photo-validation';
@@ -55,8 +55,8 @@ function isPhoto(value: FormDataEntryValue | null): value is File {
   return value instanceof File && value.size > 0;
 }
 
-function canUseDirection(user: { department: string; name?: string | null; login?: string | null }, direction: string) {
-  if (!usesWorkdayShiftControl(user)) return false;
+function canUseDirection(user: { department: string; name?: string | null; login?: string | null; workdayControlMode?: string }, direction: string) {
+  if (usesRetailCashHandover(user) || !usesWorkdayShiftControl(user)) return false;
   if (direction === 'deposit_safe') return user.department === 'retail' || user.department === 'wholesale';
   if (direction === 'phone_reserve') return user.department === 'retail';
   return false;

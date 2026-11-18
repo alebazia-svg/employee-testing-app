@@ -1,3 +1,4 @@
+import { RetailCashHandoverControl } from '@/components/admin/RetailCashHandoverControl';
 import { loadTeamCalendarEvidence } from '@/lib/team-calendar-evidence';
 import { calendarCorrectionSourceId } from '@/lib/team-calendar-fact';
 import { resolveControlCalendarDay } from '@/lib/team-control-calendar';
@@ -55,7 +56,7 @@ import { attributeTerminalFiscalRecordsToEmployees, getTerminalFiscalWorkdaySumm
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
-import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOption, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
+import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOption, getShiftOptionsForDepartment, scheduleStatusLabel, usesRetailCashHandover, usesWorkdayShiftControl } from '@/lib/workday';
 import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminWorkdayCorrectionButton } from './AdminWorkdayCorrectionButton';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
@@ -1147,6 +1148,7 @@ export default async function AdminWorkdayPage(
         login: true,
         department: true,
         oneCCashboxMapping: true,
+        workdayControlMode: true,
       },
     }),
     prisma.workScheduleEntry.findMany({ where: { date: selectedDate } }),
@@ -1452,7 +1454,7 @@ export default async function AdminWorkdayPage(
       confirmedKkmTaskIds: new Set((run?.tasks ?? []).filter(task => hasConfirmedKkmCloseEvidence(task.handoverData, task.controlIssues, {taskId:task.id,userId:employee.id,date:selectedDate})).map(task=>task.id)),
       employeeName: employee.name,
       department: employee.department,
-      tasks: (run?.tasks ?? []) as AutoCheckTask[],
+      tasks: (run?.tasks ?? []).filter(task => !usesRetailCashHandover(employee) || task.category !== 'handover') as AutoCheckTask[],
       cashboxName: cashRow?.cashbox?.name ?? null,
       cashRegisterRef: kkmAssignmentByUser.get(employee.id)?.oneCCashRegisterRef
         ?? (employee.oneCCashboxMapping?.kkmMode === 'server' ? employee.oneCCashboxMapping.oneCCashRegisterRef : null),
@@ -1800,6 +1802,8 @@ export default async function AdminWorkdayPage(
 
         {unfinishedWorkDays.length > 0 && <details className="workday-unfinished-summary"><summary><AlertTriangle aria-hidden="true"/><span>Незавершённые смены: <b>{unfinishedWorkDays.length}</b></span><span className="workday-unfinished-toggle">Посмотреть</span></summary><div>{unfinishedWorkDays.map(entry=><a key={entry.id} href={`/admin/workday?date=${entry.date}&control=all&employee=${entry.userId}&focus=shift-start#employees-control`}><strong>{entry.user.name}</strong><span>{formatDateLabel(entry.date)} · начало {formatTime(entry.startedAt)}</span><span aria-hidden="true">›</span></a>)}</div></details>}
 
+
+
         <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : searchParams?.view === 'audit' ? 'audit' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
             const app = row.plan.app;
@@ -1893,6 +1897,10 @@ export default async function AdminWorkdayPage(
                         vacation={row.vacation ? { id: row.vacation.id, dateFrom: row.vacation.dateFrom, dateTo: row.vacation.dateTo } : null}
                       />
                         <AdminShiftControlDetails
+                          retailCashControl={usesRetailCashHandover(row.employee) ? <RetailCashHandoverControl
+                            workDayId={row.workDay?.id} endedAt={row.workDay?.endedAt} employeeId={row.employee.id}
+                            taskId={row.run?.tasks.find(task => task.category === 'handover')?.id}
+                          /> : undefined}
                           handoverReview={(() => {
                             const task=row.run?.tasks.find(task=>needsHandoverReview(task,{date:selectedDate,endedAt:row.workDay?.endedAt??null,department:row.employee.department}));
                             if(!task)return null;

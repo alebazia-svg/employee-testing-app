@@ -1,3 +1,5 @@
+import { serializeRetailHandover } from '@/lib/retail-cash-handover-server';
+import { prisma as handoverDb } from '@/lib/prisma';
 import { loadEmployeeInspectionDevices } from '@/lib/employee-inspection-state-server';
 import { readEmployeeWorkHelp } from '@/lib/employee-work-help-reader';
 import { readDayReview } from '@/lib/payroll-day-review-store';
@@ -83,6 +85,12 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
         return Response.json({ ...options, hint }, { headers });
       }
       return Response.json(await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: getMoscowDateKey() }), { headers });
+    }
+    case 'cash-handover': {
+      const dayId=Number(url.searchParams.get('workDayId'));
+      const day=await handoverDb.workDayEntry.findFirst({where:{id:Number.isSafeInteger(dayId)?dayId:-1,userId:user.id}});
+      if(!day)return Response.json({error:'Рабочий день не найден.'},{status:404,headers});
+      return Response.json({handover:serializeRetailHandover(await handoverDb.retailCashHandover.findUnique({where:{workDayEntryId:day.id}}))},{headers});
     }
     case 'today': return Response.json(await getEmployeeWorkdaySnapshot(user), { headers });
     case 'notifications': return Response.json(await loadEmployeeNotifications(user, true), { headers });

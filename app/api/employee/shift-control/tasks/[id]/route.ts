@@ -1,3 +1,4 @@
+import { usesRetailCashHandover } from '@/lib/workday';
 import { captureCashRecountWithRetry } from '@/lib/cash-recount-capture';
 import { after } from 'next/server';
 import { createKkmCloseConfirmation, preserveKkmCloseFacts, kkmCloseConfirmation as readKkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
@@ -417,6 +418,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
   if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (usesRetailCashHandover(user)) return Response.json({error:'Используйте форму сдачи личной кассы.'},{status:409});
   if (!usesWorkdayShiftControl(user)) return Response.json({ error: 'Shift control is not required for this employee' }, { status: 403 });
 
   const taskId = Number(params.id);

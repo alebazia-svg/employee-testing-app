@@ -24,6 +24,7 @@ export const supportedShiftCodesByDepartment: Record<string, ShiftCode[]> = {
 };
 
 type WorkdayControlUser = {
+  workdayControlMode?: string | null;
   department?: string | null;
   name?: string | null;
   login?: string | null;
@@ -43,6 +44,10 @@ function isCashControlExcludedUser(user: WorkdayControlUser) {
   const name = normalizeWorkdayControlText(user.name);
   const login = normalizeWorkdayControlText(user.login);
   return name === 'кумахова диана' || login === 'кумахова' || login === 'kumakhova';
+}
+
+export function usesRetailCashHandover(user: WorkdayControlUser) {
+  return user.department === 'retail' && user.workdayControlMode === 'CASH_HANDOVER';
 }
 
 export function usesWorkdayShiftControl(user: WorkdayControlUser) {

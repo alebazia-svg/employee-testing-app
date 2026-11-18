@@ -1,23 +1,31 @@
 import type { Prisma } from '@prisma/client';
-import { getMoscowDateKey } from './workday';
+import { getMoscowDateKey, usesRetailCashHandover } from './workday';
 import { needsWorkdayEndReminder, WORKDAY_END_REMINDER_KIND, workdayEndReminderActive, workdayEndReminderAt, workdayEndReminderId, workdayEndReminderKey, workdayEndReminderSlot, WORKDAY_END_REMINDER_OFFSETS } from './workday-end-policy';
 
 type Db = Pick<Prisma.TransactionClient, 'workDayEntry' | 'workdayNotification'>;
-const include = { user: { select: { department: true, name: true, login: true, isActive: true } } } as const;
+const include = { user: { select: { department: true, name: true, login: true, isActive: true, workdayControlMode: true } }, cashHandover: {select:{handedAt:true}} } as const;
 export async function queueWorkdayEndReminders(db: Db, now: Date) {
   const days = await db.workDayEntry.findMany({ where: { date: getMoscowDateKey(now), endedAt: null, status: { in: ['active', 'missing_checkout'] }, user: { isActive: true, role: 'EMPLOYEE' } }, include });
   for (const day of days) {
+    const cash = usesRetailCashHandover(day.user);
+    if (cash ? day.cashHandover?.handedAt || day.status !== 'active' : !needsWorkdayEndReminder(day.user)) continue;
+    const title = 'Закончили работу?';
+    const body = cash ? 'Пересчитайте наличные и сдайте кассу.' : 'Если вы закончили работу, отметьте окончание рабочего дня.';
     for (const slot of WORKDAY_END_REMINDER_OFFSETS.keys()) {
-    const scheduledAt = workdayEndReminderAt(day,slot);
-    if (!needsWorkdayEndReminder(day.user) || !scheduledAt) continue;
-    await db.workdayNotification.upsert({
-      where: { fingerprint: workdayEndReminderKey(day.id,slot) },
-      create: { userId: day.userId, fingerprint: workdayEndReminderKey(day.id,slot), kind: WORKDAY_END_REMINDER_KIND,
-        title: 'Закончили работу?', body: 'Если вы закончили работу, отметьте окончание рабочего дня.', scheduledAt },
-      // Three bounded reminders; never replay a delivered slot.
-      update: {},
-    });
-    await db.workdayNotification.updateMany({ where: { fingerprint: workdayEndReminderKey(day.id,slot), status: 'pending' }, data: { scheduledAt } });
+      const scheduledAt = workdayEndReminderAt(day, slot);
+      if (!scheduledAt) continue;
+      const fingerprint = workdayEndReminderKey(day.id, slot);
+      await db.workdayNotification.upsert({
+        where: { fingerprint },
+        create: { userId: day.userId, fingerprint, kind: WORKDAY_END_REMINDER_KIND, title, body, scheduledAt },
+        update: {},
+      });
+      await db.workdayNotification.updateMany({
+        where: { fingerprint, status: 'pending', OR: [
+          { scheduledAt: { not: scheduledAt } }, ...(cash ? [{ body: { not: body } }] : []),
+        ] },
+        data: cash ? { scheduledAt, title, body } : { scheduledAt },
+      });
     }
   }
 }
@@ -32,18 +40,32 @@ export async function activeWorkdayEndReminders(db: Db, rows: Array<{ id: number
     const slot=workdayEndReminderSlot(row.fingerprint);
     const at=day&&slot!==null?workdayEndReminderAt(day,slot):null;
     const next=day&&slot!==null?workdayEndReminderAt(day,slot+1):null;
-    return at && (!next||now<next) && day && (row.userId === undefined || day.userId === row.userId) && workdayEndReminderActive(day, now);
+    if (!day || !at || now < at || (next && now >= next) || (row.userId !== undefined && row.userId !== day.userId)) return false;
+    return reminderNeeded(day, now);
   }).map(row => row.id));
 }
 
 export async function workdayEndReminderDelivery(db: Db, notification: { userId: number; fingerprint: string }, now: Date) {
   const id = workdayEndReminderId(notification.fingerprint);
   const day = id ? await db.workDayEntry.findUnique({ where: { id }, include }) : null;
-  if (!day || day.userId !== notification.userId || !workdayEndReminderActive(day, now)) return { state: 'cancel' as const };
+  if (!day || day.userId !== notification.userId || !reminderNeeded(day, now)) return { state: 'cancel' as const };
   const slot=workdayEndReminderSlot(notification.fingerprint);
   const scheduledAt = slot===null?null:workdayEndReminderAt(day,slot);
   const next=slot===null?null:workdayEndReminderAt(day,slot+1);
   if(next&&now>=next)return { state: 'cancel' as const };
   if (!scheduledAt) return { state: 'cancel' as const };
+  if (usesRetailCashHandover(day.user) && !next) {
+    const expiresAt = new Date(+scheduledAt + 60_000);
+    if (now >= expiresAt) return { state: 'cancel' as const };
+    if (now >= scheduledAt) return { state: 'send' as const, expiresAt };
+  }
+  if (usesRetailCashHandover(day.user) && next && now >= scheduledAt) return { state: 'send' as const, expiresAt: next };
   return scheduledAt > now ? { state: 'defer' as const, until: scheduledAt } : { state: 'send' as const };
+}
+
+
+function reminderNeeded(day: Prisma.WorkDayEntryGetPayload<{include: typeof include}>, now: Date) {
+  if (!usesRetailCashHandover(day.user)) return workdayEndReminderActive(day, now);
+  return day.user.isActive && day.status === 'active' && !day.endedAt
+    && !day.cashHandover?.handedAt && day.date === getMoscowDateKey(now);
 }

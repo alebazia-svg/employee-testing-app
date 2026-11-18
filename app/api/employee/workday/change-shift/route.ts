@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
-import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
+import { getMoscowDateKey, usesWorkdayShiftControl, usesRetailCashHandover } from '@/lib/workday';
 import { prisma } from '@/lib/prisma';
 import { employeeShiftHint } from '@/lib/workday-extension';
 import { listOwnShiftChangeOptions, repairAdminWorkdayShift } from '@/lib/workday-admin-shift-repair';
@@ -8,6 +8,7 @@ import { changeWorkdayShift, getWorkdayShiftCorrectionState, WorkdayShiftChangeE
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (usesRetailCashHandover(user)) return Response.json({error:'Рабочий день без выбора смены.'},{status:409});
   if (new URL(req.url).searchParams.get('live') === '1') {
     // Development only: lets the demo pretend it is another time of day.
     const demoNow = process.env.NODE_ENV !== 'production' ? Date.parse(req.headers.get('x-mobo-demo-now') ?? '') : Number.NaN;
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (usesRetailCashHandover(user)) return Response.json({error:'Рабочий день без выбора смены.'},{status:409});
   const payload = await req.json().catch(() => ({}));
   const toShiftCode = typeof payload.toShiftCode === 'string' ? payload.toShiftCode : '';
   try {

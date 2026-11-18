@@ -36,7 +36,7 @@ async function scenario(status, { oldWorkday = false, noCurrentDay = false, owne
     '@/lib/cash-operation-submission': { claimCashOperationSubmission: async(db,input,savePhoto)=>({kind:'created',operation:await db.cashOperation.create({data:{...input,photoPath:await savePhoto()}})}) },
     '@/lib/auth': {getCurrentUser: async () => ({ id:7, department:'retail', name:'QA' })},
     '@/lib/prisma': {prisma},
-    '@/lib/workday': {getMoscowDateKey: date => date ? date.toISOString().slice(0,10) : '2026-09-04', usesWorkdayShiftControl: () => true},
+    '@/lib/workday': {getMoscowDateKey: date => date ? date.toISOString().slice(0,10) : '2026-09-04', usesRetailCashHandover: user => user.workdayControlMode === 'CASH_HANDOVER', usesWorkdayShiftControl: () => true},
     '@/lib/cash-photo-validation': {validateCashPhoto: async () => ({extension:'jpg'})},
     '@/lib/cash-operation-admin-alert': {createCashOperationFailureAlert: async () => {}},
     '@/lib/workday-cash-encashment-resolution': {resolveCarriedCashEncashmentExceptions: async () => {}},

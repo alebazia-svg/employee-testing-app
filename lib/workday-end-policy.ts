@@ -1,4 +1,4 @@
-import { getMoscowDateKey, usesWorkdayShiftControl } from './workday';
+import { getMoscowDateKey, usesRetailCashHandover, usesWorkdayShiftControl } from './workday';
 
 type AttendanceUser = { department?: string | null; name?: string | null; login?: string | null };
 export const ATTENDANCE_END_MINUTES = 18 * 60;
@@ -9,6 +9,7 @@ export function needsWorkdayEndReminder(user: AttendanceUser) {
     || (user.department === 'retail' && !usesWorkdayShiftControl(user));
 }
 export const WORKDAY_END_REMINDER_OFFSETS = [0, 30, 60] as const;
+const CASH_HANDOVER_OFFSETS = [0, 60, 120] as const;
 export function workdayEndReminderKey(id: number, slot = 0) { return `workday-end:${id}${slot ? ':'+slot : ''}`; }
 export function workdayEndReminderSlot(fingerprint: string) {
   const match = /^workday-end:([1-9]\d*)(?::([12]))?$/.exec(fingerprint);
@@ -18,8 +19,9 @@ export function workdayEndReminderId(fingerprint: string) {
   const match = /^workday-end:([1-9]\d*)(?::[12])?$/.exec(fingerprint);
   return match ? Number(match[1]) : null;
 }
-export function workdayEndReminderAt(day: { date: string; shiftEndMinutes?: number | null }, slot = 0) {
-  const offset = WORKDAY_END_REMINDER_OFFSETS[slot];
+export function workdayEndReminderAt(day: { date: string; shiftEndMinutes?: number | null; user?: AttendanceUser & {workdayControlMode?: string | null} }, slot = 0) {
+  const offsets = day.user && usesRetailCashHandover(day.user) ? CASH_HANDOVER_OFFSETS : WORKDAY_END_REMINDER_OFFSETS;
+  const offset = offsets[slot];
   if (offset === undefined) return null;
   const minutes = ATTENDANCE_END_MINUTES + offset;
   const date = new Date(`${day.date}T00:00:00+03:00`);

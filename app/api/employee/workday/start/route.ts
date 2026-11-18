@@ -1,10 +1,11 @@
+import { adaptWorkdayTemplate } from '@/lib/retail-cash-handover-policy';
 import { needsWorkdayEndReminder, attendanceWorkdayDefinition } from '@/lib/workday-end-policy';
 import { markTodayWorkingAfterQrStart } from '@/lib/workday-qr-schedule';
 import { Prisma, type WorkDayEntry } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
-import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
+import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl, usesRetailCashHandover } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
 import { loadWorkdayShiftSelection, permittedWorkdayShiftCodes } from '@/lib/workday-shift-selection';
 
@@ -50,7 +51,7 @@ function employeeWorkDayResponse(entry: WorkDayEntry) {
   return employeeEntry;
 }
 
-async function ensureShiftControlRun(user: { id: number; name: string; login: string; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
+async function ensureShiftControlRun(user: { id: number; name: string; login: string; department: string; workdayControlMode?: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
   if (!usesWorkdayShiftControl(user)) return null;
 
   const existingRun = await prisma.shiftControlRun.findUnique({
@@ -59,11 +60,11 @@ async function ensureShiftControlRun(user: { id: number; name: string; login: st
   });
   if (existingRun) return existingRun;
 
-  const template = await prisma.shiftControlTemplate.findFirst({
-    where: { department: user.department, shiftCode: workDay.shiftCode, isActive: true },
+  const template = adaptWorkdayTemplate(user, await prisma.shiftControlTemplate.findFirst({
+    where: { department: user.department, shiftCode: usesRetailCashHandover(user) ? 'cash_handover' : workDay.shiftCode, isActive: true },
     include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
     orderBy: { version: 'desc' },
-  });
+  }));
   if (!template || template.tasks.length === 0) return null;
 
   return prisma.shiftControlRun.create({
@@ -98,11 +99,11 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const payload = await req.json().catch(() => ({}));
   const { shiftCode, comment, startIntentId } = payload;
-  const shift = needsWorkdayEndReminder(user) ? attendanceWorkdayDefinition : getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
+  const shift = (needsWorkdayEndReminder(user) || usesRetailCashHandover(user)) ? attendanceWorkdayDefinition : getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
   const now = new Date();
   const hasShiftControl = usesWorkdayShiftControl(user);
 
-  if (hasShiftControl && !isShiftSupportedForDepartment(user.department, shift.code)) {
+  if (hasShiftControl && !usesRetailCashHandover(user) && !isShiftSupportedForDepartment(user.department, shift.code)) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
   }
 
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
   if (existing) {
     const shiftControlRun =
       existing.status !== 'completed' && !existing.endedAt
-        ? await ensureShiftControlRun({ id: user.id, name: user.name, login: user.login, department: user.department }, existing, now)
+        ? await ensureShiftControlRun({ id: user.id, name: user.name, login: user.login, department: user.department, workdayControlMode: user.workdayControlMode }, existing, now)
         : null;
     if (shiftControlRun) await ensureTaskNotifications(user.id, existing.date, shiftControlRun.tasks);
     return Response.json({
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
   if (!hasShiftControl) {
     try {
       const workDay = await serializableTransaction(async (tx) => {
-        if (!needsWorkdayEndReminder(user)) await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
+        if (!needsWorkdayEndReminder(user) && !usesRetailCashHandover(user)) await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
         const consumed = await tx.workdayStartIntent.updateMany({
           where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
           data: { consumedAt: now },
@@ -192,11 +193,11 @@ export async function POST(req: Request) {
     }
   }
 
-  const template = await prisma.shiftControlTemplate.findFirst({
-    where: { department: user.department, shiftCode: shift.code, isActive: true },
+  const template = adaptWorkdayTemplate(user, await prisma.shiftControlTemplate.findFirst({
+    where: { department: user.department, shiftCode: usesRetailCashHandover(user) ? 'cash_handover' : shift.code, isActive: true },
     include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
     orderBy: { version: 'desc' },
-  });
+  }));
 
   if (!template || template.tasks.length === 0) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
@@ -204,7 +205,7 @@ export async function POST(req: Request) {
 
   try {
     const { workDay, shiftControlRun } = await serializableTransaction(async (tx) => {
-      await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
+      if (!usesRetailCashHandover(user)) await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
       const consumed = await tx.workdayStartIntent.updateMany({
         where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
         data: { consumedAt: now },
