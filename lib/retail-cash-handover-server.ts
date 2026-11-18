@@ -12,7 +12,7 @@ const terminal=['posted','zero'];
 export class HandoverError extends Error { constructor(message:string,readonly status=409){super(message);} }
 export function serializeRetailHandover(h:RetailCashHandover|null) {
   if(!h)return null;
-  return {reviewReason:h.status==='review'&&Object.values(reviewReasons).includes(h.error??'')?h.error:null,id:h.id,revision:h.revision,status:h.status,actual:Number(h.actual),countedAt:h.countedAt.toISOString(),recipientName:h.recipientName,recipientUserId:h.recipientUserId,preparedUntil:h.preparedUntil?.toISOString()??null,handedAt:h.handedAt?.toISOString()??null,expenseNumber:h.expenseNumber,receiptNumber:h.receiptNumber,canRetry:h.status==='confirmed'||['error','posting'].includes(h.status)&&Boolean(h.processingStartedAt&&Date.now()-+h.processingStartedAt>120000)};
+  return {reviewReason:h.status==='review'&&Object.values(reviewReasons).includes(h.error??'')?h.error:null,id:h.id,revision:h.revision,status:h.status,actual:Number(h.actual),countedAt:h.countedAt.toISOString(),recipientName:h.recipientName,recipientUserId:h.recipientUserId,preparedUntil:h.preparedUntil?.toISOString()??null,handedAt:h.handedAt?.toISOString()??null,expenseNumber:h.expenseNumber,receiptNumber:h.receiptNumber};
 }
 function recipientAllowed(ref:string|undefined){
   return Boolean(ref && (process.env.RETAIL_CASH_RECIPIENT_REFS??'').split(',').includes(ref));
@@ -148,7 +148,7 @@ async function recordPhysicalTransfer(tx:Prisma.TransactionClient,h:RetailCashHa
     if(reason)await issue(tx,day,task.id,next,'cash_handover_review',reason,'error');
     return next;
 }
-export async function processRetailCash(db:Db,userId:number,dayId:number,now=new Date(),postPair=postRetailHandoverPair){
+export async function processRetailCash(db:Db,userId:number,dayId:number,now=new Date(),postPair=postRetailHandoverPair, attempt: 'initial' | 'admin' = 'admin'){
   const token=randomUUID();
   const claimed=await db.$transaction(async tx=>{
     await lock(tx,dayId);
@@ -161,9 +161,9 @@ export async function processRetailCash(db:Db,userId:number,dayId:number,now=new
     if (!day) throw new HandoverError('Рабочий день не найден.', 404);
     const h=await tx.retailCashHandover.findUnique({where:{workDayEntryId:dayId}});
     if(!h)throw new HandoverError('Передача не найдена.');
-    if(terminal.includes(h.status)||h.status==='review')return {h,run:false as const};
+    if((attempt==='initial' && h.status!=='confirmed')||terminal.includes(h.status)||h.status==='review')return {h,run:false as const};
     if(day.status !== 'completed' || !day.endedAt || !h.handedAt || !h.targetCashboxRef)throw new HandoverError('Фактическая передача ещё не подтверждена.');
-    if(['posting','error'].includes(h.status)&&h.processingStartedAt&&+now-+h.processingStartedAt<120000)return {h,run:false as const};
+    if(h.status==='posting'&&h.processingStartedAt&&+now-+h.processingStartedAt<120000)return {h,run:false as const};
     return {h:await tx.retailCashHandover.update({where:{id:h.id},data:{status:'posting',processingToken:token,processingStartedAt:now}}),day,run:true as const};
   });
   if(!claimed.run)return claimed.h;
@@ -185,11 +185,9 @@ export async function processRetailCash(db:Db,userId:number,dayId:number,now=new
       const current=await tx.retailCashHandover.findUniqueOrThrow({where:{id:h.id}});
       if(current.processingToken!==token)return current;
       const failed=await tx.retailCashHandover.update({where:{id:h.id},data:{status:review?'review':'error',error,processingToken:null}});
-      if(review){
-        const day = claimed.day;
-        const task = await tx.shiftControlTask.findFirstOrThrow({ where: { run: { workDayEntryId: day.id }, category: 'handover' }, select: { id: true } });
-        await issue(tx,day,task.id,failed,'cash_handover_1c',error,'error');
-      }
+      const day = claimed.day;
+      const task = await tx.shiftControlTask.findFirstOrThrow({ where: { run: { workDayEntryId: day.id }, category: 'handover' }, select: { id: true } });
+      await issue(tx,day,task.id,failed,'cash_handover_1c',error,'error');
       return failed;
     });
   }

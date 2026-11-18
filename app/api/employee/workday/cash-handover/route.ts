@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { handoverEnvironment } from '@/lib/retail-cash-handover-environment';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -25,7 +26,7 @@ export async function POST(req:Request){try{
  }else if(p.action==='count')h=await recountRetailCash(prisma,user.id,day.id,{amount:p.amount,requestKey:p.requestKey,revision:p.revision??null});
  else if(p.action==='prepare')h=await prepareRetailCash(prisma,user.id,day.id,p.revision);
  else if(p.action==='confirm'){h=await confirmRetailCash(prisma,user.id,day.id,p.revision,p.handed===true);}
- else if(p.action==='retry')h=await processRetailCash(prisma,user.id,day.id);
+
  else throw new HandoverError('Неизвестное действие.',400);
  return Response.json({handover:serializeRetailHandover(h)},{headers:{'Cache-Control':'no-store'}});
  }catch(e){return failure(e);}}

@@ -9,7 +9,7 @@ import { schedulePersonName } from '@/lib/work-schedule-coverage';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Banknote, ArrowRightLeft } from 'lucide-react';
-type Handover={reviewReason?:string|null;id:string;revision:number;status:string;actual:number;countedAt:string;recipientName:string|null;recipientUserId:number|null;preparedUntil:string|null;handedAt:string|null;expenseNumber:string|null;receiptNumber:string|null;canRetry:boolean};
+type Handover={reviewReason?:string|null;id:string;revision:number;status:string;actual:number;countedAt:string;recipientName:string|null;recipientUserId:number|null;preparedUntil:string|null;handedAt:string|null;expenseNumber:string|null;receiptNumber:string|null};
 const money=(n:number)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(n)+' ₽';
 export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch,onFinished,renderHandle,early=false}:{workDayId:number;taskId?:number;early?:boolean;completed:boolean;request?:(input:string,init?:RequestInit)=>Promise<Response>;renderHandle?:(close:()=>void,busy:boolean)=>React.ReactNode;onFinished:()=>void}){
  const [h,setH]=useState<Handover|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[form,setForm]=useState(false),[amount,setAmount]=useState('');
@@ -53,7 +53,7 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
  if(completed && loading)return null;
  if(completed && h?.handedAt)return <div className='mt-3 grid gap-1 text-sm leading-snug'>
    <p><strong>Передано {money(h.actual)}</strong>{h.recipientName && <> · Получатель: {schedulePersonName(h.recipientName)}</>}</p>
-   <p role='status' className={'mt-0.5 text-xs font-extrabold '+(h.status==='posted'?'text-green-700':'text-amber-800')}>{h.status==='posted'?'Проведено в 1С':h.status==='review'?'Передано на проверку':'Оформляется в 1С'}</p>
+   <p role='status' className={'mt-0.5 text-xs font-extrabold '+(h.status==='posted'?'text-green-700':'text-amber-800')}>{h.status==='posted'?'Проведено в 1С':['review','error'].includes(h.status)?'Передано на проверку':'Оформляется в 1С'}</p>
  </div>;
  if(completed)return <p className='mt-1 text-xs font-semibold'>{h?.status==='zero'?'Остаток 0 ₽. Передавать наличные не требуется.':'Сдача кассы не подтверждена.'}</p>;
  if(loading)return <Card className='p-4'><p className='text-sm text-slate-600'>Загружаем сведения о сдаче кассы…</p></Card>;
@@ -79,7 +79,6 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
    <Button className='employee-material-primary-action min-h-12 w-full' disabled={busy} onClick={()=>void run(finish)}>Завершить рабочий день</Button>
   </>:pending?<>
    <CashOperationStatusRow title={money(h!.actual)+' · '+h!.recipientName} detail={new Date(h!.handedAt!).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})} status={['review','error'].includes(h!.status)?'Передано на проверку':'Оформляется в 1С'} />
-   {h!.status==='review'?null:<Button className='employee-material-primary-action min-h-12 w-full' disabled={busy||!h!.canRetry} onClick={()=>void run(async()=>{const result=await post('retry');if(result.status==='posted')await finish();})}>{busy?'Проверяем передачу…':h!.canRetry?'Проверить оформление передачи':'Ожидаем результат оформления…'}</Button>}
   </>:h?.status==='ready' ? <Button className='employee-material-primary-action min-h-12 w-full' onClick={()=>setTransferClosed(false)}>Продолжить передачу</Button>:<>
    {!early&&!h&&<div className='pb-3'><p className='text-lg font-black'>Закончили работу?</p><p className='mt-2 text-xs font-bold text-slate-500'>Перед уходом укажите, сколько наличных в кассе.</p></div>}
    {h?<><p className='text-2xl font-black'>{money(h.actual)}</p><Button className='employee-material-primary-action min-h-12 w-full' disabled={busy} onClick={()=>{setAmount(String(h.actual));setForm(true);}}>Продолжить сдачу кассы</Button><Button className='employee-material-secondary-action min-h-12 w-full' disabled={busy} onClick={()=>{setAmount(String(h.actual));countKey.current=null;setForm(true);}}>Изменить пересчёт</Button></>:<Button className='employee-material-primary-action min-h-12 w-full' disabled={busy} onClick={()=>{setError('');setAmount('');countKey.current=null;setForm(true);}}>{early?'Завершить день':'Начать пересчёт'}</Button>}

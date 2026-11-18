@@ -1,3 +1,6 @@
+import { revalidatePath } from 'next/cache';
+import { getCurrentUser } from '@/lib/auth';
+import { processRetailCash } from '@/lib/retail-cash-handover-server';
 import { prisma } from '@/lib/prisma';
 import { readExperience } from '@/lib/employee-experience-policy';
 
@@ -45,6 +48,15 @@ export async function RetailCashHandoverControl({ employeeId, workDayId, endedAt
   const difference = expected === null ? null : Math.round((actual - expected) * 100) / 100;
   const posted = handover?.status === 'posted';
   const review = handover?.status === 'review';
+  async function retry() {
+    'use server';
+    const admin = await getCurrentUser();
+    if (admin?.role !== 'ADMIN' || !workDayId) throw new Error('Нет доступа.');
+    await processRetailCash(prisma, employeeId, workDayId);
+    revalidatePath('/admin/workday');
+  }
+  const canRetry = handover?.status === 'error' || handover?.status === 'confirmed' ||
+    (handover?.status === 'posting' && handover.processingStartedAt && Date.now() - +handover.processingStartedAt >= 120000);
   return <section id={taskId ? `shift-task-${taskId}` : undefined} className="px-4 pb-3">
     <h4 className="team-card-heading">Передача кассы</h4>
     {handover ? <table className="team-handover-table"><tbody>
@@ -55,7 +67,7 @@ export async function RetailCashHandoverControl({ employeeId, workDayId, endedAt
         : handover.status === 'zero' ? 'При остатке 0 ₽ передача не требуется' : 'Ещё не подтверждена'}</td></tr>
       {handover.handedAt && <tr><th scope="row">Документы 1С</th><td>{posted
         ? <details><summary className="cursor-pointer"><span className="team-status green">Проведено в 1С</span></summary><p className="mt-1">РКО {handover.expenseNumber} → ПКО {handover.receiptNumber}</p></details>
-        : <><span className="team-status amber">{review ? 'Требуется проверка передачи' : 'Оформляется в 1С'}</span>{review && handover.error && <p>{handover.error}</p>}</>}</td></tr>}
+        : <><span className="team-status amber">{review || handover.status === 'error' ? 'Требуется проверка передачи' : 'Оформляется в 1С'}</span>{canRetry && <form action={retry}><button className="team-cash-action" type="submit">Повторить проведение</button></form>}{(review || handover.status === 'error') && handover.error && <p>{handover.error}</p>}</>}</td></tr>}
     </tbody></table> : <p className="team-card-note">Пересчёт ещё не сохранён.</p>}
     {history.length > 0 && <details className="team-card-checks"><summary>История действий</summary><ol className="team-cash-evidence">{history.map((event, index) =>
       <li key={index}>{clock(event.at)} · {event.label}</li>)}</ol></details>}
