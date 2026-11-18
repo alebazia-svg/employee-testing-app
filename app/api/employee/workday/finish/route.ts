@@ -1,3 +1,4 @@
+import { usesRetailCashHandover } from '@/lib/workday';
 import { syncClosedHandoverReviews } from '@/lib/workday-handover-review-server';
 import { needsWorkdayEndReminder, validateReportedWorkdayEnd, WORKDAY_END_REMINDER_KIND, workdayEndReminderKey, WORKDAY_END_REMINDER_OFFSETS } from '@/lib/workday-end-policy';
 import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
@@ -33,6 +34,10 @@ export async function POST(req: Request) {
   }
 
   const isStaleWorkDay = activeWorkDay.date < today;
+  if (usesRetailCashHandover(user) && !isStaleWorkDay) {
+    const h=await prisma.retailCashHandover.findUnique({where:{workDayEntryId:activeWorkDay.id}});
+    if(!h || !['posted','zero'].includes(h.status)) return Response.json({error:'Сначала подтвердите сдачу кассы. Оформление передачи должно быть завершено.'},{status:409});
+  }
 
   if (isStaleWorkDay && !closeStale) {
     return Response.json({ error: 'Закройте предыдущую смену через форму причины', code: 'STALE_CLOSE_REASON_REQUIRED' }, { status: 409 });

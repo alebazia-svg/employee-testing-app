@@ -1,3 +1,4 @@
+import { adaptWorkdayTemplate } from '@/lib/retail-cash-handover-policy';
 import { Prisma } from '@prisma/client';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
@@ -131,6 +132,8 @@ export async function changeWorkdayShift(input: {
     const workDay = await tx.workDayEntry.findUnique({
       where: { userId_date: { userId: input.userId, date: input.date } },
       include: {
+        user: true,
+        cashHandover: true,
         cashOperations: { select: { id: true } },
         shiftControlRun: {
           include: {
@@ -153,6 +156,7 @@ export async function changeWorkdayShift(input: {
     if ((input.enforceEmployeeWindow ?? true) && now.getTime() > workDay.createdAt.getTime() + EMPLOYEE_SHIFT_CORRECTION_WINDOW_MS) {
       throw new WorkdayShiftChangeError('SHIFT_CORRECTION_EXPIRED', 'Время самостоятельного исправления истекло. Обратитесь к администратору.');
     }
+    if (workDay.cashHandover) throw new WorkdayShiftChangeError('SHIFT_ALREADY_IN_PROGRESS', 'Пересчёт уже сохранён. Изменение смены требует администратора.');
     assertRunCanBeRebuilt(workDay, { allowSentNotifications: input.source === 'admin_repair' });
 
     const selection = await loadWorkdayShiftSelection(tx, {
@@ -164,13 +168,14 @@ export async function changeWorkdayShift(input: {
       throw new WorkdayShiftChangeError('SHIFT_NOT_AVAILABLE', 'Эта смена уже недоступна. Обновите экран.');
     }
 
-    const template = input.shiftControlEnabled
+    const loadedTemplate = input.shiftControlEnabled
       ? await tx.shiftControlTemplate.findFirst({
           where: { department: input.department, shiftCode: shift.code, isActive: true },
           include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
           orderBy: { version: 'desc' },
         })
       : null;
+    const template = adaptWorkdayTemplate(workDay.user, loadedTemplate);
     if (input.shiftControlEnabled && (!template || template.tasks.length === 0)) {
       throw new WorkdayShiftChangeError('SHIFT_TEMPLATE_MISSING', 'Для этой смены нет чек-листа. Обратитесь к администратору.');
     }

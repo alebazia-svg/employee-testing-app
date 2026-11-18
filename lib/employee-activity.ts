@@ -54,7 +54,8 @@ export async function writeEmployeeActivity(userId: number, sessionHash: string,
       if(experience?.target==='push_setup' && experience.stage==='connected' && !await tx.workdayPushSubscription.findFirst({where:{userId,disabledAt:null,accessSessions:{some:{id:session.id}}},select:{id:true}}))return false;
       const operation = input.kind === 'operation' ? readOperationContext(input.context) : null;
       if (input.kind === 'operation' && !operation) return false;
-      const section = input.kind === 'visit' ? input.section : experience ? 'notifications' : operation ? operationSection(operation.action) : handover ? 'day' : interaction && interaction.target !== 'notification' ? interaction.target === 'cash' ? 'cash' : 'receipts' : 'notifications';
+      const cashCount = experience?.target === 'workflow' && experience.action === 'retail_cash_count' ? experience : null;
+      const section = input.kind === 'visit' ? input.section : cashCount ? 'day' : experience ? 'notifications' : operation ? operationSection(operation.action) : handover ? 'day' : interaction && interaction.target !== 'notification' ? interaction.target === 'cash' ? 'cash' : 'receipts' : 'notifications';
       // One transition per attempt. Automatic KKM polls never produce repeated rows.
       if (handover) {
         const previous = await tx.portalActivityEvent.findFirst({ where: { userId, kind: input.kind, context: { path: ['taskId'], equals: handover.taskId } }, orderBy: { createdAt: 'desc' } });
@@ -67,7 +68,7 @@ export async function writeEmployeeActivity(userId: number, sessionHash: string,
         if (previous?.section === section && +now - +previous.createdAt < 30000) return true;
       }
       await tx.portalActivityEvent.createMany({ skipDuplicates: true, data: [{ userId, sessionId: session.id, section, kind: input.kind,
-        eventKey: input.kind === 'notification_open' ? `notification:${input.notificationId}` : experience ? `experience:${input.key}` : operation ? `op:${operation.attemptId}:${operation.stage}` : handover ? `${handover.attemptId}:${handover.stage}` : input.key,
+        eventKey: input.kind === 'notification_open' ? `notification:${input.notificationId}` : cashCount ? `rc:${cashCount.attemptId}:${cashCount.stage}` : experience ? `experience:${input.key}` : operation ? `op:${operation.attemptId}:${operation.stage}` : handover ? `${handover.attemptId}:${handover.stage}` : input.key,
         ...(input.kind==='push_receipt'?{context:{stage:input.stage}}:experience ? {context:{...experience}} : operation ? {context:{...operation}} : handover ? { context: { ...handover } } : interaction ? { context: { ...interaction } } : {}),
         notificationId: input.kind === 'notification_open'||input.kind==='push_receipt' ? input.notificationId : null, createdAt: now }, ...(input.kind === 'notification_open' ? [{userId,sessionId:session.id,section:'notifications',kind:'interaction',eventKey:`open:${input.key}`,context:{target:'notification',ref:String(input.notificationId),stage:'open'},notificationId:input.notificationId,createdAt:now}] : [])] });
       return true;

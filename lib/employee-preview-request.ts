@@ -9,6 +9,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
     '/api/employee/payroll': 'payroll',
     '/api/employee/payroll/day-reviews': 'payroll-days',
     '/api/employee/workday/today': 'today',
+    '/api/employee/workday/cash-handover': 'cash-handover',
     '/api/employee/workday/change-shift': 'change-shift',
     '/api/employee/workday/schedule': 'schedule',
     '/api/employee/workday-notifications': 'notifications',
@@ -22,6 +23,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   const resource = notification ? 'notification-detail' : receiptFile ? 'receipt-file' : resources[url.pathname];
   if (!resource) throw new Error('Действие недоступно в режиме проверки.');
   const params = new URLSearchParams({ resource });
+  if (resource === 'cash-handover' && url.searchParams.has('workDayId')) params.set('workDayId',url.searchParams.get('workDayId')!);
   if (resource === 'app-setup' && url.searchParams.has('connection')) params.set('connection',url.searchParams.get('connection')!);
   if (notification) params.set('notification', notification[1]);
   if (receiptFile) { params.set('plan', decodeURIComponent(receiptFile[1])); params.set('receipt', decodeURIComponent(receiptFile[2])); }
@@ -36,7 +38,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
 
 /** Match existing employee read permissions without admitting payroll for Procurement. */
 export function employeePreviewResources(user: { portalArea: string; department: string }) {
-  const workday = ['work-help', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
+  const workday = ['cash-handover','work-help', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
   return user.portalArea === 'PROCUREMENT'
     ? ['app-setup', 'notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery', ...(user.department === 'procurement' ? workday : [])]
     : ['app-setup', 'notifications', 'notification-detail', ...workday, 'payroll', 'payroll-days'];

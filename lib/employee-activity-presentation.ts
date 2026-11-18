@@ -52,7 +52,7 @@ export function humanActivityLabel(s:AuditStep,title:string){
   return s.stage==='submitted'?'Отправил запрос · '+name:s.stage==='response_received'?'Получен ответ · '+name:s.stage==='request_failed'?'Запрос не выполнен · '+name:s.label;
  }
  if(s.target==='workflow'&&s.action){
-  const subject:Record<string,string>={schedule_bulk:'заполнение графика',schedule_editor:'выбор дня в графике',cash_form:'форму кассовой операции',cash_photo:'выбор фото',handover_form:'сдачу смены',task_form:'проверку кассы',vacation_editor:'отпуск',procurement_payment:'платёж в закупках',procurement_receipt:'чек по оплате',procurement_delivery:'доставку',salary_review:'уточнение рабочего дня',learning:'обучение',notification_list:'список уведомлений'};
+  const subject:Record<string,string>={retail_cash_count:'пересчёт личной кассы',schedule_bulk:'заполнение графика',schedule_editor:'выбор дня в графике',cash_form:'форму кассовой операции',cash_photo:'выбор фото',handover_form:'сдачу смены',task_form:'проверку кассы',vacation_editor:'отпуск',procurement_payment:'платёж в закупках',procurement_receipt:'чек по оплате',procurement_delivery:'доставку',salary_review:'уточнение рабочего дня',learning:'обучение',notification_list:'список уведомлений'};
   const name=subject[s.action];
   if(name&&s.stage==='opened')return 'Открыл '+name;
   if(name&&s.stage==='closed')return 'Закрыл '+name;

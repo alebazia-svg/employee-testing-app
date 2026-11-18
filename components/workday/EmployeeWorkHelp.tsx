@@ -18,7 +18,7 @@ const AUTOMATIC_GUIDE = false;
 const Context = createContext<Help | null>(null);
 
 /** One shared guide and server-confirmed daily acknowledgement across mobile tabs. */
-export function EmployeeWorkHelpProvider({ department, enabled = true, attendanceOnly = department === 'procurement', newGuidePreview = true, children }: { department: string; enabled?: boolean; attendanceOnly?: boolean; newGuidePreview?: boolean; children: ReactNode }) {
+export function EmployeeWorkHelpProvider({ department, retailCash = false, enabled = true, attendanceOnly = department === 'procurement', newGuidePreview = true, children }: { department: string; retailCash?: boolean; enabled?: boolean; attendanceOnly?: boolean; newGuidePreview?: boolean; children: ReactNode }) {
   const preview = useEmployeePreview();
   const setup = useAppSetupProposal();
   const previewRequest = preview?.request;
@@ -115,10 +115,16 @@ export function EmployeeWorkHelpProvider({ department, enabled = true, attendanc
       {!preview && <ExperienceShown context={{target:'guide',stage:mode==='automatic'?'automatic_shown':'manual_shown',attemptId:guideAttempt.current}} onShown={()=>{guideShown.current=true;}}/>}
       {displayMode === 'automatic' && displayQualifier ? <p className={styles.reason}>{displayQualifier}. График нужен, чтобы знать, кто выйдет на работу.</p> : null}
       <ol className={styles.steps}>
+        {retailCash ? <>
+          <li><div><strong>График</strong><p>Заранее отмечайте рабочие дни и выходные. Если планы изменились, обновите график.</p></div></li>
+          <li><div><strong>Начало дня</strong><p>Когда придёте в магазин, отсканируйте QR-код. На экране появится время начала работы.</p></div></li>
+          <li><div><strong>Завершение дня</strong><p>Перед уходом пересчитайте наличные и введите сумму. Приложение покажет, кому передать деньги. После передачи нажмите «Деньги переданы» — рабочий день завершится. Если касса пуста, введите 0 и нажмите «Завершить день».</p></div></li>
+        </> : <>
         <li><div><strong>График</strong><p>{newGuidePreview ? 'План рабочих дней и выходных. Заполняйте заранее — на завтра, неделю или дольше — и обновляйте при изменении планов.' : 'График — план работы отдела, выходных и замен, а не отметка прихода. Заполнять его нужно заранее и обновлять при изменении планов.'}</p></div></li>
         <li><div><strong>{newGuidePreview ? 'QR-код' : 'Приход'}</strong><p>{newGuidePreview ? 'Подтверждает присутствие на работе и фиксирует время начала дня. Сканируйте при приходе.' : 'QR-код фиксирует присутствие и время начала работы. Сканировать его нужно при приходе.'}</p></div></li>
         {!attendanceOnly && <li><div><strong>Проверки кассы</strong><p>{newGuidePreview ? 'В указанное время каждой проверки пересчитайте деньги и введите остаток для сверки с 1С.' : 'Плановая сверка наличных с 1С. Каждую проверку нужно выполнять в указанное время: пересчитать деньги и ввести остаток.'}</p></div></li>}
         <li><div><strong>{attendanceOnly ? 'Окончание работы' : 'Сдача смены'}</strong><p>{attendanceOnly ? (newGuidePreview ? 'Перед уходом завершите день в приложении для учёта отработанного времени.' : 'Для учёта фактически отработанного времени. Завершать день в приложении нужно перед уходом.') : 'Итоговая сверка кассы и подтверждение остатков на конец смены.'}</p></div></li>
+        </>}
       </ol>
       {displayError && <p role='alert' className={styles.error}>{displayError}</p>}
       <button type='button' className={`employee-material-primary-action ${styles.understood}`} disabled={displayBusy} onClick={() => void acknowledge()}>{displayBusy ? 'Сохранение…' : 'Понятно'}</button>

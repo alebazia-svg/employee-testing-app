@@ -5,7 +5,7 @@ import { EmployeeWorkHelpProvider } from './EmployeeWorkHelp';
 
 /** One approved PWA presentation for ordinary employee routes and ADMIN inspection.
  * Providers adapt effects/reads through EmployeePreviewProvider, never a second UI. */
-export function EmployeeExperienceProvider({department,attendanceOnly,children}:{department:string;attendanceOnly:boolean;children:ReactNode}) {
+export function EmployeeExperienceProvider({department,attendanceOnly,retailCash=false,children}:{department:string;attendanceOnly:boolean;retailCash?:boolean;children:ReactNode}) {
   const enabled = supportsScheduleNearReminders(department);
-  return <EmployeeAppSetupProvider enabled={enabled}><EmployeeWorkHelpProvider department={department} attendanceOnly={attendanceOnly} enabled={enabled}>{children}</EmployeeWorkHelpProvider></EmployeeAppSetupProvider>;
+  return <EmployeeAppSetupProvider enabled={enabled}><EmployeeWorkHelpProvider department={department} attendanceOnly={attendanceOnly} retailCash={retailCash} enabled={enabled}>{children}</EmployeeWorkHelpProvider></EmployeeAppSetupProvider>;
 }

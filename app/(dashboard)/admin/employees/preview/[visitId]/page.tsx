@@ -1,6 +1,6 @@
 import { EmployeeExperienceProvider } from '@/components/workday/EmployeeExperienceProvider';
 import { needsWorkdayEndReminder } from '@/lib/workday-end-policy';
-import { departmentLabel } from '@/lib/workday';
+import { departmentLabel, usesRetailCashHandover } from '@/lib/workday';
 import { PayrollDayReviewEmployee } from '@/app/(dashboard)/employee/payroll/day-reviews/PayrollDayReviewEmployee';
 import { EmployeePortalHeader } from '@/app/(dashboard)/employee/EmployeePortalHeader';
 import { payrollDayReviewEnabled,validDayReviewPeriod } from '@/lib/payroll-day-review';
@@ -35,7 +35,7 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
   const procurement = preview.employee.portalArea === 'PROCUREMENT';
   const frame: 'phone' | 'desktop' | undefined = procurement && (query.frame === 'phone' || query.frame === 'desktop') ? query.frame : undefined;
   const connection = typeof query.connection === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(query.connection) ? query.connection : undefined;
-  const experienceProps = {department:preview.employee.department,attendanceOnly:needsWorkdayEndReminder(preview.employee)};
+  const experienceProps = {department:preview.employee.department,retailCash:usesRetailCashHandover(preview.employee),attendanceOnly:needsWorkdayEndReminder(preview.employee)};
   const providerProps = { follow:query.follow!=='0',connection, visitId: preview.visit.id, employeeName: preview.employee.name, expiresAt: preview.visit.expiresAt.toISOString(), procurement, frame };
   if (procurement && !frame) return <EmployeePreviewProvider {...providerProps}><EmployeePreviewViewport visitId={preview.visit.id} employeeName={preview.employee.name}/></EmployeePreviewProvider>;
   const tab = query.tab ?? (procurement ? 'procurement' : 'day');

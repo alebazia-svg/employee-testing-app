@@ -2,7 +2,7 @@ import { payrollFeatureState } from './payroll-features';
 import 'server-only';
 import { getEmployeeWorkdaySnapshot } from '@/lib/employee-workday-snapshot';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey, usesRetailCashHandover } from '@/lib/workday';
 import { buildInitialScheduleRange } from '@/lib/workday-schedule';
 import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
@@ -24,7 +24,7 @@ function serializeScheduleEntry(entry: {
   };
 }
 
-export async function loadEmployeeHome(user: { id: number; name: string; department: string; qrScanMode?: string; portalArea?: string }) {
+export async function loadEmployeeHome(user: { id: number; name: string; department: string; qrScanMode?: string; portalArea?: string; workdayControlMode?: string }) {
 
   const today = getMoscowDateKey();
   const { dates, monthKey: initialScheduleMonth } = buildInitialScheduleRange(today);
@@ -64,8 +64,8 @@ export async function loadEmployeeHome(user: { id: number; name: string; departm
 
   return {
     cashMetadataFirstEnabled: process.env.CASH_OPERATION_METADATA_FIRST_ENABLED !== '0',
-    payrollEnabled: user.department !== 'procurement' && payrollFeatureState().employeeEnabled,
-    user: { id: user.id, name: user.name, department: user.department, qrScanMode: user.qrScanMode, portalArea: user.portalArea },
+    payrollEnabled: user.department !== 'procurement' && !usesRetailCashHandover(user) && payrollFeatureState().employeeEnabled,
+    user: { id: user.id, name: user.name, department: user.department, qrScanMode: user.qrScanMode, portalArea: user.portalArea, workdayControlMode: user.workdayControlMode },
     today: today,
     initialScheduleMonth,
     ownSchedule: ownSchedule.map(serializeScheduleEntry),
