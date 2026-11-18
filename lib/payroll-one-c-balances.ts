@@ -56,9 +56,13 @@ export function parsePayrollBalanceResponse(payload: unknown, asOf: string, chec
  * The complete balance register omits zero rows. An unknown identity stays unknown.
  * Debts in different organizations are not offset against each other's credits.
  */
-export function employeeSalaryBalance(read: PayrollBalanceRead | null, confirmedEmployeeRef: string | null) {
-  if (!read || !confirmedEmployeeRef || !guid.test(confirmedEmployeeRef) || confirmedEmployeeRef === zeroRef) return null;
-  const rows = read.rows.filter(row => row.employeeRef === confirmedEmployeeRef.toLowerCase());
+export function employeeSalaryBalance(read: PayrollBalanceRead | null, confirmedEmployeeRef: string | string[] | null) {
+  const refs = typeof confirmedEmployeeRef === 'string' ? [confirmedEmployeeRef] : confirmedEmployeeRef;
+  if (!read || !refs?.length || refs.some(ref => !guid.test(ref) || ref === zeroRef)) return null;
+  const normalized = new Set(refs.map(ref => ref.toLowerCase()));
+  const rows = read.rows.filter(row => typeof confirmedEmployeeRef === 'string'
+    ? row.employeeRef === confirmedEmployeeRef.toLowerCase()
+    : normalized.has(row.employeeRef.toLowerCase()));
   return {
     remainingMinor: rows.reduce((sum, row) => sum + Math.max(0, -row.signedMinor), 0),
     creditMinor: rows.reduce((sum, row) => sum + Math.max(0, row.signedMinor), 0),

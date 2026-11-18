@@ -45,9 +45,11 @@ export function payrollLedgerAccrualPeriod(row: NonNullable<PayrollLedgerRead['a
 
 /** Posted accruals explicitly labelled with a salary month, not a claim that
  * the month is finalized. Never reconstruct an accrual from cash or a balance. */
-export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref: string, period: string) {
+export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref: string | string[], period: string) {
   if (!ledger?.allocationEvidence || ledger.dateFrom > `${period}-01`) return null;
-  const rows = ledger.allocationEvidence.movements.filter(r => r.employeeRef === ref && r.sign === -1);
+  const refs = new Set((typeof ref === 'string' ? [ref] : ref).map(value => value.toLowerCase()));
+  const rows = ledger.allocationEvidence.movements.filter(r => r.sign === -1
+    && (typeof ref === 'string' ? r.employeeRef === ref : refs.has(r.employeeRef.toLowerCase())));
   let total = 0, found = false;
   for (const row of rows) {
     const assigned = payrollLedgerAccrualPeriod(row);

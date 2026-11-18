@@ -335,6 +335,7 @@ type PayrollWorkbookMainRow = {
 };
 
 type PayrollWorkbookModel = {
+  periodKey?: string;
   currentSettlement?: { rows: CurrentPayrollSettlement[]; checkedAt: string };
   oneCAdvanceEmployees?: string[];
   periodLabel: string;
@@ -441,7 +442,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     ...tableRows.map((row) => row.values),
     totalRow,
   ];
-  const summarySheet = XLSX.utils.aoa_to_sheet(sheetRows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
+  const summarySheet = XLSX.utils.aoa_to_sheet(sheetRows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value, model.periodKey) : value)));
   for (let rowNumber = 1; rowNumber <= totalRowNumber; rowNumber += 1) {
     setRowStyle(summarySheet, rowNumber, 0, 9, { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { color: { rgb: '0F172A' } } });
   }
@@ -493,7 +494,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   const addTableSheet = (name: string, subtitle: string, header: string[], rows: Array<Array<string | number | null>>, widths: number[], moneyColumns: number[] = [], collapsedRows: Set<number> = new Set()) => {
     const safeRows = rows.length ? rows : [['—', 'Данных для отображения нет']];
     const statusColumn = header.indexOf('Статус');
-    const sheet = XLSX.utils.aoa_to_sheet([[`${name} — ${model.periodLabel}`], [subtitle], [], header, ...safeRows].map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
+    const sheet = XLSX.utils.aoa_to_sheet([[`${name} — ${model.periodLabel}`], [subtitle], [], header, ...safeRows].map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value, model.periodKey) : value)));
     const lastColumn = header.length - 1;
     const headerRowNumber = 4;
     const firstDataRowNumber = 5;
@@ -5688,6 +5689,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       sourceRows.push(...savedRules);
 
       await downloadPayrollWorkbook({
+        periodKey: selectedSavedRun.period.periodKey,
         currentSettlement,
         periodLabel: `${months[selectedSavedRun.period.month]} ${selectedSavedRun.period.year}`,
         versionLabel: `Сохранённый расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`,
@@ -6179,6 +6181,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       ...exportRows.flatMap((row) => (row.advanceDocuments ?? []).map((doc) => [row.manager, doc.amount, `Аванс за ${doc.periodKey}; расходник №${doc.documentNumber} от ${doc.documentDate}`])),
     ] : [];
     await downloadPayrollWorkbook({
+      periodKey: selectedPayrollPeriodKey,
       periodLabel: `${months[Number(month)]} ${year}`,
       versionLabel: automatic ? 'Предварительный расчёт по данным 1С' : 'Текущий расчёт из загруженных данных',
       oneCAdvanceEmployees: automatic ? exportRows.filter((row) => row.advanceDocuments?.length).map((row) => row.manager) : [],
@@ -6242,7 +6245,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
           <span>Исправление ведомости №{correction.runNumber}. До сохранения действует прежняя финальная версия.</span>
           <button type='button' disabled={isSavingPayroll || draftSync.saving} className='min-h-11 font-semibold' onClick={() => { setAutomaticDraft(null); setPayrollFinalApproval(null); setSelectedManager(null); setCorrection(null); }}>Вернуться к финальной</button>
         </div>}
-        {workspaceFinalRun && <PayrollFinalOverview individualAttendanceNote={individualAttendanceNote} employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} onCorrect={() => void beginPayrollCorrection()} correcting={payrollHistoryActionId === 'correction'} />}
+        {workspaceFinalRun && <PayrollFinalOverview periodKey={workspaceFinalRun.period.periodKey} individualAttendanceNote={individualAttendanceNote} employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} savedAt={workspaceFinalRun.createdAt} verifiedThrough={getSavedPayrollVerifiedThrough(workspaceFinalRun.sourceSummary)} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} onCorrect={() => void beginPayrollCorrection()} correcting={payrollHistoryActionId === 'correction'} />}
         {workspaceFinalRun && showCurrentComparison && !oneCShadowCalculation && <p role='status' className='rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600'>Текущие данные для сверки ещё недоступны. Утверждённые суммы выше сохранены и не изменяются. Состояние загрузки можно посмотреть в «Источниках и настройках».</p>}
         {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
@@ -6300,7 +6303,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                 [], ['Сотрудник', 'Начислено, руб.', 'Замечания'],
                 ...oneCShadowCalculation.shadowRows.map(row => [row.manager, payrollMoney(row.grossPay), row.payrollReasons.join('; ')]),
               ];
-              const sheet = XLSX.utils.aoa_to_sheet(rows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value) : value)));
+              const sheet = XLSX.utils.aoa_to_sheet(rows.map(row => row.map(value => typeof value === 'string' ? payrollDisplayName(value, selectedPayrollPeriodKey) : value)));
               sheet['!cols'] = [{ wch: 45 }, { wch: 40 }, { wch: 100 }];
               XLSX.utils.book_append_sheet(book, sheet, 'Начисления для проверки');
               const checks = XLSX.utils.aoa_to_sheet([
@@ -7744,12 +7747,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         )}
 
             {selectedManagerStatus && selectedManagerPayroll && typeof document !== 'undefined' && createPortal(
-              <EmployeeCardOverlay modal={modernManagerCard} name={payrollDisplayName(selectedManagerPayroll.manager)} onClose={() => setSelectedManager(null)}>
+              <EmployeeCardOverlay modal={modernManagerCard} name={payrollDisplayName(selectedManagerPayroll.manager, selectedPayrollPeriodKey)} onClose={() => setSelectedManager(null)}>
                 <aside className={modernManagerCard ? 'admin-dialog-panel settlement-employee-card bg-white p-4 shadow-2xl' : 'admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'}>
                   <div className='mb-4 border-b border-border pb-4'>
                     <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0'>
-                      <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{payrollDisplayName(selectedManagerPayroll.manager)}</h2>
+                      <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{payrollDisplayName(selectedManagerPayroll.manager, selectedPayrollPeriodKey)}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
                       {selectedManagerSource === 'oneC' && (
                         <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? selectedPayrollPeriodKey >= '2026-11' ? 'Начислено за отработанные дни' : 'Согласованное начисление за месяц' : 'Автоматический расчёт по данным 1С'}</p>

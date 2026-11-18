@@ -1,4 +1,4 @@
-import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, isFilmTraineeService } from './payroll-trainee';
+import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, FILM_PERSONAL_FROM, FILM_LEGACY_SALES_THROUGH, isFilmPersonalName, isFilmTrainee, isFilmTraineeService } from './payroll-trainee';
 
 export type PayrollSalesSourceRow = {
   manager: string;
@@ -97,8 +97,9 @@ function getPayrollManagerName(manager: string) {
 }
 export function getPayrollSalesManagerNameForPeriod(manager: string, periodKey: string) {
   if (normalizeText(manager) === normalizeText(legacyRetailTraineeSourceName)) {
-    return periodKey === '2026-06' ? retailTraineePayrollName : periodKey >= FILM_TRAINEE_PERIOD ? FILM_TRAINEE_NAME : null;
+    return periodKey === '2026-06' ? retailTraineePayrollName : periodKey >= FILM_TRAINEE_PERIOD && periodKey <= FILM_LEGACY_SALES_THROUGH ? FILM_TRAINEE_NAME : null;
   }
+  if (periodKey >= FILM_PERSONAL_FROM && isFilmPersonalName(manager)) return FILM_TRAINEE_NAME;
   return getPayrollManagerName(manager);
 }
 function isPayrollExcludedEmployee(manager: string) { return payrollExcludedEmployeeKeys.has(normalizeText(getPayrollManagerName(manager))); }

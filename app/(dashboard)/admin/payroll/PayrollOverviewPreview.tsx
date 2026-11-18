@@ -100,14 +100,14 @@ export default function PayrollOverviewPreview(p: Props) {
         </details>;
       })}
       {employeeIssues.map(e=><details key={e.employeeName} className="rounded-lg border border-slate-200 bg-white">
-        <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold">{payrollDisplayName(e.employeeName)}<span className="ml-2 font-normal text-slate-600">{e.reasons.join('; ') || 'Проверить начисление'}</span></summary>
+        <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold">{payrollDisplayName(e.employeeName, p.periodKey)}<span className="ml-2 font-normal text-slate-600">{e.reasons.join('; ') || 'Проверить начисление'}</span></summary>
         <div className="border-t border-slate-100 px-3 py-3 text-sm">
           {e.reasons.map(reason=><p key={reason} className="mb-2 text-slate-700">{payrollEmployeeReviewPresentation(reason).hint}</p>)}
           <button data-payroll-read-action type="button" className={button} onClick={()=>p.onEmployee(e.employeeName)}>Открыть карточку</button>
         </div>
       </details>)}
       {differences.map(r=><details key={r.employeeName} className="rounded-lg border border-slate-200 bg-white">
-        <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold">{payrollDisplayName(r.employeeName)} · отличается от утверждённого</summary>
+        <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold">{payrollDisplayName(r.employeeName, p.periodKey)} · отличается от утверждённого</summary>
         <div className="border-t border-slate-100 px-3 py-3"><p className="mb-3 text-sm text-slate-600">{r.detailDifferences.join(', ')}</p><button data-payroll-read-action className={button} onClick={()=>p.onEmployee(r.employeeName)}>Сравнить расчёт</button></div>
       </details>)}
       </div>
@@ -126,7 +126,7 @@ export default function PayrollOverviewPreview(p: Props) {
                 : reasons.length ? 'Уточнить данные сотрудника' : p.preliminary ? 'Открыть вопрос по сотруднику' : 'Есть отличия от финального';
               const deduction = Math.round((r.shadowGrossPay-r.advance-r.shadowNetPay)*100)/100;
               return <button data-payroll-read-action key={r.employeeName} type="button" onClick={()=>p.onEmployee(r.employeeName)} className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-600">
-                <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{payrollDisplayName(r.employeeName)}</span>
+                <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{payrollDisplayName(r.employeeName, p.periodKey)}</span>
                 <span className="whitespace-nowrap text-sm font-bold tabular-nums text-slate-950">{money(r.shadowGrossPay)}</span>
                 {payrollIndividualNote(r.employeeName, p.periodKey ?? '', p.individualAttendanceNote) && <span className="col-span-2 text-xs font-medium text-amber-800">{payrollIndividualNote(r.employeeName, p.periodKey ?? '', p.individualAttendanceNote)}</span>}
                 {needsReview && reviewLabel && <span title={reasons.join('\n')} className="col-span-2 text-xs font-medium text-amber-800">{reviewLabel}</span>}
