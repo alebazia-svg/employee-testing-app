@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { employeeSalaryBalance, type PayrollBalanceRead } from '@/lib/payroll-one-c-balances';
-import { resolvePayrollSettlementIdentity, type PayrollCashRead } from '@/lib/payroll-one-c-payments';
+import { type PayrollBalanceRead } from '@/lib/payroll-one-c-balances';
+import { type PayrollCashRead } from '@/lib/payroll-one-c-payments';
 import { payrollPaymentMonth } from '@/lib/payroll-settlement-month';
-import { payrollPostedAccrual, type PayrollLedgerRead } from '@/lib/payroll-one-c-ledger';
+import { type PayrollLedgerRead } from '@/lib/payroll-one-c-ledger';
 import { paymentCardSummary } from '@/lib/payroll-payment-summary';
 export { paymentCardSummary } from '@/lib/payroll-payment-summary';
 
@@ -36,11 +36,9 @@ export default function PayrollPaymentEvidence({ periodKey, employee, names, rea
   const { data, error } = read;
   if (error) return <section role='status' className='rounded-xl border border-amber-200 p-4'><p>{error}</p><button data-payroll-read-action type='button' className='mt-3 underline' onClick={read.retry}>Повторить проверку</button></section>;
   if (!data || data.periodKey !== periodKey) return <p role='status' className='p-4'>Проверяем выплаты в 1С…</p>;
-  const ref = resolvePayrollSettlementIdentity(employee, names, periodKey, data.cash, data.balance, data.ledger?.employees);
-  const balance = employeeSalaryBalance(data.balance, ref);
-  if (!ref || !balance) return <p className='rounded-xl border border-amber-200 p-4'>Не удалось однозначно сопоставить сотрудника с получателем в 1С. Остаток пока не подтверждён.</p>;
-  const documents = data.cash.documents.filter(d => d.identityConfirmed && d.employeeRef.toLowerCase() === ref);
-  const monthly = paymentCardSummary(data, employee, names)?.monthly;
+  const summary = paymentCardSummary(data, employee, names);
+  if (!summary) return <p className='rounded-xl border border-amber-200 p-4'>Не удалось однозначно сопоставить сотрудника с получателем в 1С. Остаток пока не подтверждён.</p>;
+  const { balance, documents, monthly } = summary;
   const current = monthly ? monthly.currentDocuments.flatMap(part => documents.filter(d => d.key === part.key).map(d => ({...d,amount:part.amount}))) : documents.filter(d => payrollPaymentMonth(employee,d)?.period === periodKey);
   const unresolved = monthly ? [] : documents.filter(d => !payrollPaymentMonth(employee,d));
   const documentList = (rows: typeof documents) => <ul className='divide-y divide-slate-200'>{rows.map(d => {

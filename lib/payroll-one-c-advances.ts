@@ -1,4 +1,4 @@
-import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD } from './payroll-trainee';
+import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, FILM_PERSONAL_FROM, isFilmPersonalName, isApprovedFilmRecipientPair } from './payroll-trainee';
 import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance, PROCUREMENT_TRAINEE_REF, MUHAMED_ONE_C_REF, MUHAMED_PAYROLL_NAME } from './payroll-payment-breakdown';
 
 export type PayrollAdvanceDocument = {
@@ -120,6 +120,9 @@ export function matchPayrollAdvanceEmployee(document: PayrollAdvanceDocument, na
   if (source === 'стажеррозница' && document.periodKey >= FILM_TRAINEE_PERIOD) {
     return names.includes(FILM_TRAINEE_NAME) ? FILM_TRAINEE_NAME : null;
   }
+  if (document.periodKey >= FILM_PERSONAL_FROM && isFilmPersonalName(document.employeeName)) {
+    return names.includes(FILM_TRAINEE_NAME) ? FILM_TRAINEE_NAME : null;
+  }
   const candidates = names.filter((name) => {
     const target = normalize(name);
     return source === target || (target.split(' ').length >= 2 && source.startsWith(`${target} `));
@@ -138,7 +141,8 @@ export function applyPayrollOneCAdvances<T extends { manager: string; advance: n
   const result = rows.map((row) => {
     const docs = byEmployee.get(row.manager) ?? [];
     if (!docs.length) return { ...row, advanceDocuments: docs };
-    if (new Set(docs.map((d) => d.employeeRef)).size !== 1 || row.advance !== 0) {
+    if ((new Set(docs.map((d) => d.employeeRef.toLowerCase())).size !== 1
+      && !(row.manager === FILM_TRAINEE_NAME && isApprovedFilmRecipientPair(docs, read.periodKey))) || row.advance !== 0) {
       issues.push(`${row.manager}: проверьте аванс — есть ручная сумма или разные получатели 1С. Автоматический вычет не применён.`);
       return { ...row, advanceDocuments: docs };
     }

@@ -1,3 +1,4 @@
+import { FILM_TRAINEE_NAME, isApprovedFilmRecipientPair } from './payroll-trainee';
 import { parsePayrollAdvanceComment, matchPayrollAdvanceEmployee } from './payroll-one-c-advances';
 import type { PayrollBalanceRead } from './payroll-one-c-balances';
 
@@ -43,7 +44,7 @@ export function parsePayrollCashResponse(value: unknown, dateFrom: string, dateT
 }
 
 // Existing conservative payroll alias rules; ambiguous identities never become a zero balance.
-export function resolvePayrollSettlementIdentity(name: string, names: string[], periodKey: string, cash: PayrollCashRead, balance: PayrollBalanceRead, ledgerEmployees: {employeeRef: string; employeeName: string}[] = []) {
+export function resolvePayrollSettlementIdentities(name: string, names: string[], periodKey: string, cash: PayrollCashRead, balance: PayrollBalanceRead, ledgerEmployees: {employeeRef: string; employeeName: string}[] = []) {
   const candidates = [...cash.documents.filter(d => d.identityConfirmed), ...balance.rows, ...ledgerEmployees];
   const match = (d: {employeeName:string;employeeRef:string}) => {
     const source=d.employeeName.trim().toLocaleLowerCase('ru-RU').replace(/ё/g,'е');
@@ -52,10 +53,20 @@ export function resolvePayrollSettlementIdentity(name: string, names: string[], 
     if(alias&&names.includes(alias)&&!names.some(n=>n!==alias&&n.trim().toLocaleLowerCase('ru-RU').replace(/ё/g,'е')===source))return alias;
     return matchPayrollAdvanceEmployee({ ...d, key: '', documentNumber: '', documentDate: '', amount: 0, periodKey }, names);
   };
-  const refs = new Set(candidates.filter(d => match(d) === name).map(d => d.employeeRef.toLowerCase()));
-  if (refs.size !== 1) return null;
-  const ref = [...refs][0];
-  // One source identity cannot silently serve two portal employees.
-  const owners = new Set(candidates.filter(d => d.employeeRef.toLowerCase() === ref).map(match).filter(Boolean));
-  return owners.size === 1 && owners.has(name) ? ref : null;
+  const matched = candidates.filter(d => match(d) === name);
+  const refs = [...new Set(matched.map(d => d.employeeRef.toLowerCase()))];
+  if (!refs.length || (refs.length !== 1
+      && !(name === FILM_TRAINEE_NAME && isApprovedFilmRecipientPair(matched, periodKey)))) return null;
+  // Each source identity must belong solely to this payroll employee.
+  for (const ref of refs) {
+    const owners = new Set(candidates.filter(d => d.employeeRef.toLowerCase() === ref).map(match).filter(Boolean));
+    if (owners.size !== 1 || !owners.has(name)) return null;
+  }
+  return refs;
+}
+
+// Preserve the single-identity API for callers that cannot combine recipients.
+export function resolvePayrollSettlementIdentity(...args: Parameters<typeof resolvePayrollSettlementIdentities>) {
+  const refs = resolvePayrollSettlementIdentities(...args);
+  return refs?.length === 1 ? refs[0] : null;
 }
