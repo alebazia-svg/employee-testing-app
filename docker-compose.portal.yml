@@ -44,6 +44,10 @@ services:
       # published port. Re-audit before changing ingress or exposing app ports.
       # Diagnostic only: never used for authentication or device ownership.
       PORTAL_ACCESS_TRUST_REAL_IP: "1"
+      # The application validates the production 1C base and the employee's handover mode.
+      RETAIL_CASH_HANDOVER_ENABLED: "1"
+      RETAIL_CASH_ORGANIZATION_REF: "1c2d6c5c-251f-11ec-ac9f-0025901e48ee"
+      RETAIL_CASH_RECIPIENT_REFS: "df888646-4473-11ed-8f49-0025901e48ee,cc1a3af7-8f92-11ef-b77d-002590803daf,a88db629-0ebf-11ef-ac00-002590803daf"
       PORT: "3000"
       # Recovery switch affects new submissions only. Existing v2 photo queues
       # and attachment APIs remain supported; never roll them back to v1.
