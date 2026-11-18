@@ -665,9 +665,6 @@ function WorkdayQrScanner({
           </button>
         </div>
 
-        {process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_TIMUR_LOCAL_DEMO === '1' && !inspection && userDepartment === 'retail' && window.location.hostname === '127.0.0.1' && (
-          <Button type='button' className='mb-3 min-h-11' onClick={()=>{stopCamera();onAccepted({department:'retail',qrPayload:'offonika-workday-start:retail'});}}>Использовать тестовый QR</Button>
-        )}
         {inspection && <div className='mb-3 rounded-xl bg-white/10 p-3 text-sm'><p>Проверка интерфейса · камера и начало смены отключены</p><button type='button' onClick={onPreviewNext} className='mt-2 min-h-11 underline'>Посмотреть выбор смены</button></div>}
         <div className='employee-material-camera relative flex-1 overflow-hidden rounded-3xl bg-black shadow-2xl shadow-black/40'>
           {!inspection && <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />}
