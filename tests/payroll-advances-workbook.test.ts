@@ -39,6 +39,19 @@ test('actual workbook generator preserves totals, advance provenance and manual 
   await context.downloadPayrollWorkbook({...model,oneCAdvanceEmployees:[]});
   const manual=XLSX.utils.sheet_to_json<(string|number)[]>((workbook as unknown as XLSX.WorkBook).Sheets['Расшифровка'],{header:1});
   assert.equal(manual.find(r=>r[5]==='Аванс')![7],'Ручной ввод в портале');
+  const frozenModel = JSON.stringify(model);
+  for (const [periodKey, displayName] of [['2026-10','Тимур · поклейка'],['2026-11','Назранов Тимур'],['2026-12','Назранов Тимур']]) {
+    await context.downloadPayrollWorkbook({...model,periodKey});
+    const currentBook = workbook as unknown as XLSX.WorkBook;
+    const main = XLSX.utils.sheet_to_json<(string|number)[]>(currentBook.Sheets['Итоги'],{header:1,defval:''});
+    const employee = main.find(r=>r[0]===displayName)!;
+    assert.ok(employee);assert.equal(employee[1],35490);assert.equal(employee[7],15000);assert.equal(employee[8],20490);
+    const details = XLSX.utils.sheet_to_json<(string|number)[]>(currentBook.Sheets['Расшифровка'],{header:1,defval:''});
+    assert.ok(details.some(r=>r.includes(displayName)));
+    assert.ok(!JSON.stringify(currentBook.Sheets).includes(employeeName));
+    if(periodKey>='2026-11')assert.ok(!JSON.stringify(currentBook.Sheets).includes('Тимур · поклейка'));
+  }
+  assert.equal(JSON.stringify(model),frozenModel,'display never renames the saved identity or changes amounts');
   const legacyName = 'Кумыков Мухаммед';
   await context.downloadPayrollWorkbook({...model, oneCAdvanceEmployees:[legacyName], employeeRows:model.employeeRows.map(r=>({...r,employeeName:legacyName})), accrualRows:model.accrualRows.map(r=>[legacyName,...r.slice(1)])});
   const renamed = XLSX.utils.sheet_to_json<(string|number)[]>((workbook as unknown as XLSX.WorkBook).Sheets['Итоги'],{header:1});
