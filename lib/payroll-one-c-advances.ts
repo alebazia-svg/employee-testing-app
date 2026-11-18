@@ -141,7 +141,7 @@ export function applyPayrollOneCAdvances<T extends { manager: string; advance: n
   const result = rows.map((row) => {
     const docs = byEmployee.get(row.manager) ?? [];
     if (!docs.length) return { ...row, advanceDocuments: docs };
-    if ((new Set(docs.map((d) => d.employeeRef.toLowerCase())).size !== 1
+    if ((new Set(docs.map((d) => d.employeeRef)).size !== 1
       && !(row.manager === FILM_TRAINEE_NAME && isApprovedFilmRecipientPair(docs, read.periodKey))) || row.advance !== 0) {
       issues.push(`${row.manager}: проверьте аванс — есть ручная сумма или разные получатели 1С. Автоматический вычет не применён.`);
       return { ...row, advanceDocuments: docs };

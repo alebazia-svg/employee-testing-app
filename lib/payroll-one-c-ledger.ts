@@ -48,7 +48,8 @@ export function payrollLedgerAccrualPeriod(row: NonNullable<PayrollLedgerRead['a
 export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref: string | string[], period: string) {
   if (!ledger?.allocationEvidence || ledger.dateFrom > `${period}-01`) return null;
   const refs = new Set((typeof ref === 'string' ? [ref] : ref).map(value => value.toLowerCase()));
-  const rows = ledger.allocationEvidence.movements.filter(r => refs.has(r.employeeRef.toLowerCase()) && r.sign === -1);
+  const rows = ledger.allocationEvidence.movements.filter(r => r.sign === -1
+    && (typeof ref === 'string' ? r.employeeRef === ref : refs.has(r.employeeRef.toLowerCase())));
   let total = 0, found = false;
   for (const row of rows) {
     const assigned = payrollLedgerAccrualPeriod(row);

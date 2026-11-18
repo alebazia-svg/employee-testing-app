@@ -115,3 +115,20 @@ test('rendered payment component shows both names source payments in one card', 
   for(const number of ['OLD','NEW','LATER']) assert.match(html,new RegExp(`№ ${number}`));
   assert.doesNotMatch(html,/Не удалось однозначно/);
 });
+
+test('other employee keeps original single-recipient case checks and advance ambiguity guard', async () => {
+  const { employeeSalaryBalance } = await import('../lib/payroll-one-c-balances');
+  const { payrollPostedAccrual } = await import('../lib/payroll-one-c-ledger');
+  const ref='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const sourceRef=ref.toUpperCase();
+  const otherBalance={...balance,rows:[{organizationRef:'org',employeeRef:sourceRef,employeeName:names[1],signedMinor:-10000}]};
+  assert.equal(employeeSalaryBalance(otherBalance,ref)?.remainingMinor,0, 'single-recipient behavior is unchanged');
+  const otherLedger={...ledger,allocationEvidence:{opening:[],movements:[{...ledger.allocationEvidence!.movements[0],employeeRef:sourceRef}]}};
+  assert.equal(payrollPostedAccrual(otherLedger,ref,'2026-11'),null);
+  const otherCash={...cash,documents:[{...cash.documents[0],employeeRef:sourceRef,employeeName:names[1]}]};
+  const summary=paymentCardSummary({periodKey:'2026-11',cash:otherCash,balance:otherBalance,ledger:otherLedger},names[1],names)!;
+  assert.equal(summary.balance.remainingMinor,0);assert.equal(summary.accruedInOneC,null);
+  const mixedCase={...read(),documents:[ref,sourceRef].map((employeeRef,i)=>({...read().documents[0],key:String(i),employeeRef,employeeName:names[1]}))};
+  const result=applyPayrollOneCAdvances([{manager:names[1],advance:0,netPay:300}],mixedCase);
+  assert.equal(result.rows[0].advance,0);assert.equal(result.issues.length,1);
+});

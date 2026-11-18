@@ -60,7 +60,9 @@ export function employeeSalaryBalance(read: PayrollBalanceRead | null, confirmed
   const refs = typeof confirmedEmployeeRef === 'string' ? [confirmedEmployeeRef] : confirmedEmployeeRef;
   if (!read || !refs?.length || refs.some(ref => !guid.test(ref) || ref === zeroRef)) return null;
   const normalized = new Set(refs.map(ref => ref.toLowerCase()));
-  const rows = read.rows.filter(row => normalized.has(row.employeeRef.toLowerCase()));
+  const rows = read.rows.filter(row => typeof confirmedEmployeeRef === 'string'
+    ? row.employeeRef === confirmedEmployeeRef.toLowerCase()
+    : normalized.has(row.employeeRef.toLowerCase()));
   return {
     remainingMinor: rows.reduce((sum, row) => sum + Math.max(0, -row.signedMinor), 0),
     creditMinor: rows.reduce((sum, row) => sum + Math.max(0, row.signedMinor), 0),
