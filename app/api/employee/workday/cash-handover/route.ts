@@ -22,11 +22,15 @@ export async function POST(req:Request){try{
  if(p.action==='handoff'){
    if(typeof p.token!=='string'||!p.token)throw new HandoverError('Получатель не подтверждён.');
    h=await recountRetailCash(prisma,user.id,day.id,{amount:p.amount,requestKey:p.requestKey,revision:p.revision??null,offerToken:p.token});
-
  }else if(p.action==='count')h=await recountRetailCash(prisma,user.id,day.id,{amount:p.amount,requestKey:p.requestKey,revision:p.revision??null});
  else if(p.action==='prepare')h=await prepareRetailCash(prisma,user.id,day.id,p.revision);
  else if(p.action==='confirm'){h=await confirmRetailCash(prisma,user.id,day.id,p.revision,p.handed===true);}
 
  else throw new HandoverError('Неизвестное действие.',400);
+ if ((p.action === 'handoff' || p.action === 'confirm') && h.status === 'confirmed' && h.handedAt) {
+   after(async () => {
+     await processRetailCash(prisma, user.id, day.id, new Date(), undefined, 'initial');
+   });
+ }
  return Response.json({handover:serializeRetailHandover(h)},{headers:{'Cache-Control':'no-store'}});
  }catch(e){return failure(e);}}
