@@ -22,3 +22,15 @@ test('day review inspection is an employee-scoped read and never permits mutatio
   assert.equal(employeePreviewUrl('visit', '/api/employee/payroll/day-reviews?month=2026-10&userId=999'), '/api/admin/employees/preview/visit?resource=payroll-days&month=2026-10');
   for (const method of ['POST', 'PATCH', 'DELETE', 'PUT']) assert.throws(() => employeePreviewUrl('visit', '/api/employee/payroll/day-reviews', { method }));
 });
+
+test('live shift options are readable in preview, only as a GET, and carry no identity parameters', () => {
+  assert.equal(employeePreviewUrl('visit', '/api/employee/workday/change-shift?live=1&userId=9'), '/api/admin/employees/preview/visit?resource=change-shift&live=1');
+  assert.equal(employeePreviewUrl('visit', '/api/employee/workday/change-shift'), '/api/admin/employees/preview/visit?resource=change-shift');
+  assert.throws(() => employeePreviewUrl('visit', '/api/employee/workday/change-shift?live=1', { method: 'POST' }));
+});
+
+test('cash recipient inspection reads only the visit employee and workday', () => {
+  const url = '/api/employee/workday/cash-handover?workDayId=7&recipient=1&userId=99&action=confirm';
+  assert.equal(employeePreviewUrl('visit',url), '/api/admin/employees/preview/visit?resource=cash-handover&workDayId=7&recipient=1');
+  assert.throws(() => employeePreviewUrl('visit',url,{method:'POST'}));
+});

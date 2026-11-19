@@ -1,4 +1,5 @@
-import { serializeRetailHandover } from '@/lib/retail-cash-handover-server';
+import { handoverEnvironment } from '@/lib/retail-cash-handover-environment';
+import { HandoverError, recipientOffer, serializeRetailHandover } from '@/lib/retail-cash-handover-server';
 import { prisma as handoverDb } from '@/lib/prisma';
 import { loadEmployeeInspectionDevices } from '@/lib/employee-inspection-state-server';
 import { readEmployeeWorkHelp } from '@/lib/employee-work-help-reader';
@@ -15,7 +16,9 @@ import { requestedDates, scheduleSnapshot } from '@/lib/employee-schedule-snapsh
 import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 import { cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
-import { getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey, usesRetailCashHandover } from '@/lib/workday';
+import { employeeShiftHint } from '@/lib/workday-extension';
+import { listOwnShiftChangeOptions } from '@/lib/workday-admin-shift-repair';
 import { readNotificationDetail } from '@/lib/notification-detail-reader';
 import { prisma } from '@/lib/prisma';
 import { receiptSelect, readProcurementReceipt, ReceiptError, legacyReceiptWhere } from '@/lib/procurement-receipts';
@@ -74,11 +77,32 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
         return Response.json(await loadDeliveryView(), { headers });
       } catch { return Response.json({ error: 'Данные временно недоступны.' }, { status: 503, headers }); }
     }
-    case 'change-shift': return Response.json(await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: getMoscowDateKey() }), { headers });
+    case 'change-shift': {
+      if (usesRetailCashHandover(user)) return Response.json({error:'Рабочий день без выбора смены.'},{status:409,headers});
+      if (url.searchParams.get('live') === '1') {
+        // Read-only mirror of what the employee's own «Моя смена» sheet would offer.
+        const options = await listOwnShiftChangeOptions(prisma, { userId: user.id, department: user.department, date: getMoscowDateKey() });
+        const found = options.canChange ? await employeeShiftHint(prisma, { userId: user.id, department: user.department }) : null;
+        const hint = found && options.options.some((item) => item.code === found.toShiftCode) ? found : null;
+        return Response.json({ ...options, hint }, { headers });
+      }
+      return Response.json(await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: getMoscowDateKey() }), { headers });
+    }
     case 'cash-handover': {
       const dayId=Number(url.searchParams.get('workDayId'));
       const day=await handoverDb.workDayEntry.findFirst({where:{id:Number.isSafeInteger(dayId)?dayId:-1,userId:user.id}});
       if(!day)return Response.json({error:'Рабочий день не найден.'},{status:404,headers});
+      if (url.searchParams.get('recipient') === '1') {
+        if (!handoverEnvironment() || !usesRetailCashHandover(user)) {
+          return Response.json({error:'Нет доступа к сдаче кассы.'},{status:409,headers});
+        }
+        try {
+          const { name } = await recipientOffer(handoverDb,user.id,day.id);
+          return Response.json({name},{headers});
+        } catch (error) {
+          return Response.json({error:error instanceof HandoverError ? error.message : 'Не удалось проверить получателя.'},{status:409,headers});
+        }
+      }
       return Response.json({handover:serializeRetailHandover(await handoverDb.retailCashHandover.findUnique({where:{workDayEntryId:day.id}}))},{headers});
     }
     case 'today': return Response.json(await getEmployeeWorkdaySnapshot(user), { headers });

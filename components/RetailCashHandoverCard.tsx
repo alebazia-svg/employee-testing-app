@@ -15,6 +15,7 @@ const money=(n:number)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2})
 export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch,onFinished,renderHandle,early=false}:{workDayId:number;taskId?:number;early?:boolean;completed:boolean;request?:(input:string,init?:RequestInit)=>Promise<Response>;renderHandle?:(close:()=>void,busy:boolean)=>React.ReactNode;onFinished:()=>void}){
  const [h,setH]=useState<Handover|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[form,setForm]=useState(false),[amount,setAmount]=useState('');
  const preview = useEmployeePreview();
+ const inspecting = Boolean(preview);
  const [attemptId, setAttemptId] = useState(experienceAttempt);
  const [transferClosed,setTransferClosed]=useState(false);
  const countKey=useRef<string|null>(null);const url=`/api/employee/workday/cash-handover?workDayId=${workDayId}`;
@@ -27,19 +28,19 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
  const inputAmount=existingReady?String(h.actual):amount;
  const keepRecipient=h?.status==='ready' && Number(inputAmount.replace(',','.'))===h.actual;
  const positive=(form||existingReady) && Number(inputAmount.replace(',','.'))>0;
- const [offer,setOffer]=useState<{name:string;token:string}|null>(null);
+ const [offer,setOffer]=useState<{name:string;token?:string}|null>(null);
  const [offerError,setOfferError]=useState(''),[attempt,setAttempt]=useState(0);
  useEffect(()=>{
    let active=true;setOffer(null);setOfferError('');
    if(positive&&!keepRecipient)void (async()=>{
      try{
-       const response=await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'recipient'})});
-       const data=await response.json();if(!response.ok||!data.token)throw Error(data.error||'Не удалось определить получателя.');
+       const response=inspecting ? await request(url+'&recipient=1',{cache:'no-store'}) : await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'recipient'})});
+       const data=await response.json();if(!response.ok||!data.name||(!inspecting&&!data.token))throw Error(data.error||'Не удалось определить получателя.');
        if(active)setOffer(data);
      }catch(e){if(active)setOfferError(e instanceof Error?e.message:'Нет связи.');}
    })();
    return ()=>{active=false;};
- },[positive,keepRecipient,request,url,attempt]);
+ },[positive,keepRecipient,request,url,attempt,inspecting]);
  async function count(){
    if(keepRecipient){const result=await post('confirm',{handed:true});setForm(false);if(result.handedAt)onFinished();return;}
    if(inputAmount.trim()==='')throw Error('Укажите фактическую сумму наличных.');
@@ -69,7 +70,7 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
      <CashChecklistAmount value={inputAmount} onChange={value=>{setForm(true);setAmount(value);countKey.current=null;}} error={error}/>
      {positive && <div className='mt-3 rounded-xl border border-slate-200 p-3' aria-live='polite'>{keepRecipient||offer?<p className='text-base font-bold'>Получатель: {schedulePersonName((keepRecipient ? h?.recipientName : offer?.name) ?? '')}</p>:offerError?<><p>{offerError}</p><button type='button' onClick={()=>setAttempt(a=>a+1)}>Проверить ещё раз</button></>:<p>Проверяем, кто на смене…</p>}</div>}
      {zero && <p className='mt-2 text-sm'>В кассе 0 ₽. Передавать деньги не требуется.</p>}
-     <div className='mt-4 grid grid-cols-2 gap-2'><Button className='employee-material-secondary-action min-h-10 text-xs font-extrabold' disabled={busy} onClick={close}>Отмена</Button><Button className='employee-material-primary-action min-h-10 text-xs font-extrabold' disabled={busy||(!zero&&(!positive||(!offer&&!keepRecipient)))} onClick={()=>void run(count)}>{busy?'Сохраняем…':zero?'Завершить день':'Деньги переданы'}</Button></div>
+     <div className='mt-4 grid grid-cols-2 gap-2'><Button className='employee-material-secondary-action min-h-10 text-xs font-extrabold' disabled={busy} onClick={close}>Отмена</Button><Button className='employee-material-primary-action min-h-10 text-xs font-extrabold' disabled={inspecting||busy||(!zero&&(!positive||(!offer&&!keepRecipient)))} onClick={()=>void run(count)}>{busy?'Сохраняем…':zero?'Завершить день':'Деньги переданы'}</Button></div>
    </div>
  </CashChecklistSheet>;
  if(!h)return <EmployeeFinishDayCard id='pwa-current-action' animate={!early} description='Перед уходом укажите остаток. Если касса пуста, введите 0 ₽.' label='Пересчитать кассу' disabled={busy} onClick={()=>{setError('');setAmount('');countKey.current=null;setForm(true);}}>
@@ -80,7 +81,7 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
    <div className='flex items-center gap-3'><CheckCircle2 className='h-7 w-7 text-green-700'/><h2 className='text-xl font-black'>{h.status==='zero'?'Пересчёт сохранён':'Передача кассы подтверждена'}</h2></div>
    <p className='font-bold'>{h.status==='zero'?'Наличных для передачи нет.':`${money(h.actual)} · ${h.recipientName}`}</p>
    <p className='text-sm text-slate-600'>Осталось подтвердить завершение рабочего дня.</p>
-   <Button className='employee-material-primary-action min-h-12 w-full' disabled={busy} onClick={()=>void run(finish)}>Завершить рабочий день</Button>
+   <Button className='employee-material-primary-action min-h-12 w-full' disabled={inspecting||busy} onClick={()=>void run(finish)}>Завершить рабочий день</Button>
   </>:pending?<>
    <CashOperationStatusRow title={money(h!.actual)+' · '+h!.recipientName} detail={new Date(h!.handedAt!).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})} status={['review','error'].includes(h!.status)?'Передано на проверку':'Оформляется в 1С'} />
   </>:h?.status==='ready' ? <Button className='employee-material-primary-action min-h-12 w-full' onClick={()=>setTransferClosed(false)}>Продолжить передачу</Button>:<>

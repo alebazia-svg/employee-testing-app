@@ -24,6 +24,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (!resource) throw new Error('Действие недоступно в режиме проверки.');
   const params = new URLSearchParams({ resource });
   if (resource === 'cash-handover' && url.searchParams.has('workDayId')) params.set('workDayId',url.searchParams.get('workDayId')!);
+  if (resource === 'cash-handover' && url.searchParams.get('recipient') === '1') params.set('recipient','1');
   if (resource === 'app-setup' && url.searchParams.has('connection')) params.set('connection',url.searchParams.get('connection')!);
   if (notification) params.set('notification', notification[1]);
   if (receiptFile) { params.set('plan', decodeURIComponent(receiptFile[1])); params.set('receipt', decodeURIComponent(receiptFile[2])); }
@@ -31,6 +32,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (resource === 'receipts' && url.searchParams.get('documents') === '1') params.set('documents','1');
   if (resource === 'payroll' || resource === 'payroll-days') for (const month of url.searchParams.getAll('month')) params.append('month', month);
   if (resource === 'payroll') for (const mode of url.searchParams.getAll('snapshot')) params.append('snapshot', mode);
+  if (resource === 'change-shift' && url.searchParams.get('live') === '1') params.set('live', '1');
   if (resource === 'schedule' && url.searchParams.has('month')) params.set('month', url.searchParams.get('month')!);
   if (resource === 'schedule' && url.searchParams.has('week')) params.set('week', url.searchParams.get('week')!);
   return `/api/admin/employees/preview/${encodeURIComponent(visitId)}?${params}`;
