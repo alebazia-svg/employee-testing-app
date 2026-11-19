@@ -25,6 +25,7 @@ export type AppUpdateEnvironment = {
 
 export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvironment) {
   let pending = false;
+  let waitingForSafeScreen = false;
   let disposed = false;
   let reloading = false;
   let lastCheck = -Infinity;
@@ -33,6 +34,7 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
   let resume: (() => void) | undefined;
   const perform = async (force: boolean): Promise<true | undefined> => {
     if (disposed || reloading || controller || !env.visible() || (!force && env.now() - lastCheck < 15_000)) return;
+    waitingForSafeScreen = false;
     lastCheck = env.now();
     controller = new AbortController();
     const request = controller;
@@ -45,7 +47,7 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
       pending = identity(remote) !== identity(current);
       if (!pending) { env.observe?.('current'); return true; }
       if (!env.visible()) return;
-      if (!env.safe()) { env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
+      if (!env.safe()) { waitingForSafeScreen = true; env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
       const target = identity(remote);
       let previous: UpdateAttempt | null;
       try { previous = env.readAttempt(); } catch { env.observe?.('storage_failed'); return; }
@@ -69,15 +71,15 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
       controller = null;
     }
   };
-  const check = (onReload?: () => void) => {
+  const check = (onReload?: () => void, force = false) => {
     if (inFlight && !onReload) return Promise.resolve(undefined);
     if (onReload) resume = onReload;
-    if (!inFlight) inFlight = perform(Boolean(onReload)).finally(() => { inFlight = undefined; resume = undefined; });
+    if (!inFlight) inFlight = perform(force || Boolean(onReload)).finally(() => { inFlight = undefined; resume = undefined; });
     return inFlight;
   };
   return {
     check,
-    retry: () => pending && env.visible() && env.safe() ? check() : Promise.resolve(),
+    retry: () => pending && env.visible() && env.safe() ? check(undefined, waitingForSafeScreen) : Promise.resolve(),
     dispose: () => { disposed = true; controller?.abort(); },
   };
 }

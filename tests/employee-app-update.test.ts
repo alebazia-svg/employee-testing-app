@@ -127,3 +127,12 @@ test('form entry joins a pending check and respects an operation started during 
   assert.deepEqual(s.counts(), { requests: 1, reloads: 0 });
   assert.equal(intents, 0);
 });
+
+test('an available release is checked again as soon as the initial outbox check finishes', async () => {
+  const s = setup();
+  s.setSafe(false);
+  await s.updater.check();
+  s.setSafe(true);
+  await s.updater.retry();
+  assert.deepEqual(s.counts(), { requests: 2, reloads: 1 });
+});
