@@ -29,8 +29,10 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
   let reloading = false;
   let lastCheck = -Infinity;
   let controller: AbortController | null = null;
-  const check = async () => {
-    if (disposed || reloading || controller || !env.visible() || env.now() - lastCheck < 15_000) return;
+  let inFlight: Promise<true | undefined> | undefined;
+  let resume: (() => void) | undefined;
+  const perform = async (force: boolean): Promise<true | undefined> => {
+    if (disposed || reloading || controller || !env.visible() || (!force && env.now() - lastCheck < 15_000)) return;
     lastCheck = env.now();
     controller = new AbortController();
     const request = controller;
@@ -38,10 +40,10 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
     try {
       const remote = readAppRelease(await env.fetchRelease(request.signal));
       if (disposed || request.signal.aborted) return;
-      pending = Boolean(remote && identity(remote) !== identity(current));
       // Read all safety state again AFTER the request: a form may have opened.
-      if (!remote) { env.observe?.('check_failed'); return; }
-      if (!pending) { env.observe?.('current'); return; }
+      if (!remote) { env.observe?.('check_failed'); return pending ? undefined : true; }
+      pending = identity(remote) !== identity(current);
+      if (!pending) { env.observe?.('current'); return true; }
       if (!env.visible()) return;
       if (!env.safe()) { env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
       const target = identity(remote);
@@ -54,16 +56,24 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
       // Persist before navigating. If storage fails, defer rather than risk a reload loop.
       try { env.saveAttempt({ target, at: env.now(), count: matching ? (previous!.count ?? 1) + 1 : 1, ...(commandId ? { commandId } : {}) }); }
       catch { env.observe?.('storage_failed'); return; }
+      resume?.();
       reloading = true;
       env.observe?.('reloading');
       env.reload();
     } catch {
       if (!disposed) env.observe?.('check_failed');
+      if (!disposed && !pending) return true;
       // Offline, timeout, invalid JSON or storage unavailable: keep the working screen.
     } finally {
       clearTimeout(timeout);
       controller = null;
     }
+  };
+  const check = (onReload?: () => void) => {
+    if (inFlight && !onReload) return Promise.resolve(undefined);
+    if (onReload) resume = onReload;
+    if (!inFlight) inFlight = perform(Boolean(onReload)).finally(() => { inFlight = undefined; resume = undefined; });
+    return inFlight;
   };
   return {
     check,

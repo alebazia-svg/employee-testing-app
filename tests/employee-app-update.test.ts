@@ -102,3 +102,28 @@ test('blocked storage fails safely without a reload', async () => {
   const s = setup(); s.failStorage(); await s.updater.check();
   assert.equal(s.counts().reloads, 0);
 });
+
+test('explicit form entry rechecks a recent release and saves only its open intent before reload', async () => {
+  const s = setup();
+  s.setRemote(current);
+  assert.equal(await s.updater.check(), true);
+  s.setRemote(next);
+  let intents = 0;
+  await s.updater.check(() => { intents++; });
+  assert.equal(intents, 1);
+  assert.deepEqual(s.counts(), { requests: 2, reloads: 1 });
+});
+
+test('form entry joins a pending check and respects an operation started during it', async () => {
+  const s = setup();
+  let resolve!: (release: unknown) => void;
+  s.setFetcher(() => new Promise(r => { resolve = r; }));
+  const first = s.updater.check();
+  let intents = 0;
+  const opened = s.updater.check(() => { intents++; });
+  s.setSafe(false);
+  resolve(next);
+  await Promise.all([first, opened]);
+  assert.deepEqual(s.counts(), { requests: 1, reloads: 0 });
+  assert.equal(intents, 0);
+});

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createEmployeeAppUpdater, readAppRelease, type UpdateAttempt } from './employee-app-update';
 import { startVisibleSync } from './visible-sync';
 import { reportAppState, appCommandEvent, currentAppCommandId, appClientObservation } from './portal-app-client';
@@ -10,6 +10,8 @@ const attemptKey = 'employee-app-update-attempt';
 
 /** Only the main workday screen opts in; detail forms never reload underneath their owner. */
 export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true) {
+  const gate = useRef<((resume: () => void) => Promise<boolean>) | null>(null);
+  const beforeOpen = useCallback(async (resume: () => void) => gate.current ? gate.current(resume) : false, []);
   const safeRef = useRef(isSafe);
   useLayoutEffect(() => { safeRef.current = isSafe; });
   useEffect(() => {
@@ -21,7 +23,7 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     if (!current) return;
     appClientObservation();
     reportAppState('checking');
-    let lastInteraction = Date.now();
+    let lastInteraction = -Infinity;
     let filePickerOpen = false;
     const touched = () => { lastInteraction = Date.now(); };
     const blockedReason = (): AppState | null => {
@@ -75,9 +77,11 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     // Capture interactions before React handlers, including native camera/file pickers.
     const events = ['pointerdown', 'pointerup', 'keydown', 'input', 'change', 'scroll', 'focusin'] as const;
     for (const event of events) document.addEventListener(event, touched, { capture: true, passive: true });
-    window.addEventListener('focus', touched);
-    document.addEventListener('visibilitychange', touched);
-    const stop = startVisibleSync(updater.check, 60_000);
+    gate.current = async resume => {
+      lastInteraction = -Infinity;
+      return (await updater.check(resume)) === true;
+    };
+    const stop = startVisibleSync(async () => { await updater.check(); }, 60_000);
     const requested = () => { void updater.check(); };
     window.addEventListener(appCommandEvent, requested);
     const retry = window.setInterval(() => { void updater.retry(); }, 2_000);
@@ -91,8 +95,8 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
       document.removeEventListener('cancel', pickerClosed, true);
       window.clearInterval(retry);
       for (const event of events) document.removeEventListener(event, touched, true);
-      window.removeEventListener('focus', touched);
-      document.removeEventListener('visibilitychange', touched);
+      gate.current = null;
     };
   }, [enabled]);
+  return beforeOpen;
 }
