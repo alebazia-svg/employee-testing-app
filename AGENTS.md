@@ -188,6 +188,13 @@ npm run test:payroll
 
 For docs-only Codex memory changes, no app build is required.
 
+## Employee preview parity at every release
+
+- For every release, identify the affected employee roles, screens and read-only ADMIN previews, including menus, sheets and drill-downs. Compare the exact candidate with the changes approved on the maintained branch so previously verified preview fixes survive release from a different base.
+- In an isolated database, open the actual employee screen and “Посмотреть как сотрудник” for the same employee, day, time and underlying records. Compare the available choices, recipient or other calculated values, labels, empty and unavailable states. Exercise conditional items and retries. A page opening successfully is insufficient.
+- Preview may display hypothetical input and read its result. Confirmations, shift changes, transfers and other writes must stay unavailable. Verify employee records and activity are unchanged by inspection. Use the same business readers and permission scope, and keep credentials and confirmation tokens out of preview responses.
+- Record which role, state and nested screen were compared. After installation, check the affected preview in the authenticated portal before registering the release. Record a concrete gap when a comparison cannot be performed. For releases with no affected employee screen, record that conclusion with its reason.
+
 ## UX/UI Definition Of Done
 
 - Every new or materially changed page, section, form, table, modal or other
