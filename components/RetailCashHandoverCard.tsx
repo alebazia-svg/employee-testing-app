@@ -68,8 +68,11 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
    <div className='employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'>
      <div className='mb-3 flex items-start gap-2'><span className='employee-material-task-glyph mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'><Banknote className='h-[26px] w-[26px]'/></span><h3 className='mt-0.5 text-base font-extrabold text-slate-950'>Пересчитайте и передайте все наличные</h3></div>
      <CashChecklistAmount value={inputAmount} onChange={value=>{setForm(true);setAmount(value);countKey.current=null;}} error={error}/>
-     {positive && <div className='mt-3 rounded-xl border border-slate-200 p-3' aria-live='polite'>{keepRecipient||offer?<p className='text-base font-bold'>Получатель: {schedulePersonName((keepRecipient ? h?.recipientName : offer?.name) ?? '')}</p>:offerError?<><p>{offerError}</p><button type='button' onClick={()=>setAttempt(a=>a+1)}>Проверить ещё раз</button></>:<p>Проверяем, кто на смене…</p>}</div>}
-     {zero && <p className='mt-2 text-sm'>В кассе 0 ₽. Передавать деньги не требуется.</p>}
+     {positive && <div className='mt-3 rounded-xl border border-slate-200 p-3' aria-live='polite'>{keepRecipient||offer?<>
+       <p className='inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-900 ring-1 ring-inset ring-emerald-200'>Получатель: <strong className='text-base font-extrabold'>{schedulePersonName((keepRecipient ? h?.recipientName : offer?.name) ?? '')}</strong></p>
+       <p className='mt-2 text-sm leading-snug text-slate-700'>После передачи денег нажмите кнопку — смена закроется.</p>
+     </>:offerError?<><p>{offerError}</p><button type='button' onClick={()=>setAttempt(a=>a+1)}>Проверить ещё раз</button></>:<p>Проверяем, кто на смене…</p>}</div>}
+     {zero && <p className='mt-2 text-sm'>Касса пуста. Нажмите «Завершить день», если вы закончили работу.</p>}
      <div className='mt-4 grid grid-cols-2 gap-2'><Button className='employee-material-secondary-action min-h-10 text-xs font-extrabold' disabled={busy} onClick={close}>Отмена</Button><Button className='employee-material-primary-action min-h-10 text-xs font-extrabold' disabled={inspecting||busy||(!zero&&(!positive||(!offer&&!keepRecipient)))} onClick={()=>void run(count)}>{busy?'Сохраняем…':zero?'Завершить день':'Деньги переданы'}</Button></div>
    </div>
  </CashChecklistSheet>;
