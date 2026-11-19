@@ -9,7 +9,7 @@ import type { AppState } from './portal-app-observation';
 const attemptKey = 'employee-app-update-attempt';
 
 /** Only the main workday screen opts in; detail forms never reload underneath their owner. */
-export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true) {
+export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true, cashHandover = false) {
   const gate = useRef<((resume: () => void) => Promise<boolean>) | null>(null);
   const beforeOpen = useCallback(async (resume: () => void) => gate.current ? gate.current(resume) : false, []);
   const safeRef = useRef(isSafe);
@@ -23,7 +23,7 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     if (!current) return;
     appClientObservation();
     reportAppState('checking');
-    let lastInteraction = -Infinity;
+    let lastInteraction = cashHandover ? -Infinity : Date.now();
     let filePickerOpen = false;
     const touched = () => { lastInteraction = Date.now(); };
     const blockedReason = (): AppState | null => {
@@ -35,6 +35,7 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
       return Date.now() - lastInteraction < 10_000 ? 'idle_wait' : null;
     };
     const updater = createEmployeeAppUpdater(current, {
+      cashHandover,
       now: Date.now,
       visible: () => document.visibilityState === 'visible' && navigator.onLine,
       safe: () => blockedReason() === null,
@@ -77,7 +78,11 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     // Capture interactions before React handlers, including native camera/file pickers.
     const events = ['pointerdown', 'pointerup', 'keydown', 'input', 'change', 'scroll', 'focusin'] as const;
     for (const event of events) document.addEventListener(event, touched, { capture: true, passive: true });
-    gate.current = async resume => {
+    if (!cashHandover) {
+      window.addEventListener('focus', touched);
+      document.addEventListener('visibilitychange', touched);
+    }
+    if (cashHandover) gate.current = async resume => {
       lastInteraction = -Infinity;
       return (await updater.check(resume)) === true;
     };
@@ -95,8 +100,10 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
       document.removeEventListener('cancel', pickerClosed, true);
       window.clearInterval(retry);
       for (const event of events) document.removeEventListener(event, touched, true);
+      window.removeEventListener('focus', touched);
+      document.removeEventListener('visibilitychange', touched);
       gate.current = null;
     };
-  }, [enabled]);
+  }, [enabled, cashHandover]);
   return beforeOpen;
 }

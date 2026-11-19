@@ -4,13 +4,14 @@ import { createEmployeeAppUpdater, readAppRelease, type AppRelease, type UpdateA
 
 const current: AppRelease = { version: '1.4.16', builtAt: '2026-10-16T17:31:16.194Z' };
 const next: AppRelease = { version: '1.4.17', builtAt: '2026-10-17T12:00:00Z' };
-function setup() {
+function setup(cashHandover = false) {
   let time = 1_000_000, visible = true, safe = true, reloads = 0, requests = 0;
   let remote: unknown = next;
   let attempt: UpdateAttempt | null = null;
   let fetcher = async (_signal: AbortSignal): Promise<unknown> => remote;
   let storageFails = false;
   const updater = createEmployeeAppUpdater(current, {
+    cashHandover,
     now: () => time,
     visible: () => visible,
     safe: () => safe,
@@ -129,10 +130,22 @@ test('form entry joins a pending check and respects an operation started during 
 });
 
 test('an available release is checked again as soon as the initial outbox check finishes', async () => {
-  const s = setup();
+  const s = setup(true);
   s.setSafe(false);
   await s.updater.check();
   s.setSafe(true);
   await s.updater.retry();
   assert.deepEqual(s.counts(), { requests: 2, reloads: 1 });
+});
+
+test('ordinary managers keep the existing interval after a busy screen clears', async () => {
+  const s = setup();
+  s.setSafe(false);
+  await s.updater.check();
+  s.setSafe(true);
+  await s.updater.retry();
+  assert.equal(s.counts().reloads, 0);
+  s.advance();
+  await s.updater.retry();
+  assert.equal(s.counts().reloads, 1);
 });

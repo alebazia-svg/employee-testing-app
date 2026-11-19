@@ -11,6 +11,7 @@ export function readAppRelease(value: unknown): AppRelease | null {
 const identity = (release: AppRelease) => `${release.version}@${release.builtAt}`;
 export type UpdateAttempt = { target: string; at: number; count?: number; commandId?: string };
 export type AppUpdateEnvironment = {
+  cashHandover?: boolean;
   now: () => number;
   visible: () => boolean;
   safe: () => boolean;
@@ -43,11 +44,15 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
       const remote = readAppRelease(await env.fetchRelease(request.signal));
       if (disposed || request.signal.aborted) return;
       // Read all safety state again AFTER the request: a form may have opened.
-      if (!remote) { env.observe?.('check_failed'); return pending ? undefined : true; }
+      if (!remote) {
+        if (!env.cashHandover) pending = false;
+        env.observe?.('check_failed');
+        return pending ? undefined : true;
+      }
       pending = identity(remote) !== identity(current);
       if (!pending) { env.observe?.('current'); return true; }
       if (!env.visible()) return;
-      if (!env.safe()) { waitingForSafeScreen = true; env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
+      if (!env.safe()) { waitingForSafeScreen = Boolean(env.cashHandover); env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
       const target = identity(remote);
       let previous: UpdateAttempt | null;
       try { previous = env.readAttempt(); } catch { env.observe?.('storage_failed'); return; }
