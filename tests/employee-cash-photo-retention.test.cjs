@@ -93,12 +93,13 @@ test('late storage enumeration cannot resurrect a photo already acknowledged and
 
 test('app update never reloads a memory-only first photo while React is restoring its outbox counter',()=>{
  const app=fs.readFileSync('app/(dashboard)/employee/EmployeeTodayClient.tsx','utf8');
- const start=app.indexOf('  useEmployeeAppUpdate(() =>');
+ const start=app.indexOf('useEmployeeAppUpdate(() =>');
+ assert.notEqual(start,-1,'workday update safety callback must be tested');
  const end=app.indexOf('\n\n  useEffect(',start);
  const code=ts.transpileModule(app.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- for(const volatile of [true,false]){
+ for(const retailCashMode of [true,false]) for(const volatile of [true,false]){
   let state;
-  const context={useEmployeeAppUpdate:fn=>{state=fn();},isSaving:false,uploadProgress:null,
+  const context={retailCashMode,useEmployeeAppUpdate:(fn,enabled,cashMode)=>{assert.equal(cashMode,retailCashMode);state=fn();},isSaving:false,uploadProgress:null,
    cashPhotoPickerActiveRef:{current:false},cashOutboxSyncing:false,cashOutboxSyncingRef:{current:false},cashOutboxCount:0,
    user:{id:7},hasVolatileEmployeeCashPhoto:()=>volatile,activeTab:'schedule',preview:null};
   vm.runInNewContext(code,context);
