@@ -5,8 +5,8 @@ import { fiscalProposedRecipients } from './terminal-fiscal-admin-gate';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 export async function resolveKkmCloseWorkplace(db: Db, userId: number, date: string) {
-  const day = await db.workDayEntry.findUnique({where:{userId_date:{userId,date}},include:{user:{select:{name:true,department:true}}}});
-  if (!day || day.user.department !== 'retail' || !day.startedAt) return null;
+  const day = await db.workDayEntry.findUnique({where:{userId_date:{userId,date}},include:{user:{select:{name:true,department:true,workdayControlMode:true}}}});
+  if (!day || day.user.department !== 'retail' || day.user.workdayControlMode === 'CASH_HANDOVER' || !day.startedAt) return null;
   const at = day.endedAt ? new Date(+day.endedAt - 1) : new Date();
   const mappings = await db.terminalFiscalMapping.findMany({where:{isActive:true,effectiveFrom:{lte:at},OR:[{effectiveTo:null},{effectiveTo:{gt:at}}]}});
   const unique = (rows: typeof mappings, basis: string) => {
@@ -24,7 +24,7 @@ export async function resolveKkmCloseWorkplace(db: Db, userId: number, date: str
   if (!isRetailWorkstationReplacement(day.user.name)) return null;
   // Reuse the existing replacement rule at observed shift boundaries. Do not
   // infer a workplace from schedule plans or from the employee's surname.
-  const entries = await db.workDayEntry.findMany({where:{date,department:'retail',user:{role:'EMPLOYEE',isActive:true}},select:{userId:true,startedAt:true,endedAt:true}});
+  const entries = await db.workDayEntry.findMany({where:{date,department:'retail',user:{role:'EMPLOYEE',isActive:true,workdayControlMode:{not:'CASH_HANDOVER'}}},select:{userId:true,startedAt:true,endedAt:true}});
   const overlapping=entries.filter(entry=>entry.startedAt<=at&&(!entry.endedAt||entry.endedAt>=day.startedAt));
   if(new Set(overlapping.map(entry=>entry.userId)).size>2)return null;
   const moments = [...new Set([+day.startedAt + 1,+at,...entries.flatMap(entry=>entry.startedAt?[+entry.startedAt+1]:[])])]
