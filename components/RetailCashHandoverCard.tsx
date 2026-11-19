@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle2, Banknote, ArrowRightLeft } from 'lucide-react';
 type Handover={reviewReason?:string|null;id:string;revision:number;status:string;actual:number;countedAt:string;recipientName:string|null;recipientUserId:number|null;preparedUntil:string|null;handedAt:string|null;expenseNumber:string|null;receiptNumber:string|null};
 const money=(n:number)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(n)+' ₽';
-export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch,onFinished,renderHandle,early=false}:{workDayId:number;taskId?:number;early?:boolean;completed:boolean;request?:(input:string,init?:RequestInit)=>Promise<Response>;renderHandle?:(close:()=>void,busy:boolean)=>React.ReactNode;onFinished:()=>void}){
+export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch,onFinished,renderHandle,beforeOpen,early=false}:{workDayId:number;taskId?:number;early?:boolean;beforeOpen?:(resume:()=>void)=>Promise<boolean>;completed:boolean;request?:(input:string,init?:RequestInit)=>Promise<Response>;renderHandle?:(close:()=>void,busy:boolean)=>React.ReactNode;onFinished:()=>void}){
  const [h,setH]=useState<Handover|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[form,setForm]=useState(false),[amount,setAmount]=useState('');
  const preview = useEmployeePreview();
  const inspecting = Boolean(preview);
@@ -21,6 +21,29 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
  const countKey=useRef<string|null>(null);const url=`/api/employee/workday/cash-handover?workDayId=${workDayId}`;
  const reload=useCallback(async()=>{try{const r=await request(url,{cache:'no-store'});const j=await r.json();if(!r.ok)throw Error(j.error);setH(j.handover);}catch(e){setError(e instanceof Error?e.message:'Нет связи с порталом.');}finally{setLoading(false);}},[request,url]);
  useEffect(()=>{void reload();const t=setInterval(()=>void reload(),10000);return()=>clearInterval(t);},[reload]);
+ const resumeKey='employee-cash-count-open';
+ useEffect(()=>{
+   if(loading||completed||inspecting||h||error)return;
+   try{
+     const raw=sessionStorage.getItem(resumeKey);
+     if(!raw)return;
+     sessionStorage.removeItem(resumeKey);
+     const intent=JSON.parse(raw);
+     if(intent.day===workDayId && intent.expires>Date.now())setForm(true);
+   }catch{/* The employee can open the form manually. */}
+ },[loading,completed,inspecting,h,error,workDayId]);
+ async function openCount(){
+   setBusy(true);setError('');
+   try{
+     if(!inspecting && beforeOpen && !await beforeOpen(()=>{
+       sessionStorage.setItem(resumeKey,JSON.stringify({day:workDayId,expires:Date.now()+60_000}));
+     })){
+       setError('Проверяем версию приложения. Если экран не обновился, попробуйте ещё раз.');
+       return;
+     }
+     setAmount('');countKey.current=null;setForm(true);
+   }finally{setBusy(false);}
+ }
  async function post(action:string,extra:Record<string,unknown>={}){const r=await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,revision:h?.revision??null,...extra})});const j=await r.json();if(!r.ok)throw Error(j.error||'Не удалось сохранить действие.');setH(j.handover);return j.handover as Handover;}
  async function finish(){const r=await request('/api/employee/workday/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workDayId})});const j=await r.json();if(!r.ok||!j.workDay?.endedAt)throw Error(j.error||'Завершение рабочего дня пока не подтверждено.');onFinished();}
  async function run(f:()=>Promise<void>){setBusy(true);setError('');try{await f();}catch(e){setError(e instanceof Error?e.message:'Нет связи с порталом. Сначала обновите сведения о передаче.');await reload();}finally{setBusy(false);}}
@@ -76,7 +99,7 @@ export function RetailCashHandoverCard({workDayId,taskId,completed,request=fetch
      <div className='mt-4 grid grid-cols-2 gap-2'><Button className='employee-material-secondary-action min-h-10 text-xs font-extrabold' disabled={busy} onClick={close}>Отмена</Button><Button className='employee-material-primary-action min-h-10 text-xs font-extrabold' disabled={inspecting||busy||(!zero&&(!positive||(!offer&&!keepRecipient)))} onClick={()=>void run(count)}>{busy?'Сохраняем…':zero?'Завершить день':'Деньги переданы'}</Button></div>
    </div>
  </CashChecklistSheet>;
- if(!h)return <EmployeeFinishDayCard id='pwa-current-action' animate={!early} description='Перед уходом укажите остаток. Если касса пуста, введите 0 ₽.' label='Пересчитать кассу' disabled={busy} onClick={()=>{setError('');setAmount('');countKey.current=null;setForm(true);}}>
+ if(!h)return <EmployeeFinishDayCard id='pwa-current-action' animate={!early} description='Перед уходом укажите остаток. Если касса пуста, введите 0 ₽.' label='Пересчитать кассу' disabled={busy} onClick={()=>void openCount()}>
    {error&&<p role='alert' className='text-sm font-semibold text-red-800'>{error}</p>}
  </EmployeeFinishDayCard>;
  return <div className='space-y-3'>

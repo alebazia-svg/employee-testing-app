@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createEmployeeAppUpdater, readAppRelease, type UpdateAttempt } from './employee-app-update';
 import { startVisibleSync } from './visible-sync';
 import { reportAppState, appCommandEvent, currentAppCommandId, appClientObservation } from './portal-app-client';
@@ -9,7 +9,9 @@ import type { AppState } from './portal-app-observation';
 const attemptKey = 'employee-app-update-attempt';
 
 /** Only the main workday screen opts in; detail forms never reload underneath their owner. */
-export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true) {
+export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true, cashHandover = false) {
+  const gate = useRef<((resume: () => void) => Promise<boolean>) | null>(null);
+  const beforeOpen = useCallback(async (resume: () => void) => gate.current ? gate.current(resume) : false, []);
   const safeRef = useRef(isSafe);
   useLayoutEffect(() => { safeRef.current = isSafe; });
   useEffect(() => {
@@ -21,7 +23,7 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     if (!current) return;
     appClientObservation();
     reportAppState('checking');
-    let lastInteraction = Date.now();
+    let lastInteraction = cashHandover ? -Infinity : Date.now();
     let filePickerOpen = false;
     const touched = () => { lastInteraction = Date.now(); };
     const blockedReason = (): AppState | null => {
@@ -33,6 +35,7 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
       return Date.now() - lastInteraction < 10_000 ? 'idle_wait' : null;
     };
     const updater = createEmployeeAppUpdater(current, {
+      cashHandover,
       now: Date.now,
       visible: () => document.visibilityState === 'visible' && navigator.onLine,
       safe: () => blockedReason() === null,
@@ -75,9 +78,15 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
     // Capture interactions before React handlers, including native camera/file pickers.
     const events = ['pointerdown', 'pointerup', 'keydown', 'input', 'change', 'scroll', 'focusin'] as const;
     for (const event of events) document.addEventListener(event, touched, { capture: true, passive: true });
-    window.addEventListener('focus', touched);
-    document.addEventListener('visibilitychange', touched);
-    const stop = startVisibleSync(updater.check, 60_000);
+    if (!cashHandover) {
+      window.addEventListener('focus', touched);
+      document.addEventListener('visibilitychange', touched);
+    }
+    if (cashHandover) gate.current = async resume => {
+      lastInteraction = -Infinity;
+      return (await updater.check(resume)) === true;
+    };
+    const stop = startVisibleSync(async () => { await updater.check(); }, 60_000);
     const requested = () => { void updater.check(); };
     window.addEventListener(appCommandEvent, requested);
     const retry = window.setInterval(() => { void updater.retry(); }, 2_000);
@@ -93,6 +102,8 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled =
       for (const event of events) document.removeEventListener(event, touched, true);
       window.removeEventListener('focus', touched);
       document.removeEventListener('visibilitychange', touched);
+      gate.current = null;
     };
-  }, [enabled]);
+  }, [enabled, cashHandover]);
+  return beforeOpen;
 }

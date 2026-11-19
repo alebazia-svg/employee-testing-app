@@ -1518,7 +1518,8 @@ export function EmployeeTodayClient({
   const cashFormHiddenAtRef = useRef<number | null>(null);
   const cashPhotoPickerActiveRef = useRef(false);
   const cashPhotoInputRef = useRef<HTMLInputElement | null>(null);
-  useEmployeeAppUpdate(() =>
+  const retailCashMode = usesRetailCashHandover(user);
+  const checkBeforeCashCount = useEmployeeAppUpdate(() =>
     isSaving ? 'saving' : uploadProgress !== null || cashPhotoPickerActiveRef.current ? 'upload'
     : cashOutboxSyncing || cashOutboxSyncingRef.current || cashOutboxCount > 0 || hasVolatileEmployeeCashPhoto(user.id) ? 'unsent'
     : activeTab !== 'day' ? 'safe_screen' :
@@ -1541,6 +1542,7 @@ export function EmployeeTodayClient({
     && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen
     && !comment.trim() && !message && !error,
     !preview,
+    retailCashMode,
   );
 
   useEffect(() => {
@@ -1716,7 +1718,6 @@ export function EmployeeTodayClient({
   const shiftControlEnabled = usesWorkdayShiftControl(user);
   // The shift menu exists only where the shift list is defined (retail, wholesale); procurement keeps its own day card unchanged.
   const canShiftMenu = !usesRetailCashHandover(user) && Boolean(supportedShiftCodesByDepartment[user.department]);
-  const retailCashMode = usesRetailCashHandover(user);
   const canUseCashOperations = shiftControlEnabled && !retailCashMode;
   const shiftCorrectionWindowOpen = Boolean(activeWorkDay && shiftCorrectionState.canCorrect);
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
@@ -3732,7 +3733,7 @@ export function EmployeeTodayClient({
 
   function renderShiftTaskAction(task: ShiftControlTask, compact = false, inSheet = false) {
     if (retailCashMode && task.category === 'handover' && workDay) {
-      return <RetailCashHandoverCard workDayId={workDay.id} taskId={task.id} completed={false} early={getMoscowMinutes(displayNow)<ATTENDANCE_END_MINUTES} request={request} onFinished={()=>void syncCurrentWorkdayState(true)} renderHandle={(close,busy)=><BottomSheetDragHandle onDismiss={close} disabled={busy} />} />;
+      return <RetailCashHandoverCard workDayId={workDay.id} taskId={task.id} beforeOpen={checkBeforeCashCount} completed={false} early={getMoscowMinutes(displayNow)<ATTENDANCE_END_MINUTES} request={request} onFinished={()=>void syncCurrentWorkdayState(true)} renderHandle={(close,busy)=><BottomSheetDragHandle onDismiss={close} disabled={busy} />} />;
     }
     const isEditing = editingShiftTaskId === task.id;
     if (task.status === 'done' && !isEditing) return renderShiftTaskAnswer(task);

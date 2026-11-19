@@ -4,13 +4,14 @@ import { createEmployeeAppUpdater, readAppRelease, type AppRelease, type UpdateA
 
 const current: AppRelease = { version: '1.4.16', builtAt: '2026-10-16T17:31:16.194Z' };
 const next: AppRelease = { version: '1.4.17', builtAt: '2026-10-17T12:00:00Z' };
-function setup() {
+function setup(cashHandover = false) {
   let time = 1_000_000, visible = true, safe = true, reloads = 0, requests = 0;
   let remote: unknown = next;
   let attempt: UpdateAttempt | null = null;
   let fetcher = async (_signal: AbortSignal): Promise<unknown> => remote;
   let storageFails = false;
   const updater = createEmployeeAppUpdater(current, {
+    cashHandover,
     now: () => time,
     visible: () => visible,
     safe: () => safe,
@@ -101,4 +102,50 @@ test('cached old client cannot cause rapid repeated reloads', async () => {
 test('blocked storage fails safely without a reload', async () => {
   const s = setup(); s.failStorage(); await s.updater.check();
   assert.equal(s.counts().reloads, 0);
+});
+
+test('explicit form entry rechecks a recent release and saves only its open intent before reload', async () => {
+  const s = setup();
+  s.setRemote(current);
+  assert.equal(await s.updater.check(), true);
+  s.setRemote(next);
+  let intents = 0;
+  await s.updater.check(() => { intents++; });
+  assert.equal(intents, 1);
+  assert.deepEqual(s.counts(), { requests: 2, reloads: 1 });
+});
+
+test('form entry joins a pending check and respects an operation started during it', async () => {
+  const s = setup();
+  let resolve!: (release: unknown) => void;
+  s.setFetcher(() => new Promise(r => { resolve = r; }));
+  const first = s.updater.check();
+  let intents = 0;
+  const opened = s.updater.check(() => { intents++; });
+  s.setSafe(false);
+  resolve(next);
+  await Promise.all([first, opened]);
+  assert.deepEqual(s.counts(), { requests: 1, reloads: 0 });
+  assert.equal(intents, 0);
+});
+
+test('an available release is checked again as soon as the initial outbox check finishes', async () => {
+  const s = setup(true);
+  s.setSafe(false);
+  await s.updater.check();
+  s.setSafe(true);
+  await s.updater.retry();
+  assert.deepEqual(s.counts(), { requests: 2, reloads: 1 });
+});
+
+test('ordinary managers keep the existing interval after a busy screen clears', async () => {
+  const s = setup();
+  s.setSafe(false);
+  await s.updater.check();
+  s.setSafe(true);
+  await s.updater.retry();
+  assert.equal(s.counts().reloads, 0);
+  s.advance();
+  await s.updater.retry();
+  assert.equal(s.counts().reloads, 1);
 });
