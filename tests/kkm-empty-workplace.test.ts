@@ -63,8 +63,10 @@ test('replacement workplace reuses real overlapping workdays, including when the
  const date='2026-11-01',user={name:'Костеренко Магомед',department:'retail'},day={userId:5,date,startedAt:new Date(date+'T05:00Z'),endedAt:new Date(date+'T17:00Z'),user};
  const mappings=[{id:'m',terminalKey:'1010808747019437',oneCCashRegisterRef:'m-kkm',kktRegistrationNumber:'m-kkt'},{id:'z',terminalKey:'2332022071',oneCCashRegisterRef:'z-kkm',kktRegistrationNumber:'z-kkt'}];
  let entries:any[]=[day,{userId:3,startedAt:new Date(date+'T06:00Z'),endedAt:new Date(date+'T15:00Z'),user:{name:'Чеченова Милана'}}];
- const db:any={workDayEntry:{findUnique:async()=>day,findMany:async()=>entries},terminalFiscalMapping:{findMany:async()=>mappings,findUnique:async({where}:any)=>mappings.find(m=>m.id===where.id)},workdayKkmAssignment:{findMany:async()=>[]},userOneCCashboxMapping:{findUnique:async()=>({isActive:true,oneCCashRegisterRef:null}),findMany:async()=>[]}};
+ const db:any={workDayEntry:{findUnique:async()=>day,findMany:async({where}:any)=>entries.filter(e=>e.user.workdayControlMode !== (where.user.workdayControlMode?.not ?? "UNFILTERED"))},terminalFiscalMapping:{findMany:async()=>mappings,findUnique:async({where}:any)=>mappings.find(m=>m.id===where.id)},workdayKkmAssignment:{findMany:async()=>[]},userOneCCashboxMapping:{findUnique:async()=>({isActive:true,oneCCashRegisterRef:null}),findMany:async()=>[]}};
  assert.equal((await resolveKkmCloseWorkplace(db,5,date))?.cashRegisterRef,'z-kkm');
+ entries.push({userId:12,startedAt:day.startedAt,endedAt:null,user:{name:'Тимур',workdayControlMode:'CASH_HANDOVER'}});
+ assert.equal((await resolveKkmCloseWorkplace(db,5,date))?.cashRegisterRef,'z-kkm','Timur does not occupy a replacement seat');
  entries.push({userId:4,startedAt:new Date(date+'T07:00Z'),endedAt:new Date(date+'T16:00Z'),user:{name:'Абшаева Зухра'}});
  assert.equal(await resolveKkmCloseWorkplace(db,5,date),null,'three overlapping employees do not establish a unique replacement workstation');
 });
@@ -76,4 +78,12 @@ test('new OFD receipt and second closure confirm the mapped KKT even when both a
  s.setReports([first]);assert.notEqual((await s.verify()).status,'confirmed');
  s.setReports([first,{...first,shiftNumber:'83',openedAt:'2026-11-01T07:49:00Z',closedAt:'2026-11-01T07:52:00Z'}]);
  const result=await s.verify();assert.equal(result.status,'confirmed');assert.equal(result.fiscalShiftNumber,'83');assert.equal(result.ofdReceiptRead?.fiscalDocumentNumber,'3342');
+});
+
+test('a cash handover employee has no KKM workplace, even with a stale assignment',async()=>{
+ const {resolveKkmCloseWorkplace}=await import('../lib/kkm-close-workplace');
+ const s=scenario();
+ Object.assign(s.day.user,{workdayControlMode:'CASH_HANDOVER'});
+ s.setAssignments([{oneCCashRegisterRef:'milana-kkm'}]);
+ assert.equal(await resolveKkmCloseWorkplace(s.db,3,s.date),null);
 });

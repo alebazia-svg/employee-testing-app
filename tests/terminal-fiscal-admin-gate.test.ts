@@ -388,3 +388,22 @@ test('an ambiguous prior three-person shift cannot establish Magomed seating',as
  const before=structuredClone(f.reviews[0]);await stageFiscalAdminReview(f.db,f.record);
  assert.deepEqual(f.reviews[0],before);
  });
+
+test('a retail cash handover shift never changes the recipient or shared notification list', async () => {
+  const workers = [
+    {id: 3, name: 'Чеченова Милана', home: 'kkm-milana'},
+    {id: 5, name: 'Костеренко Магомед', home: null},
+    {id: 12, name: 'Назранов Тимур', home: null},
+  ];
+  for (const target of ['kkm-milana', 'kkm-zukhra']) {
+    const {at, db} = routingDb({target, workers});
+    const all = await db.workDayEntry.findMany();
+    db.workDayEntry.findMany = async ({where}: any) => all.filter((row: {userId: number}) =>
+      (row.userId === 12 ? 'CASH_HANDOVER' : 'STANDARD') !== where.user.workdayControlMode?.not);
+    const result = await fiscalProposedRecipients(db, at, 'terminal');
+    assert.equal(result.primary?.id, target === 'kkm-milana' ? 3 : 5);
+    assert.deepEqual(result.users.map(u => u.id).sort(), [3,5]);
+    const fallback = await fiscalProposedRecipients(db, at);
+    assert.deepEqual(fallback.users.map(u => u.id).sort(), [3,5]);
+  }
+});
