@@ -16,7 +16,11 @@ export async function observeAppUpdate(userId: number, token: string | undefined
   const session = await prisma.portalAccessSession.findUnique({ where: { sessionHash: identity.sessionHash } });
   if (!session || session.userId !== userId || session.loggedOutAt || session.expiresAt <= now) return null;
   if (connectionMismatch(session.browserInstanceId, session.observedBrowserId) || connectionMismatch(session.browserInstanceId, browserInstanceId)) return null;
-  const command = parseUpdateCommand(session.appUpdateCommand);
+  const storedCommand = parseUpdateCommand(session.appUpdateCommand);
+  const release = serverAppRelease();
+  // A superseded target cannot be delivered or acknowledged. Keep its history,
+  // but allow a new window of this session to report its actual build.
+  const command = storedCommand && release && !sameRelease(storedCommand.target, release) ? null : storedCommand;
   const addressed = command && command.clientId === app.clientId;
   // While a command is pending, another tab cannot replace the target's version
   // or make its status look successful. The ordinary access journal still works.
@@ -31,7 +35,7 @@ export async function observeAppUpdate(userId: number, token: string | undefined
     ...(session.appUpdateCommand ? { appUpdateCommand: { equals: session.appUpdateCommand } } : {}),
   }, data: { appObservation: app, appCheckedAt: now, ...(updatedCommand ? { appUpdateCommand: updatedCommand } : {}) } });
   if (!changed.count) return null; // newer observation/command won the race
-  return addressed && commandActive(updatedCommand ?? command, now) && serverAppRelease() && sameRelease(command.target, serverAppRelease()!)
+  return addressed && commandActive(updatedCommand ?? command, now) && release
     ? { id: command.id } : null;
 }
 
