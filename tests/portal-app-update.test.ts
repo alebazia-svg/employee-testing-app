@@ -89,6 +89,25 @@ test('real isolated database: scoped/idempotent commands, real version confirmat
     record = await db.portalAccessSession.findUniqueOrThrow({ where: { id: session.id } });
     assert.ok((record.appUpdateCommand as any).completedAt);
     assert.equal((await server.requestAppUpdate(session.id, admin.id, now)).status, 409);
+    // A request made by a previous window is still within its TTL when a new
+    // build supersedes the target. Only reports from this connection qualify.
+    await db.portalAccessSession.update({ where: { id: session.id }, data: {
+      appUpdateCommand: first.command, browserInstanceId: app.clientId,
+    } });
+    const next = { ...current, builtAt: new Date(Date.parse(current.builtAt) + 60000).toISOString() };
+    process.env.NEXT_PUBLIC_APP_BUILT_AT = next.builtAt;
+    const newWindow = { ...app, ...next, clientId: crypto.randomUUID() };
+    await server.observeAppUpdate(user.id, token, newWindow, now, crypto.randomUUID());
+    record = await db.portalAccessSession.findUniqueOrThrow({ where: { id: session.id } });
+    assert.equal((record.appObservation as any).clientId, app.clientId);
+    for (const report of [newWindow, { ...app, commandId: first.command.id }]) {
+      const at = new Date(now.getTime() + 1000);
+      assert.equal(await server.observeAppUpdate(user.id, token, report, at, app.clientId), null);
+      record = await db.portalAccessSession.findUniqueOrThrow({ where: { id: session.id } });
+      assert.deepEqual(record.appObservation, report);
+      assert.equal(record.appCheckedAt?.getTime(), at.getTime());
+      assert.deepEqual(record.appUpdateCommand, first.command);
+    }
     await db.user.update({ where: { id: user.id }, data: { isActive: false } });
     assert.equal((await server.requestAppUpdate(session.id, admin.id, now)).status, 404);
     await db.user.update({ where: { id: user.id }, data: { isActive: true } });
