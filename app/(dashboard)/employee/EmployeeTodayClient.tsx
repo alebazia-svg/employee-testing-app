@@ -1,6 +1,7 @@
 'use client';
 import { CashChecklistSheet, CashChecklistAmount } from '@/components/CashChecklistSheet';
 import { CashOperationStatusRow } from '@/components/CashOperationStatusRow';
+import { EmployeeFinishDayCard } from '@/components/workday/EmployeeFinishDayCard';
 import { RetailCashHandoverCard } from '@/components/RetailCashHandoverCard';
 import { usesRetailCashHandover } from '@/lib/workday';
 import {employeeObservedFetch} from '@/lib/employee-observed-fetch';
@@ -108,7 +109,7 @@ import { EmployeeActionReminder, usePublishWorkdayReminder } from '@/components/
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 import { EmployeeWeekScheduleSheet } from '@/components/workday/EmployeeWeekScheduleSheet';
 import { pushAskAllowed, weekSheetAutoAllowed, weekSheetChanges, weekSheetDays, weekSheetLastWeek, weekSheetRequests, weekSheetThroughLabel, type WeekSheetStatus } from '@/lib/schedule-week-sheet';
-import { EmployeeAppSetupProposal, EmployeeFinishDayIcon, useAppSetupProposal } from '@/components/workday/EmployeeAppSetupProposal';
+import { EmployeeAppSetupProposal, useAppSetupProposal } from '@/components/workday/EmployeeAppSetupProposal';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
 const lateArrivalChoiceLabels: Record<keyof typeof lateArrivalReasons, string> = {
@@ -5537,21 +5538,23 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && !shiftControlEnabled && (
-                <Card id='pwa-workday-end' tabIndex={-1} className='space-y-3 border-green-100 bg-white p-4'>
-                  <div className={cn('flex gap-3', appSetupProposal?.finishProposal ? 'items-center' : 'items-start')}>
-                    {appSetupProposal?.finishProposal ? <EmployeeFinishDayIcon animate={workdayVisible && activeTab === 'day' && (getMoscowMinutes(displayNow) >= ATTENDANCE_END_MINUTES || appSetupProposal.eveningPreview === true)} /> : <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'><PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' /></span>}
+                appSetupProposal?.finishProposal ? <EmployeeFinishDayCard id='pwa-workday-end'
+                  animate={workdayVisible && activeTab === 'day' && (getMoscowMinutes(displayNow) >= ATTENDANCE_END_MINUTES || appSetupProposal.eveningPreview === true)}
+                  disabled={isSaving} label={isSaving ? 'Сохранение…' : 'Отметить уход'} onClick={finishWorkDay} /> : <Card id='pwa-workday-end' tabIndex={-1} className='space-y-3 border-green-100 bg-white p-4'>
+                  <div className='flex items-start gap-3'>
+                    <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'><PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' /></span>
                     <div className='min-w-0'>
-                      <h2 className='text-lg font-black leading-tight text-slate-950'>{appSetupProposal?.finishProposal ? 'Завершение дня' : 'Отметка рабочего дня'}</h2>
-                      {!appSetupProposal?.finishProposal && <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>Для вашей роли сегодня нужен только старт и конец рабочего дня.</p>}
+                      <h2 className='text-lg font-black leading-tight text-slate-950'>Отметка рабочего дня</h2>
+                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>Для вашей роли сегодня нужен только старт и конец рабочего дня.</p>
                     </div>
                   </div>
                   <Button
                     type='button'
-                    className={cn('h-12 w-full rounded-xl text-sm font-black', appSetupProposal?.finishProposal ? 'employee-material-primary-action' : 'bg-slate-950 hover:bg-slate-800')}
+                    className='h-12 w-full rounded-xl text-sm font-black bg-slate-950 hover:bg-slate-800'
                     onClick={finishWorkDay}
                     disabled={isSaving}
                   >
-                    {appSetupProposal?.finishProposal ? (isSaving ? 'Сохранение…' : 'Отметить уход') : 'Завершить рабочий день'}
+                    Завершить рабочий день
                   </Button>
                 </Card>
               )}
@@ -5574,8 +5577,8 @@ export function EmployeeTodayClient({
 
 
 
-              {retailCashMode && showShiftControl && !kkmCloseIssue && !showCloseResolution && getMoscowMinutes(displayNow)<ATTENDANCE_END_MINUTES && handoverTask && renderShiftTaskAction(handoverTask,true)}
-              {showShiftControl && (!retailCashMode || getMoscowMinutes(displayNow)>=ATTENDANCE_END_MINUTES) && !kkmCloseIssue && !showCloseResolution && (
+              {retailCashMode && showShiftControl && !kkmCloseIssue && !showCloseResolution && handoverTask && renderShiftTaskAction(handoverTask,true)}
+              {showShiftControl && !retailCashMode && !kkmCloseIssue && !showCloseResolution && (
                 <Card id='pwa-current-action' tabIndex={-1} className='pwa-review-task space-y-3 rounded-[24px] bg-white p-4'>
                   {!activeHandoverTask && cashEncashmentExceptionRequestState?.status !== 'pending' && <div className='pwa-studio-only pwa-checklist-heading' style={{ display: 'none' }}>
                     <div><h2>{retailCashMode ? 'Завершение дня' : 'Чек-лист смены'}</h2><span>{visibleShiftControlTasks.length - remainingShiftControlCount}/{visibleShiftControlTasks.length}</span></div>

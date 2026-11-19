@@ -5,6 +5,7 @@ import { orderEmployeeAttention, type EmployeeAttentionItem } from './employee-a
 
 export type ReminderWorkday = {
   attendanceEndRequired?: boolean;
+  retailCashHandover?: boolean;
   workDay: { status: string; date: string; endedAt?: string | Date | null } | null;
   unfinishedWorkDay?: { date: string } | null;
   shiftControl: {
@@ -32,6 +33,12 @@ export function employeeActionReminder(workday: ReminderWorkday | null, attentio
   const { run, tasks } = workday.shiftControl;
   if (!run && workday.attendanceEndRequired && getMoscowMinutes(now) >= ATTENDANCE_END_MINUTES) return { id: `workday-end:${today}`, title: 'Завершите рабочий день', href: '/employee#pwa-workday-end', target: 'checklist' };
   if (!run || run.date !== today || run.status === 'completed' || run.completedAt) return scheduleReminder;
-  const task = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id).find(task => task.status !== 'done' && (task.plannedTimeMinutes === null || getMoscowMinutes(now) >= task.plannedTimeMinutes));
+  const minutes = getMoscowMinutes(now);
+  const task = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id).find(task => {
+    const due = workday.retailCashHandover && task.category === 'handover'
+      ? ATTENDANCE_END_MINUTES
+      : task.plannedTimeMinutes;
+    return task.status !== 'done' && (due === null || minutes >= due);
+  });
   return task ? { id: `task:${task.id}`, title: task.category === 'cash' ? 'Введите остаток по кассе' : task.title, href: '/employee#pwa-current-action', target: 'checklist' } : scheduleReminder;
 }

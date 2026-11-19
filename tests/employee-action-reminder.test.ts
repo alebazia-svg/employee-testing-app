@@ -89,3 +89,18 @@ test('procurement end reminder uses the existing 18:00 policy, only with an actu
   }
   assert.equal(employeeActionReminder(data, [issue('action')], new Date('2026-10-22T15:00:00Z'))?.id, 'issue:7');
 });
+
+test('retail cash handover banner follows Moscow evening hours, including existing untimed tasks', () => {
+  const data = fixture();
+  data.shiftControl.tasks = [{ ...data.shiftControl.tasks[1], plannedTimeMinutes: null }];
+  const morning = new Date('2026-10-22T07:00:00Z');
+  const evening = new Date('2026-10-22T15:00:00Z');
+  assert.equal(employeeActionReminder(data, [], morning)?.id, 'task:2');
+  data.retailCashHandover = true;
+  assert.equal(employeeActionReminder(data, [], morning), null);
+  assert.equal(employeeActionReminder(data, [], new Date(evening.getTime() - 1)), null);
+  assert.equal(employeeActionReminder(data, [issue('action')], morning)?.id, 'issue:7');
+  assert.equal(employeeActionReminder(data, [], evening)?.id, 'task:2');
+  data.workDay!.endedAt = evening;
+  assert.equal(employeeActionReminder(data, [], evening), null);
+});

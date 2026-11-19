@@ -43,7 +43,7 @@ function revealChecklist(href = '/employee#pwa-current-action') {
 }
 
 /** Reuses authorized current-work reads, without notification-read writes. */
-export function EmployeeActionReminderProvider({ children, attendanceEndRequired = false }: { children: ReactNode; attendanceEndRequired?: boolean }) {
+export function EmployeeActionReminderProvider({ children, attendanceEndRequired = false, retailCashHandover = false }: { children: ReactNode; attendanceEndRequired?: boolean; retailCashHandover?: boolean }) {
   const preview = useEmployeePreview();
   const requestRead = preview?.request ?? fetch;
   const cashIssue = useCashIssue();
@@ -105,7 +105,7 @@ export function EmployeeActionReminderProvider({ children, attendanceEndRequired
   }, []);
   const request = cashIssue?.snapshot.request;
   const cashItem: EmployeeAttentionItem[] = request ? [{ id: `cash-issue:${request.ref}`, title: cashIssueCompactCopy(request).title, kind: 'cash_issue', state: 'action', status: '', priority: 0, date: request.checkedAt, detail: '' }] : [];
-  const action = employeeActionReminder(workday ? { ...workday, attendanceEndRequired } : null, [...(attention ?? []).filter(item => item.kind !== 'cash_issue'), ...cashItem]);
+  const action = employeeActionReminder(workday ? { ...workday, attendanceEndRequired, retailCashHandover } : null, [...(attention ?? []).filter(item => item.kind !== 'cash_issue'), ...cashItem]);
   useEffect(() => { setDeferred(false); }, [action?.id]);
   useEffect(()=>{if(!deferred || !action?.remindAfterMs)return;const timer=window.setTimeout(()=>setDeferred(false),action.remindAfterMs);return()=>window.clearTimeout(timer);},[deferred,action?.id,action?.remindAfterMs]);
   return <Context.Provider value={{ action, deferred, error: error || attentionError, defer: () => setDeferred(true), refresh: () => refresh(true), setView, publishWorkday, publishAttention }}>{children}</Context.Provider>;
