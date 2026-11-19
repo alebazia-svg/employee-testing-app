@@ -24,6 +24,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (!resource) throw new Error('Действие недоступно в режиме проверки.');
   const params = new URLSearchParams({ resource });
   if (resource === 'cash-handover' && url.searchParams.has('workDayId')) params.set('workDayId',url.searchParams.get('workDayId')!);
+  if (resource === 'cash-handover' && url.searchParams.get('recipient') === '1') params.set('recipient','1');
   if (resource === 'app-setup' && url.searchParams.has('connection')) params.set('connection',url.searchParams.get('connection')!);
   if (notification) params.set('notification', notification[1]);
   if (receiptFile) { params.set('plan', decodeURIComponent(receiptFile[1])); params.set('receipt', decodeURIComponent(receiptFile[2])); }
