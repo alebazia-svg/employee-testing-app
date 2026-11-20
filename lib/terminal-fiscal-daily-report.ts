@@ -10,6 +10,7 @@ export type DailyFiscalRow = {key:string;name:string;bankKopecks:number;oneCKope
 export function buildDailyFiscalReport(input:{from:Date;to:Date;parts:DailyFiscalEvidence[]}) {
   const inside=(at:string)=>Date.parse(at)>=input.from.getTime()&&Date.parse(at)<input.to.getTime();
   const complete={bank:input.parts.length>0&&input.parts.every(p=>p.complete.bank),oneC:input.parts.length>0&&input.parts.every(p=>p.complete.oneC),ofd:input.parts.length>0&&input.parts.every(p=>p.complete.ofd)};
+  const sourceComplete={...complete};
   const banks=new Map(input.parts.flatMap(p=>p.bankOperations.filter(b=>inside(b.transactionDate)).map(b=>[bankOperationKey(b),b] as const)));
   const checks=new Map(input.parts.flatMap(p=>p.oneCChecks.map(c=>[c.sourceRef,c] as const)));
   const receipts=new Map(input.parts.flatMap(p=>p.ofdReceipts.filter(r=>inside(r.receiptAt)).map(r=>[`${r.kktRegistrationNumber}|${canonicalFiscalKey(r)??r.receiptAt}`,r] as const)));
@@ -70,7 +71,7 @@ export function buildDailyFiscalReport(input:{from:Date;to:Date;parts:DailyFisca
   }
   const result=[...rows.values()].map(r=>({...r,bankDifferenceKopecks:r.bankKopecks-r.oneCKopecks,fiscalDifferenceKopecks:r.oneCKopecks-r.ofdKopecks})).sort((a,b)=>a.key==='unassigned'?1:b.key==='unassigned'?-1:a.name.localeCompare(b.name,'ru'));
   const total=result.reduce((a,r)=>({...a,bankKopecks:a.bankKopecks+r.bankKopecks,oneCKopecks:a.oneCKopecks+r.oneCKopecks,ofdKopecks:a.ofdKopecks+r.ofdKopecks,bankDifferenceKopecks:a.bankDifferenceKopecks+r.bankDifferenceKopecks,fiscalDifferenceKopecks:a.fiscalDifferenceKopecks+r.fiscalDifferenceKopecks}),{key:'total',name:'Итого',bankKopecks:0,oneCKopecks:0,ofdKopecks:0,bankDifferenceKopecks:0,fiscalDifferenceKopecks:0});
-  return {transactions,rows:result,total,complete,nativeFiscalKopecks,nativeFiscalComplete,unresolved,movements,lateLinkedKopecks,unlinkedAcquiringKopecks,unlinkedAcquiringCount,
+  return {transactions,rows:result,total,complete,sourceComplete,nativeFiscalKopecks,nativeFiscalComplete,unresolved,movements,lateLinkedKopecks,unlinkedAcquiringKopecks,unlinkedAcquiringCount,
     status:!complete.bank||!complete.oneC||!complete.ofd?'incomplete':total.bankDifferenceKopecks||total.fiscalDifferenceKopecks?'difference':unresolved||result.some(r=>r.bankDifferenceKopecks!==0||r.fiscalDifferenceKopecks!==0)?'review':'balanced'};
 }
 export type DailyFiscalReport=ReturnType<typeof buildDailyFiscalReport>;

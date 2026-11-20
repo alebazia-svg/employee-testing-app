@@ -1,6 +1,7 @@
+import {selectFiscalReportRefresh} from '@/lib/terminal-fiscal-report-refresh';
 import { getCurrentUser } from '@/lib/auth';
 import { loadDailyFiscalReport } from '@/lib/terminal-fiscal-daily-report-loader';
-import { validFiscalDay, writeFiscalReport, type SavedFiscalReport } from '@/lib/terminal-fiscal-report-cache';
+import { validFiscalDay, readFiscalReport, writeFiscalReport, type SavedFiscalReport } from '@/lib/terminal-fiscal-report-cache';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const pending = new Map<string, Promise<{report:SavedFiscalReport;saved:boolean}>>();
@@ -13,7 +14,10 @@ export async function GET(request: Request) {
   let work = pending.get(day);
   if (!work) {
     work = (async()=>{
-      const report = await loadDailyFiscalReport(day);
+      const fresh = await loadDailyFiscalReport(day);
+      const previous = await readFiscalReport(day);
+      const selected = selectFiscalReportRefresh(previous,fresh);
+      const report = selected.retained ? fresh : selected.report;
       const saved = await writeFiscalReport(day, report).catch(()=>false);
       return {report,saved};
     })();

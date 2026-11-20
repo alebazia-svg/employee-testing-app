@@ -1,3 +1,4 @@
+import {hasCompleteFiscalSources,selectFiscalReportRefresh} from './terminal-fiscal-report-refresh';
 import 'server-only';
 import { TERMINAL_FISCAL_MATCHING_VERSION } from './terminal-fiscal-matching';
 import { createHash, randomUUID } from 'node:crypto';
@@ -5,7 +6,7 @@ import { mkdir, readFile, rename, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { loadDailyFiscalReport } from './terminal-fiscal-daily-report-loader';
 import { readOneCRuntimeEnv } from './one-c-env';
-export type SavedFiscalReport = Awaited<ReturnType<typeof loadDailyFiscalReport>>;
+export type SavedFiscalReport = Awaited<ReturnType<typeof loadDailyFiscalReport>> & {settlementUpdatedAt?:string;settlementReused?:boolean};
 const schema = 'fiscal-daily-v2';
 export function validFiscalDay(day: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(Date.parse(day)) && new Date(day).toISOString().slice(0,10) === day;
@@ -17,7 +18,7 @@ function location(day: string) {
   return path.join(process.env.FISCAL_REPORT_CACHE_DIR || path.join(process.cwd(), '.cache', 'fiscal-reports'), scope, `${day}.json`);
 }
 export function completeFiscalReport(report: SavedFiscalReport) {
-  return report.configurationComplete && report.complete.bank && report.complete.oneC && report.complete.ofd;
+  return hasCompleteFiscalSources(report);
 }
 export async function readFiscalReport(day: string): Promise<SavedFiscalReport | null> {
   const target = location(day);
@@ -33,7 +34,9 @@ export async function readFiscalReport(day: string): Promise<SavedFiscalReport |
 export async function writeFiscalReport(day: string, report: SavedFiscalReport) {
   if (!completeFiscalReport(report)) return false;
   const previous = await readFiscalReport(day);
-  if (previous?.settlement.complete && !report.settlement.complete) return false;
+  const selected=selectFiscalReportRefresh(previous,report);
+  if(selected.retained)return false;
+  report=selected.report;
   const target = location(day);
   await mkdir(path.dirname(target), {recursive:true, mode:0o700});
   const temporary = `${target}.${randomUUID()}.tmp`;
