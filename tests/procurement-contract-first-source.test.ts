@@ -21,12 +21,16 @@ test('contract-first reads preserve order allocation and manual links, and fail 
   const order={...debt,id:'order',planCode:'ORDER',orderRefs:[ref(9)]};
   const originalFetch=globalThis.fetch;
   try {
-    for(const scenario of ['contract','order','manual','unsupported','incomplete','mismatch','cancelled']) {
+    for(const scenario of ['contract','order','manual','unsupported','incomplete','mismatch','cancelled','missing-order','gateway-404','server-failure']) {
       const calls:string[]=[];
       globalThis.fetch=async(input)=>{
         const u=new URL(String(input));assert.equal(u.host,'fixture.invalid');
         const endpoint=u.pathname.slice(1),detail=u.searchParams.get('detail')||'';
         calls.push(endpoint+':'+detail);
+        if (detail==='document-evidence' && u.searchParams.get('order_ref')===ref(10)) {
+          return Response.json({ok:false,error:scenario==='gateway-404'?'not_found':'order_not_found',write_operations:false},
+            {status:scenario==='server-failure'?503:404});
+        }
         let payload:any;
         if(endpoint==='supplier-currency-payment-diagnostics')payload={ok:true,rows:[]};
         else if(endpoint==='currency-exchange-diagnostics')payload={ok:true,cash_expense_orders:[]};
@@ -42,15 +46,28 @@ test('contract-first reads preserve order allocation and manual links, and fail 
         return Response.json(payload);
       };
       const manual={...debt,oneCCashEvidence:{manualRubleLinks:[{ref:raw.ref,fingerprint:paymentFingerprint(originalPayment)}]}};
-      const plans=scenario==='order'?[debt,order]:scenario==='manual'?[manual]:[debt];
+      const missingOrder = {...order,id:'missing',planCode:'MISSING',orderRefs:[ref(10)]};
+      const withMissing = ['missing-order','gateway-404','server-failure'].includes(scenario);
+      const plans=withMissing?[missingOrder,debt,order]:scenario==='order'?[debt,order]:scenario==='manual'?[manual]:[debt];
       const read=()=>mod.exports.fetchSupplierCurrencyPaymentSnapshot({from:new Date(now.getTime()-3*86400000),to:now,plans});
       if(['incomplete','mismatch'].includes(scenario)){await assert.rejects(read,/PAYMENT_BASIS_/);continue;}
+      if (['gateway-404','server-failure'].includes(scenario)) {
+        await assert.rejects(read, /CURRENCY_PAYMENT_SOURCE_HTTP_/);
+        continue;
+      }
       const snapshot=await read();assert.equal(snapshot.complete,true);
       if(scenario==='contract'){
         assert.equal(snapshot.payments[0].registerContractBasis.contracts.length,1);
         assert.equal(calls.length,4,'three lists plus exact payment proof, without order catalogue');
         assert.equal(matchProcurementPaymentEvidence([debt],[],snapshot.payments,[]).get('debt')!.issuedAmount,100);
         calls.length=0;await read();assert.equal(calls.length,4,'next read must fetch fresh data, not reuse settled proof');
+      }
+      if(scenario==='missing-order'){
+        assert.deepEqual(snapshot.missingOrderRefs,[ref(10)]);
+        const allocation=matchProcurementPaymentEvidence(plans,[],snapshot.payments,[]);
+        assert.equal(allocation.get('order')!.issuedAmount,100);
+        assert.equal(allocation.get('missing')!.issuedAmount,0);
+        assert.equal(allocation.get('debt')!.issuedAmount,0);
       }
       if(scenario==='order'){
         assert.ok(calls.includes('supplier-settlements:document-evidence'),'explicit order must always be checked');
