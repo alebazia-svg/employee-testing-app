@@ -109,6 +109,7 @@ type Plan = {
   events?: PlanChangeEvent[];
   evidence?: {
     qrFunding?: import('@/lib/procurement-qr-funding').QrFunding;
+    paymentReviewReasons?: {ref:string; message:string}[];
     verification?: 'current' | 'last-confirmed' | 'unavailable';
     verifiedAt?: string;
     collection?: import('@/lib/procurement-collection').ProcurementCollection;
@@ -362,7 +363,7 @@ export default function ProcurementPaymentCalendarClient({
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence?.state);
   const paidPlans = [...activePlans.filter(isPaymentFinished), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
   const receiptPlans = plans.filter(canCollectProcurementReceipt);
-  const unknownPayments = activePlans.filter(plan => plan.status === 'APPROVED' && plan.evidence?.verification === 'unavailable');
+  const unknownPayments = activePlans.filter(plan => plan.status === 'APPROVED' && (plan.evidence?.verification === 'unavailable' || !!plan.evidence?.paymentReviewReasons?.length));
   const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan) && (plan.status !== 'APPROVED' || plan.evidence?.verification !== 'unavailable'));
   const planningOrders = calculateOrderPlanning(
     initialOrders,
@@ -390,7 +391,7 @@ export default function ProcurementPaymentCalendarClient({
     ? reviewOrders
     : reviewOrders.slice(0, 3);
   const positionSummary = supplierPositionSummary(supplierBalances);
-  const unpaidActivePlans = workingPlans.map((plan) => ({
+  const unpaidActivePlans = workingPlans.filter(plan => !plan.evidence?.paymentReviewReasons?.length).map((plan) => ({
     ...plan,
     remainingRub: isCurrencyPaid(plan) ? 0 : Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0) + Number(plan.evidence?.paidAmount || 0))),
   })).filter((plan) => plan.remainingRub > 0.009);
@@ -398,7 +399,7 @@ export default function ProcurementPaymentCalendarClient({
     .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR")
     .reduce((sum, plan) => sum + plan.remainingRub, 0);
   const ownUsdtReserve = usdtReservedByPlans(activePlans, referenceUsdtRate);
-  const reservesUnavailable = basisPreview || plansSourceError || evidenceSourceError || unverifiedPaymentView;
+  const reservesUnavailable = activePlans.some(p => p.evidence?.paymentReviewReasons?.length) || basisPreview || plansSourceError || evidenceSourceError || unverifiedPaymentView;
   const plannedUsdt = reservesUnavailable || ownUsdtReserve == null || otherUsdtReserve == null
     ? null : ownUsdtReserve + otherUsdtReserve;
   const freeQr = balancesRefreshing || balancesUnavailable || reservesUnavailable || accountableBalance.error || accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
@@ -408,7 +409,7 @@ export default function ProcurementPaymentCalendarClient({
   const editAvailableUsdt=balancesRefreshing||balancesUnavailable||reservesUnavailable||usdtBalance.error||usdtBalance.balance==null||otherUsdtReserve==null||otherEditReserve==null?null:usdtBalance.balance-otherUsdtReserve-otherEditReserve;
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
-    [...workingPlans]
+    workingPlans.filter(plan => !plan.evidence?.paymentReviewReasons?.length)
       .sort((a, b) => (paymentPreparationDate(a)||'9999-12-31').localeCompare(paymentPreparationDate(b)||'9999-12-31') || paymentActionPriority(a) - paymentActionPriority(b))
       .forEach((plan) => {
         const key = paymentPreparationDate(plan)||'9999-12-31';
@@ -714,7 +715,7 @@ export default function ProcurementPaymentCalendarClient({
         <p className="mt-1 text-xs text-slate-600">Пока сверка не завершена, эти заявки не считаются неоплаченными.</p>
         <div className="mt-2 divide-y divide-stone-100">{unknownPayments.map(plan=><div key={plan.id} className="flex items-center justify-between gap-3 py-2">
           <span className="text-sm font-semibold">{plan.supplierPartner}<span className="ml-2 text-xs font-normal text-slate-500">{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):supplierOnlyPaymentLabel(plan)}</span></span>
-          <button type="button" className="pam-button shrink-0" disabled={editingBlocked||!!plan.revision} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`}>Изменить</button>
+          {plan.evidence?.paymentReviewReasons?.length ? <span className="text-xs text-amber-800">Проверка расходника</span> : <button type="button" className="pam-button shrink-0" disabled={editingBlocked||!!plan.revision} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`}>Изменить</button>}
         </div>)}</div>
       </section> : null}
       {mappingBlocked ? (

@@ -1,3 +1,5 @@
+import { retainDisplayConfirmations } from '@/lib/procurement-confirmed-payment-server';
+import { confirmedPayments, type PaymentConfirmation } from '@/lib/procurement-confirmed-payment';
 import { AdminProcurementUpdate } from "./AdminProcurementStream";
 import { type AdminPlans, sameAdminPlanVersions } from "@/lib/procurement-admin-plans";
 import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continuity';
@@ -78,6 +80,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   if (!currencySource) warnings.push("оплаты поставщикам");
   else if (!currencySource.complete) warnings.push("неполная выгрузка оплат поставщикам");
   else if (!currencySource.rubPaymentsSupported) warnings.push("для сверки рублёвых оплат требуется обновление API 1С");
+  const confirmations: PaymentConfirmation[] = [];
   const paymentEvidence = matchProcurementPaymentEvidence(
     plans.map((plan) => ({
       id: plan.id,
@@ -95,19 +98,21 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
       status: plan.status,
       currency: plan.currency,
       hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)),
+      oneCCashEvidence: plan.oneCCashEvidence,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
       completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
-    { allowSmallRemainder: plansResult.status === 'fulfilled' && requestSource?.complete === true && currencySource?.complete === true && currencySource.rubPaymentsSupported === true },
+    { confirmations, allowSmallRemainder: plansResult.status === 'fulfilled' && requestSource?.complete === true && currencySource?.complete === true && currencySource.rubPaymentsSupported === true },
   );
   const evidenceComplete = plansResult.status === 'fulfilled' && requestSource?.complete === true &&
     currencySource?.complete === true && currencySource.rubPaymentsSupported === true;
+  const retention = await retainDisplayConfirmations(plans, evidenceComplete ? confirmations : [], evidenceReadStartedAt);
   attachQrFunding(paymentEvidence,await qrFundingPromise);
-  const displayEvidence = await preservePaymentEvidenceViews(plans, paymentEvidence, evidenceComplete,
-    evidenceReadStartedAt, prisma.supplierPaymentPlan);
+  const displayEvidence = await preservePaymentEvidenceViews(retention.plans, paymentEvidence, evidenceComplete,
+    evidenceReadStartedAt, prisma.supplierPaymentPlan, new Date(), {deferred: retention.deferred});
   const serialized = plans.map((plan) => ({
     ...JSON.parse(JSON.stringify(plan)),
     evidence: paymentEvidence.get(plan.id)!,
@@ -196,8 +201,8 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   const usdtRateReference = rateResult.status === "fulfilled" ? rateResult.value : undefined;
   if (!usdtRateReference?.rate) warnings.push("курс последней конвертации USDT");
   const forecastInput: AdminForecastInput = {
-    todayKey, plansComplete: plansResult.status === 'fulfilled', ordersComplete: ordersSource?.complete === true,
-    plansWithOrderContext: plansWithOrderContext.map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingAmount:evidence.remainingAmount,remainingForeignAmount:evidence.remainingForeignAmount,paymentAmountNeedsConfirmation:evidence.paymentAmountNeedsConfirmation}})),
+    todayKey, plansComplete: plansResult.status === 'fulfilled' && plansWithOrderContext.every(p => !p.evidence.paymentReviewReasons?.length) && !retention.deferred?.size, ordersComplete: ordersSource?.complete === true,
+    plansWithOrderContext: plansWithOrderContext.filter(p => !p.evidence.paymentReviewReasons?.length).map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingAmount:evidence.remainingAmount,remainingForeignAmount:evidence.remainingForeignAmount,paymentAmountNeedsConfirmation:evidence.paymentAmountNeedsConfirmation}})),
     scopedOrders: scopedOrders.map(({supplierPartner,supplierCounterparty,orderPaymentGap})=>({supplierPartner,supplierCounterparty,orderPaymentGap})),
     managerOrders: managerOrders.map(({supplierPartner,supplierCounterparty})=>({supplierPartner,supplierCounterparty})),
     usdtBalance:{balance:usdtBalance.balance}, accountableBalance:{balance:accountableBalance.balance}, usdtRateReference,
@@ -212,6 +217,14 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
         confirmed: Boolean(payment),
       };
     }));
+  const reviewLinks = plans.flatMap(plan => {
+    const storedLinks = confirmedPayments(plan.oneCCashEvidence);
+    return (paymentEvidence.get(plan.id)?.paymentReviewReasons || []).map(issue => ({
+      ref: issue.ref, planId: plan.id, label: plan.supplierPartner + ' · ' + plan.planCode,
+      reason: issue.message, confirmed: false, canUnlink: storedLinks.some(link => link.ref === issue.ref),
+      automaticFingerprint: storedLinks.find(link => link.ref === issue.ref)?.fingerprint,
+    }));
+  });
   const latestPlans = await prisma.supplierPaymentPlan.findMany({ select: { id: true, updatedAt: true } });
   if (!sameAdminPlanVersions(initialPlans, latestPlans)) return <AdminProcurementUpdate generation={generation} failed />;
   const displayComplete = evidenceComplete && [...displayEvidence.values()].every(view => view.verification === 'current');
@@ -227,12 +240,12 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
                 !isFinishedPaymentState(paymentEvidence.get(plan.id)?.state)) &&
               ![...paymentEvidence.values()].some((item) => [...item.cashOrders, ...item.currencyPayments].some((order) => order.ref === payment.ref)) &&
-              !plans.some((plan) => manualPaymentLinks(plan.oneCCashEvidence).some((link) => link.ref === payment.ref)))
+              !plans.some((plan) => [...manualPaymentLinks(plan.oneCCashEvidence), ...confirmedPayments(plan.oneCCashEvidence)].some(link => link.ref.toLowerCase() === payment.ref.toLowerCase())))
             .slice().reverse()}
           plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner, paymentPurpose: plan.paymentPurpose,
             supplierCounterparty: plan.supplierCounterparty, orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [], orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
             remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod, hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)) }))}
-          linked={manualLinksForDisplay}
+          linked={[...manualLinksForDisplay, ...reviewLinks]}
         /> : null}
           paymentLinkHistory={displayComplete ? <ProcurementUnlinkedPayments view="history" payments={[]} plans={[]} linked={manualLinksForDisplay} /> : null}
           initialPlans={plansWithOrderContext.map(plan => ({ ...plan, evidence: displayEvidence.get(plan.id)! }))}

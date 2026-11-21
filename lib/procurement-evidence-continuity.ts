@@ -24,6 +24,7 @@ export function paymentEvidenceIdentity(plan: EvidenceContinuityPlan) {
     plan.orderRefs, String(plan.plannedAmount), plan.paymentMethod, plan.currency,
     String(plan.foreignAmount ?? ''), plan.plannedDate, plan.createdAt, plan.status,
     meta.paymentMatchFrom, meta.pendingRevision, meta.manualRubleLinks, meta.completion,
+    ...(meta.confirmedSupplierPayments?.length ? [meta.confirmedSupplierPayments.map((p: {ref:string;fingerprint:string}) => [p.ref,p.fingerprint])] : []),
   ])).digest('hex');
 }
 
@@ -47,7 +48,7 @@ export function paymentEvidenceView(plan: EvidenceContinuityPlan, current: Procu
     const { collection, ...evidence } = saved.evidence;
     return { ...evidence, verification: 'last-confirmed', verifiedAt: saved.verifiedAt };
   }
-  return { ...current, state: 'SOURCE_UNAVAILABLE', issuedAmount: 0, paidAmount: 0,
+  return { ...current, paymentReviewReasons: undefined, state: 'SOURCE_UNAVAILABLE', issuedAmount: 0, paidAmount: 0,
     paidForeignAmount: 0, cashOrders: [], currencyPayments: [], collection: undefined,
     verification: 'unavailable' };
 }
@@ -57,14 +58,14 @@ export function paymentEvidenceView(plan: EvidenceContinuityPlan, current: Procu
  * Incomplete reads NEVER persist or replace a confirmed snapshot. */
 export async function preservePaymentEvidenceViews(plans: EvidenceContinuityPlan[],
   evidence: Map<string, ProcurementPaymentEvidence>, complete: boolean, readStartedAt: Date,
-  store: { updateMany(args: any): Promise<unknown> }, now = new Date(), options: { persist?: boolean } = {}) {
+  store: { updateMany(args: any): Promise<unknown> }, now = new Date(), options: { persist?: boolean; deferred?: ReadonlySet<string> } = {}) {
   const verifiedAt = now.toISOString();
   const views = new Map<string, PaymentEvidenceView>();
   for (const plan of plans) {
     const current = evidence.get(plan.id);
     if (!current) continue;
     const saved = savedPaymentEvidence(plan);
-    const superseded = !!saved && Date.parse(saved.readStartedAt) > readStartedAt.getTime();
+    const superseded = options.deferred?.has(plan.id) || !!saved && Date.parse(saved.readStartedAt) > readStartedAt.getTime();
     // Transfer verification is independent of supplier-payment verification.
     // Retain labelled previous evidence during its outage; a complete negative
     // transfer read removes it, so reversals do not revive from the cache.

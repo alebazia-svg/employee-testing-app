@@ -25,7 +25,7 @@ test('manual payment route: real PostgreSQL persistence, concurrency, auth, revo
     };
     const bundle = await build({ entryPoints: ['app/api/admin/procurement/payment-plans/[id]/payment-link/route.ts'], bundle: true, write: false, platform: 'node', format: 'esm', plugins: [{ name: 'test-boundaries', setup(b) { b.onResolve({ filter: /^@\/lib\// }, args => mocks[args.path] ? { path: args.path, namespace: 'test-boundaries' } : null); b.onLoad({ filter: /.*/, namespace: 'test-boundaries' }, args => ({ contents: mocks[args.path], loader: 'js' })); } }] });
     const { POST } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
-    const send = (id: string, action = 'LINK') => POST(new Request('http://localhost/test', { method: 'POST', body: JSON.stringify({ ref, action }) }), { params: Promise.resolve({ id }) });
+    const send = (id: string, action = 'LINK', automaticFingerprint?: string) => POST(new Request('http://localhost/test', { method: 'POST', body: JSON.stringify({ ref, action, automaticFingerprint }) }), { params: Promise.resolve({ id }) });
     g.paymentTestAuth = { ok: false, response: Response.json({}, { status: 403 }) };
     assert.equal((await send(plans[0].id)).status, 403);
     g.paymentTestAuth = { ok: true, user };
@@ -41,6 +41,13 @@ test('manual payment route: real PostgreSQL persistence, concurrency, auth, revo
     assert.equal((await send(winner.id, 'UNLINK')).status, 200);
     const saved = await db.supplierPaymentPlan.findUniqueOrThrow({ where: { id: winner.id } });
     assert.deepEqual((saved.oneCCashEvidence as any).manualRubleLinks, []);
+    const automatic = {ref, number:'TEST', fingerprint:'previous native version'};
+    await db.supplierPaymentPlan.update({where:{id:winner.id},data:{oneCCashEvidence:{confirmedSupplierPayments:[automatic],other:'preserved'}}});
+    assert.equal((await send(plans.find(p => p.id !== winner.id)!.id)).status,409,'reserved RKO requires explicit release');
+    assert.equal((await send(winner.id,'UNLINK','stale')).status,409);
+    assert.equal((await send(winner.id,'UNLINK',automatic.fingerprint)).status,200);
+    const released=await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:winner.id}});
+    assert.deepEqual(released.oneCCashEvidence,{confirmedSupplierPayments:[],manualRubleLinks:[],other:'preserved'});
     g.paymentTestSource.complete = false;
     assert.equal((await send(winner.id)).status, 503);
     g.paymentTestSource.complete = true;

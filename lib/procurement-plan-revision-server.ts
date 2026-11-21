@@ -1,3 +1,5 @@
+import { retainPaymentConfirmations } from '@/lib/procurement-confirmed-payment-server';
+import { type PaymentConfirmation } from '@/lib/procurement-confirmed-payment';
 import { randomUUID } from 'node:crypto';
 import {readFundingBalance,assertFundingBalance} from './procurement-usdt-funding-server';
 import { paymentCompletion } from './procurement-payment-completion';
@@ -14,13 +16,16 @@ import { paymentBasisChanged } from './procurement-debt-request';
 import { planningRequestOverlap } from './procurement-planning-overlap';
 import { validateBasisChangeTarget } from './procurement-basis-change-server';
 
-export async function freshEvidence() {
+export async function freshEvidence(options: { retain?: boolean } = {}) {
+  const started = new Date();
+  const confirmations: PaymentConfirmation[] = [];
   const plans = await prisma.supplierPaymentPlan.findMany({ include: { manager: true } });
   const to = expenseRequestMoscowDayEnd(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
   const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true, historyConcurrency: 2 })]);
   if (!source.complete || source.rubPaymentsSupported !== true || !requests.complete) throw new Error('Не удалось проверить оплаты в 1С. Повторите изменение после восстановления связи.');
-  const result = matchProcurementPaymentEvidence(plans.map(p => ({ ...p, hasPendingRevision: Boolean(readPaymentRevision(p.oneCCashEvidence)), completedPaymentRefs: paymentCompletion(p.oneCCashEvidence)?.paymentRefs, orderRefs: Array.isArray(p.orderRefs) ? p.orderRefs.map(String) : [], plannedAmount: Number(p.plannedAmount), foreignAmount: p.foreignAmount == null ? null : Number(p.foreignAmount), plannedDate: p.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(p), managerName: p.manager.oneCManagerName || p.manager.name, manualRubleLinks: manualPaymentLinks(p.oneCCashEvidence) })), requests.rows, source.payments, source.conversions, { allowSmallRemainder: source.rubPaymentsSupported === true });
+  const result = matchProcurementPaymentEvidence(plans.map(p => ({ ...p, hasPendingRevision: Boolean(readPaymentRevision(p.oneCCashEvidence)), completedPaymentRefs: paymentCompletion(p.oneCCashEvidence)?.paymentRefs, orderRefs: Array.isArray(p.orderRefs) ? p.orderRefs.map(String) : [], plannedAmount: Number(p.plannedAmount), foreignAmount: p.foreignAmount == null ? null : Number(p.foreignAmount), plannedDate: p.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(p), managerName: p.manager.oneCManagerName || p.manager.name, manualRubleLinks: manualPaymentLinks(p.oneCCashEvidence) })), requests.rows, source.payments, source.conversions, { confirmations: options.retain ? confirmations : undefined, allowSmallRemainder: source.rubPaymentsSupported === true });
   if (source.rubPaymentsSupported !== true) for (const row of result.values()) delete row.collection;
+  if (options.retain) await retainPaymentConfirmations(plans, confirmations, started);
   return Object.assign(result, {versions:new Map(plans.map(p=>[p.id,p.updatedAt.toISOString()]))});
 }
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));

@@ -93,6 +93,7 @@ type Plan = {
   manager: { name: string };
   evidence: {
     qrFunding?: import('@/lib/procurement-qr-funding').QrFunding;
+    paymentReviewReasons?: {ref:string; message:string}[];
     verification?: 'current' | 'last-confirmed' | 'unavailable';
     verifiedAt?: string;
     collection?: import('@/lib/procurement-collection').ProcurementCollection;
@@ -294,20 +295,21 @@ export default function AdminProcurementClient({
   const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && isPaymentFinished(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
   const receiptPlans = plans.filter(canCollectProcurementReceipt);
   const unknownPayments = active.filter(plan => plan.status === 'APPROVED' && plan.evidence.verification === 'unavailable');
+  const disputedPayments = active.filter(plan => plan.evidence.paymentReviewReasons?.length);
   const stalePayments = active.some(plan => plan.evidence.verification === 'last-confirmed');
-  const paymentTotalsUnavailable = active.some(plan => plan.evidence.verification === 'last-confirmed' || plan.evidence.verification === 'unavailable');
-  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan) && plan.evidence.verification !== 'unavailable');
+  const paymentTotalsUnavailable = disputedPayments.length > 0 || active.some(plan => plan.evidence.verification === 'last-confirmed' || plan.evidence.verification === 'unavailable');
+  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan) && plan.evidence.verification !== 'unavailable' && !plan.evidence.paymentReviewReasons?.length);
   const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const estimatedUsdtPlanIds = new Set(
     active
-      .filter((plan) => !isCurrencyPaid(plan))
+      .filter((plan) => !isCurrencyPaid(plan) && !plan.evidence.paymentReviewReasons?.length)
       .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) && referenceUsdtRate > 0 && Number(plan.plannedAmount) > 0)
       .map((plan) => plan.id),
   );
   const referenceRatePlanIds = new Set(
     active
-      .filter((plan) => !isCurrencyPaid(plan))
+      .filter((plan) => !isCurrencyPaid(plan) && !plan.evidence.paymentReviewReasons?.length)
       .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.exchangeRate || 0) && referenceUsdtRate > 0)
       .map((plan) => plan.id),
   );
@@ -611,7 +613,7 @@ export default function AdminProcurementClient({
 <ProcurementPreparationList openItemId={entryPlanId} dailyRateCurrencies={undefined} preparation={dailyPreparation} key="approved" dirty={rescheduleState.dirty} busy={rescheduleState.busy||documentBusy} searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>{
  const day=paymentPreparationDate(plan), sortDay=day||'9999-12-31';
  return {id:plan.id,name:plan.supplierPartner,amount:paymentListRemainder(plan)?.replace(/^Доплатить /,'')||amountLabel(plan),amountCaption:paymentListRemainder(plan)?'Доплатить':undefined,rateLabel:procurementListRate(plan),meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',basis:orderLabel(plan),method:methodLabel(plan),priority:!stage(plan)&&sortDay<todayKey?'overdue' as const:day===todayKey?'today' as const:'later' as const,search:plan.orderNumbers.join(' '),group:stage(plan)?'Оплаты по QR':!day?'Дата уточняется':day<todayKey?'Просрочено':day===todayKey?'Сегодня':day===nextDayKey(todayKey)?'Завтра':'Далее',warning:plan.evidence.paymentAmountNeedsConfirmation?'Проверьте найденную оплату':plan.evidence.state==='MISMATCH'?'Расхождение с 1С':stage(plan)||paymentScheduleLabel(plan)||(['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)?'Частично оплачено':plan.evidence.state==='NO_EVIDENCE'&&day&&day>=todayKey&&!plan.evidence.collection?'Деньги будут готовы':undefined)};
- })} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
+ })} empty={disputedPayments.length ? "Проверьте расходники ниже, прежде чем планировать оплату." : unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
           const deferred=activePaymentDeferral(plan);
           const deadline = paymentPreparationDate(plan)||'9999-12-31';

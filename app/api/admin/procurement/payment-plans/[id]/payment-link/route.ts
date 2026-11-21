@@ -1,3 +1,4 @@
+import { confirmedPayments } from '@/lib/procurement-confirmed-payment';
 import { paymentMatchCreatedAt, readPaymentRevision } from '@/lib/procurement-plan-revision';
 import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { requireAdminApi } from '@/lib/admin-api-auth';
@@ -49,7 +50,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         }
         const fingerprint = paymentFingerprint(payment);
         if (links.some((link) => link.ref.toLowerCase() === ref && link.fingerprint === fingerprint)) return;
-        if (rows.some((row) => manualPaymentLinks(row.oneCCashEvidence).some((link) => link.ref.toLowerCase() === ref))) {
+        if (rows.some((row) => [...manualPaymentLinks(row.oneCCashEvidence), ...confirmedPayments(row.oneCCashEvidence)].some((link) => link.ref.toLowerCase() === ref))) {
           throw new Error('Этот расходник уже зачтён. Сначала отмените предыдущую привязку.');
         }
         const evidencePlans = rows.map((row) => ({
@@ -79,7 +80,17 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         next = [...next, { ref, fingerprint }];
       }
       const previous = plan.oneCCashEvidence && typeof plan.oneCCashEvidence === 'object' && !Array.isArray(plan.oneCCashEvidence) ? plan.oneCCashEvidence : {};
-      await tx.supplierPaymentPlan.update({ where: { id }, data: { oneCCashEvidence: { ...previous, manualRubleLinks: next } } });
+      const automatic = confirmedPayments(previous);
+      const saved = automatic.find(link => link.ref === ref);
+      const release = payload.action === 'UNLINK' && saved !== undefined;
+      if (payload.action === 'UNLINK' && (release || payload.automaticFingerprint !== undefined) &&
+          (!saved || saved.fingerprint !== payload.automaticFingerprint || links.some(link => link.ref.toLowerCase() === ref))) {
+        throw new Error('Привязка изменилась. Обновите календарь перед отменой.');
+      }
+      await tx.supplierPaymentPlan.update({ where: { id }, data: { oneCCashEvidence: {
+        ...previous, manualRubleLinks: next,
+        ...(release ? {confirmedSupplierPayments: automatic.filter(link => link.ref !== ref)} : {}),
+      } } });
       await tx.supplierPaymentPlanEvent.create({ data: { planId: id, actorUserId: access.user.id,
         action: payload.action === 'LINK' ? 'PAYMENT_LINKED' : 'PAYMENT_UNLINKED',
         snapshot: { ref, manualRubleLinks: next, source: 'owner_confirmation_no_one_c_write' } } });

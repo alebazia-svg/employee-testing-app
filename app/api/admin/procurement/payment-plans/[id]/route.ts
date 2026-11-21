@@ -21,7 +21,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     if (!candidate || candidate.status !== 'SUBMITTED' || payload.version !== candidate.updatedAt.toISOString()) {
       return Response.json({ error: 'Заявка изменилась. Обновите её перед согласованием.' }, { status: 409 });
     }
-    const evidence = await freshEvidence().catch(() => null);
+    const evidence = await freshEvidence({retain:true}).catch(() => null);
     const paid = evidence?.get(id);
     if (!evidence || !paid) return Response.json({ error: 'Не удалось проверить оплату в 1С. Заявка не согласована; повторите позже.' }, { status: 503 });
     if (evidence.versions.get(id) !== candidate.updatedAt.toISOString()) return Response.json({ error: 'Заявка изменилась во время проверки. Обновите её.' }, { status: 409 });
