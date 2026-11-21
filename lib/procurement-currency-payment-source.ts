@@ -47,6 +47,8 @@ type RawRow = Record<string, unknown>;
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const amount = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
+class MissingSupplierOrder extends Error {}
+
 const readInFlight = createInFlightRead<Record<string, unknown>>();
 async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs: number) {
   const env = readOneCRuntimeEnv();
@@ -65,6 +67,10 @@ async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs
       signal: controller.signal,
     });
     const payload = await response.json() as Record<string, unknown>;
+    // Only the native exact-order lookup can confirm that an order is absent.
+    if (endpoint === 'supplier-settlements' && query.get('detail') === 'document-evidence' &&
+        response.status === 404 && payload.ok === false && payload.error === 'order_not_found' &&
+        payload.write_operations === false) throw new MissingSupplierOrder();
     if (!response.ok || payload.ok === false) throw new Error(`CURRENCY_PAYMENT_SOURCE_HTTP_${response.status}`);
     return payload;
   } catch (error) {
@@ -135,6 +141,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
         baseDocumentRef: text(row.base_document_ref).toLowerCase(), cashbox: text(row.cashbox),
         supplier: text(row.partner), counterparty: text(row.counterparty), contract: text(row.contract) }]
       : []);
+  const missingOrderRefs = new Set<string>();
   let combined=[...payments,...rubPayments];
   // Fetch only order anchors of requests whose RUB/USDT RKO lacks a header basis.
   // This supplements, rather than replaces, the original document fingerprint.
@@ -206,25 +213,35 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       if((detail.due_date_movements as any[]).some(row=>{const at=parseOneCDateTime(row.movement_date)?.getTime();return at==null||at<first||at>=last;}))throw Error('SETTLEMENT_LINK_MOVEMENT_WINDOW_MISMATCH');
       return detail;
     };
-    for(let i=0;i<refs.length;i+=4){details.push(...await Promise.all(refs.slice(i,i+4).map(async order_ref=>{
-      const detail=await detailWindow(order_ref,0);
-      const supplier=normalize((detail.order as any[])[0].supplier_name||'');
-      const today=Date.parse(day(0)+'T00:00:00+03:00');
-      // Historical movements can enrich only RKOs without a header basis:
-      // attachSettlementOrderLinks deliberately ignores header-based payments.
-      // Keep the current order read for every explicit anchor (posted/deleted
-      // and verifiedHeaderOrderRef), but do not scan unused historical periods.
-      const offsets=new Set(withoutBasis.filter(p=>!p.baseDocumentRef&&normalize(p.supplier||'')===supplier).map(p=>{
-        const at=parseOneCDateTime(p.date);
-        return at?Math.floor((today-Date.parse(expenseRequestMoscowCalendarDate(at)+'T00:00:00+03:00'))/(31*86400000))*31:0;
-      }).filter(offset=>offset>0));
-      for(const offset of offsets){
-        const history=await detailWindow(order_ref,offset);
-        if(normalize((history.order as any[])[0].supplier_name||'')!==supplier)throw Error('SETTLEMENT_LINK_SUPPLIER_MISMATCH');
-        (detail.due_date_movements as any[]).push(...history.due_date_movements as any[]);
-      }
-      return detail;
-    })));}
+    for(let i=0;i<refs.length;i+=4){
+      const batch = await Promise.all(refs.slice(i,i+4).map(async order_ref=>{
+        let detail: Record<string,any>;
+        try {
+          detail = await detailWindow(order_ref, 0);
+        } catch (error) {
+          if (!(error instanceof MissingSupplierOrder)) throw error;
+          missingOrderRefs.add(order_ref);
+          return null;
+        }
+        const supplier=normalize((detail.order as any[])[0].supplier_name||'');
+        const today=Date.parse(day(0)+'T00:00:00+03:00');
+        // Historical movements can enrich only RKOs without a header basis:
+        // attachSettlementOrderLinks deliberately ignores header-based payments.
+        // Keep the current order read for every explicit anchor (posted/deleted
+        // and verifiedHeaderOrderRef), but do not scan unused historical periods.
+        const offsets=new Set(withoutBasis.filter(p=>!p.baseDocumentRef&&normalize(p.supplier||'')===supplier).map(p=>{
+          const at=parseOneCDateTime(p.date);
+          return at?Math.floor((today-Date.parse(expenseRequestMoscowCalendarDate(at)+'T00:00:00+03:00'))/(31*86400000))*31:0;
+        }).filter(offset=>offset>0));
+        for(const offset of offsets){
+          const history=await detailWindow(order_ref,offset);
+          if(normalize((history.order as any[])[0].supplier_name||'')!==supplier)throw Error('SETTLEMENT_LINK_SUPPLIER_MISMATCH');
+          (detail.due_date_movements as any[]).push(...history.due_date_movements as any[]);
+        }
+        return detail;
+      }));
+      for (const detail of batch) if (detail) details.push(detail);
+    }
     combined=attachSettlementOrderLinks(combined,details,now);
     combined=combined.map(payment=>({...payment,verifiedHeaderOrderRef:details.some(d=>{
       const order=(d.order as any[])[0];
@@ -252,6 +269,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     combined = combined.map(p => verified.get(p) || p);
   }
   return {
+    missingOrderRefs: [...missingOrderRefs].sort(),
     payments: combined,
     conversions,
     checkedAt: new Date().toISOString(),

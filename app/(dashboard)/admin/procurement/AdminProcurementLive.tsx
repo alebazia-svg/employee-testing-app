@@ -237,6 +237,15 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
           paymentLinkHistory={displayComplete ? <ProcurementUnlinkedPayments view="history" payments={[]} plans={[]} linked={manualLinksForDisplay} /> : null}
           initialPlans={plansWithOrderContext.map(plan => ({ ...plan, evidence: displayEvidence.get(plan.id)! }))}
           sourceCheckedAt={displayComplete ? new Date().toISOString() : lastCheckedAt}
+          missingOrders={(currencySource?.missingOrderRefs ?? []).flatMap(ref => {
+            const owners = plans.filter(plan => Array.isArray(plan.orderRefs) && plan.orderRefs.includes(ref));
+            if (!owners.length) return [ref];
+            return owners.map(plan => {
+              const index = Array.isArray(plan.orderRefs) ? plan.orderRefs.indexOf(ref) : -1;
+              const number = Array.isArray(plan.orderNumbers) ? plan.orderNumbers[index] : undefined;
+              return `${plan.supplierPartner} · заказ ${typeof number === 'string' && number || ref} · заявка ${plan.planCode}`;
+            });
+          })}
           sourceWarnings={warnings}
           unplannedOrderCount={unplannedOrderCount}
           openOrderCount={ordersSource ? scopedOrders.length : null}
