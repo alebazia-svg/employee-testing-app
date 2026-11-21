@@ -1,4 +1,5 @@
 "use client";
+import { ProcurementMissingOrderWarning } from '@/components/ProcurementMissingOrderWarning';
 import {ProcurementCancelledHistory} from '@/components/ProcurementCancelledHistory';
 import {ProcurementCancelAction} from '@/components/ProcurementCancelAction';
 import {ProcurementAdminCreate} from '@/components/ProcurementAdminCreate';
@@ -192,7 +193,7 @@ export default function AdminProcurementClient({
   revisionReview, revisionCount = 0, paymentLinks, paymentLinkHistory,
   sourceCheckedAt,
   sourceWarnings,
-  missingOrders = [],
+  missingOrderRefs = [],
   unplannedOrderCount,
   openOrderCount,
   orderPaymentGapTotal,
@@ -218,7 +219,7 @@ export default function AdminProcurementClient({
   revisionReview?: ReactNode; revisionCount?: number; paymentLinks?: ReactNode; paymentLinkHistory?: ReactNode;
   sourceCheckedAt: string;
   sourceWarnings: string[];
-  missingOrders?: string[];
+  missingOrderRefs?: string[];
   unplannedOrderCount: number | null;
   openOrderCount: number | null;
   orderPaymentGapTotal: number | null;
@@ -543,10 +544,7 @@ export default function AdminProcurementClient({
       {<div className="procurement-calendar-tools">{visualPreview?.rateSummary??<ProcurementCalendarRates admin today={todayKey} plans={plans} references={{USDT:usdtRateReference}}/>}<div className="procurement-calendar-refresh-target" ref={setRefreshTarget}/><div className="procurement-calendar-receipt-target" ref={setRateReceiptTarget}/></div>}
       <div className="pam-toolbar">{tab==='approved'&&!visualPreview?<ProcurementRequisitesBatch plans={plans} today={todayKey}/>:null}{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}{!visualPreview?<ProcurementAdminCreate onCreated={()=>{setTab("pending");router.refresh();}}/>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen desktopTarget={refreshTarget}/>{visualPreview?.receiptControl ?? (!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts} onLoadState={setReceiptLoadState} renderEntry={state=><ProcurementCalendarReceiptEntry {...state} target={rateReceiptTarget}/>}/> : null)}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
-      {missingOrders.length > 0 && <aside className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-        <strong>Заказ не найден в 1С</strong>
-        <ul>{missingOrders.map(item => <li key={item}>{item}</li>)}</ul>
-      </aside>}
+      <ProcurementMissingOrderWarning refs={missingOrderRefs} plans={plans} />
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-bold"><span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" />Не получены данные из {sourceWarnings.length} {sourceWarnings.length === 1 ? "источника" : "источников"} 1С — рекомендации временно ограничены</span><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
