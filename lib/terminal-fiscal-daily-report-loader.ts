@@ -8,15 +8,18 @@ import { prisma } from './prisma';
 import { runTerminalFiscalHistoricalDryRun } from './terminal-fiscal-runner';
 import { technicalHash } from './terminal-fiscal-sources';
 import { buildDailyFiscalReport, type DailyFiscalEvidence } from './terminal-fiscal-daily-report';
-export async function loadDailyFiscalReport(day:string) {
-  const settlementSource=loadFiscalSettlementSource(day);
+import {checkCrossDayClaims} from './terminal-fiscal-cross-day';
+
+import {fiscalReportSources} from './terminal-fiscal-report-sources';
+
+async function readDay(day:string,sources:ReturnType<typeof fiscalReportSources>) {
   const from=new Date(`${day}T00:00:00+03:00`),to=new Date(from.getTime()+86400000);
   const [mappings,workstations]=await Promise.all([
     prisma.terminalFiscalMapping.findMany({where:{isActive:true,effectiveFrom:{lt:to},OR:[{effectiveTo:null},{effectiveTo:{gt:from}}]},select:{id:true,workstationId:true}}),
     prisma.retailWorkstation.findMany({where:{isActive:true,createdAt:{lt:to}},select:{id:true}}),
   ]);
   const results=await Promise.all(mappings.map(async m=>{
-    try {const r=await runTerminalFiscalHistoricalDryRun({mappingId:m.id,periodFrom:from,periodTo:to,persist:false,includeEvidence:true});
+    try {const r=await runTerminalFiscalHistoricalDryRun({mappingId:m.id,periodFrom:from,periodTo:to,persist:false,includeEvidence:true},sources);
       if(r.acquired&&r.evidence&&r.output)return {...r.evidence,
         oneCChecks:r.evidence.oneCChecks.filter(c=>c.sourceType==='acquiring_operation'
           ? c.cardPayments.some(p=>p.acquiringTerminalRef===r.evidence!.mapping.oneCAcquiringTerminalRef)
@@ -25,7 +28,27 @@ export async function loadDailyFiscalReport(day:string) {
     } catch { /* Partial data never becomes a zero-valued confirmed day. */ }
     return {bankOperations:[],oneCChecks:[],ofdReceipts:[],records:[],complete:{bank:false,oneC:false,ofd:false}} satisfies DailyFiscalEvidence;
   }));
+  const configurationComplete=workstations.every(w=>mappings.filter(m=>m.workstationId===w.id).length===1);
+  return {from,to,mappings,results,configurationComplete};
+}
+
+export async function loadDailyFiscalReport(day:string) {
+  const sources=fiscalReportSources(day);
+  const loadDay=(date:string)=>readDay(date,sources);
+  const settlementSource=loadFiscalSettlementSource(day);
+  const {from,to,mappings,results,configurationComplete}=await loadDay(day);
   const report=buildDailyFiscalReport({from,to,parts:results});
+  const coveredKeys=new Set(report.transactions.filter(t=>t.status==='covered').flatMap(t=>t.bank.map(b=>b.key)));
+  const disputed=await checkCrossDayClaims(day,report.transactions,async other=>{
+    const peer=await loadDay(other);
+    const otherReport=buildDailyFiscalReport({from:peer.from,to:peer.to,parts:peer.results});
+    return {transactions:otherReport.transactions,complete:peer.configurationComplete&&Object.values(otherReport.sourceComplete).every(Boolean)};
+  });
+  if(disputed.size){
+    const records=new Map(results.flatMap(p=>p.records.map(r=>[r.bankOperationKey,r] as const)));
+    report.unresolved+=Array.from(disputed).filter(key=>coveredKeys.has(key)||records.get(key)?.status==='confirmed').length;
+    if(report.status==='balanced')report.status='review';
+  }
   const managers=new Map<string,FiscalManager>();
   for(const transaction of report.transactions){
     // Resolve at each payment's actual instant. Grouped payments must agree.
@@ -38,7 +61,6 @@ export async function loadDailyFiscalReport(day:string) {
     managers.set(transaction.key,unique.size===1?contexts[0]:{name:transaction.manager,key:'unassigned',state:'conflict' as const,note:'В группе оплат разные ответственные. Проверьте назначения на момент каждой оплаты.'});
   }
   applyFiscalManagers(report,managers);
-  const configurationComplete=workstations.every(w=>mappings.filter(m=>m.workstationId===w.id).length===1);
   if(!configurationComplete){report.complete.bank=false;report.complete.oneC=false;report.complete.ofd=false;report.status='incomplete';}
   const reviews=await prisma.terminalFiscalEmployeeReview.findMany({where:{bankOperationAt:{gte:from,lt:to},status:{in:['admin_review','open']}},select:{id:true,matchingHash:true}});
   for(const movement of report.movements) {
