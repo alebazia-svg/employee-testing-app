@@ -3,6 +3,10 @@ import { workflowEvent,workflowJson } from '@/lib/employee-workflow-client';
 import { employeeObservedFetch } from "@/lib/employee-observed-fetch";
 import {ProcurementCalendarRates} from '@/components/ProcurementCalendarRates';
 import {ProcurementCalendarReceiptEntry} from '@/components/ProcurementCalendarReceiptEntry';
+import {planBasis,type PaymentBasis} from '@/lib/procurement-debt-request';
+import {ProcurementCancelledHistory} from '@/components/ProcurementCancelledHistory';
+import {ProcurementCancelAction} from '@/components/ProcurementCancelAction';
+import {basisLabels} from '@/components/ProcurementEditBasis';
 import {procurementListRate} from '@/lib/procurement-history-rate';
 import {ProcurementRequestMoney} from '@/components/ProcurementRequestMoney';
 import {ProcurementSavedRate} from '@/components/ProcurementSavedRate';
@@ -333,13 +337,13 @@ export default function ProcurementPaymentCalendarClient({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [batchDraftState, setBatchDraftState] = useState({ hasDraft: false, saving: false });
   const [originalEditDraft, setOriginalEditDraft] = useState<Draft | null>(null);
-  const [editBasis, setEditBasis] = useState<'ORDER' | 'DEBT'>('ORDER');
+  const [editBasis, setEditBasis] = useState<PaymentBasis>('ORDER');
   const [editOrderRefs, setEditOrderRefs] = useState<string[]>([]);
   const [editOrderQuery, setEditOrderQuery] = useState('');
   const editingPlan = plans.find(plan => plan.id === editingId);
   const editHasPayment = Number(editingPlan?.evidence?.issuedAmount) > 0 || Number(editingPlan?.evidence?.paidAmount) > 0 || Number(editingPlan?.evidence?.paidForeignAmount) > 0;
   const editBasisLocked = !editingPlan?.evidence || editingPlan.evidence.state !== 'NO_EVIDENCE'
-    || editHasPayment;
+    || !!editingPlan.evidence.collection || editingPlan.evidence.qrFunding?.state==='confirmed' || editHasPayment;
   useEffect(() => setPlans(initialPlans), [initialPlans]);
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const previousCommentRate = useRef<number|null>(null);
@@ -449,7 +453,7 @@ export default function ProcurementPaymentCalendarClient({
     setChangeReason("");
     setEditingId(plan.id);
     setEditingVersion(plan.updatedAt);
-    setEditBasis(plan.orderRefs.length ? 'ORDER' : 'DEBT');
+    setEditBasis(planBasis(plan));
     setEditOrderRefs(plan.orderRefs);
     setEditOrderQuery('');
     const nextDraft = {
@@ -495,15 +499,15 @@ export default function ProcurementPaymentCalendarClient({
     if (saving || batchDraftState.saving) return;
     const hasChanges = editingId
       ? JSON.stringify(draft) !== JSON.stringify(originalEditDraft) || Boolean(changeReason)
-        || editBasis !== (editingPlan?.orderRefs.length ? 'ORDER' : 'DEBT')
+        || editBasis !== (editingPlan && planBasis(editingPlan))
       : batchDraftState.hasDraft;
     if (hasChanges) setDiscardOpen(true);
     else closePaymentForm();
   }
-  function chooseEditBasis(basis: 'ORDER' | 'DEBT') {
+  function chooseEditBasis(basis: PaymentBasis) {
     if (editBasisLocked || basis === editBasis) return;
-    if (basis === 'DEBT') setEditOrderRefs(draft.orderRefs);
-    setDraft(current => ({...current, orderRefs: basis === 'DEBT' ? [] : editOrderRefs}));
+    if (editBasis === 'ORDER') setEditOrderRefs(draft.orderRefs);
+    setDraft(current => ({...current, orderRefs: basis === 'ORDER' ? editOrderRefs : []}));
     setEditBasis(basis);
     setEditOrderQuery('');
     setMessage('');
@@ -517,7 +521,7 @@ export default function ProcurementPaymentCalendarClient({
       orderRefs: refs,
     }));
   }
-  const dateOnlyEdit = editingPlan?.status === 'APPROVED' && editBasis === (editingPlan.orderRefs.length ? 'ORDER' : 'DEBT') && onlyPaymentDateChanged(originalEditDraft, draft);
+  const dateOnlyEdit = editingPlan?.status === 'APPROVED' && editBasis === planBasis(editingPlan) && onlyPaymentDateChanged(originalEditDraft, draft);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (preview) { setMessage("Режим проверки: изменения не сохранены."); return; }
@@ -533,7 +537,7 @@ export default function ProcurementPaymentCalendarClient({
     );
     const body = {
       fundingSource: null,
-      paymentPurpose: editingPlan?.paymentPurpose || 'GOODS',
+      paymentPurpose: editingPlan?.paymentPurpose==='DELIVERY'?'DELIVERY':editBasis==='ADVANCE'?SUPPLIER_ADVANCE:'GOODS',
       basis: editBasis,
       changeReason,
       version: editingVersion,
@@ -728,7 +732,7 @@ export default function ProcurementPaymentCalendarClient({
 
       {<div className="procurement-calendar-tools">{visualPreview?.rateSummary??<ProcurementCalendarRates today={todayKey} plans={plans} references={{USDT:usdtRateReference,CNY:cnyRateReference}}/>}<div className="procurement-calendar-refresh-target" ref={setRefreshTarget}/><div className="procurement-calendar-receipt-target" ref={setRateReceiptTarget}/></div>}
       <div className={compact ? 'compact-payment-calendar grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_280px] min-[1180px]:grid-cols-[minmax(0,1fr)_360px] min-[1280px]:grid-cols-[minmax(0,1fr)_380px] items-start' : 'grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start'}>
-        {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} receiptCounts={receiptCounts} receiptLoadState={receiptLoadState} compactBuyer splitView={mobile} /> :
+        {paymentView==='history' ? <div><ProcurementPaymentHistory plans={paidPlans} receiptCounts={receiptCounts} receiptLoadState={receiptLoadState} compactBuyer splitView={mobile} /><ProcurementCancelledHistory plans={plans}/></div> :
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
             <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--portal-border)] bg-white px-4 py-3 text-sm">
@@ -957,16 +961,16 @@ export default function ProcurementPaymentCalendarClient({
             onSubmit={submit}
           >
             <div><p className="text-xs font-bold text-slate-500">{editingPlan?.paymentPurpose==='DELIVERY'?'Перевозчик':'Поставщик'}</p><p className="mt-1 font-semibold">{draft.supplier}</p></div>
-            {editingPlan?.paymentPurpose===SUPPLIER_ADVANCE?<p className="text-sm text-slate-600">{supplierOnlyPaymentLabel(editingPlan)} · основание оплаты сохраняется</p>:editingPlan?.paymentPurpose==='DELIVERY'?<p className="text-sm text-slate-600">Доставка</p>:<details className="rounded-xl border border-slate-200 px-3 py-2.5"><summary className="cursor-pointer text-sm font-semibold">{editBasis==='DEBT'?'В счёт долга поставщику':`Заказ № ${draft.orderRefs.map(ref=>supplierOrders.find(o=>o.ref===ref)?.number||editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—').join(', ')}`}<span className="ml-2 text-xs font-normal text-slate-500">{editBasisLocked?'Основание оплаты':'Изменить основание'}</span></summary><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
-              {(['ORDER', 'DEBT'] as const).map(basis => <button key={basis} type="button" aria-pressed={editBasis === basis}
-                disabled={editBasisLocked || (basis === 'DEBT' && Boolean(editingPlan?.orderRefs.length) && supplierPosition(supplierBalances[draft.supplier]) !== 'debt')}
+            {editingPlan?.paymentPurpose==='DELIVERY'?<p className="text-sm text-slate-600">Доставка</p>:<details className="rounded-xl border border-slate-200 px-3 py-2.5"><summary className="cursor-pointer text-sm font-semibold">{editBasis!=='ORDER'?basisLabels[editBasis]:`Заказ № ${draft.orderRefs.map(ref=>supplierOrders.find(o=>o.ref===ref)?.number||editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—').join(', ')}`}<span className="ml-2 text-xs font-normal text-slate-500">{editBasisLocked?'Основание оплаты':'Изменить основание'}</span></summary><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
+              {(['ORDER', 'DEBT','ADVANCE'] as const).map(basis => <button key={basis} type="button" aria-pressed={editBasis === basis}
+                disabled={editBasisLocked || (basis === 'DEBT' && editBasis!=='DEBT' && supplierPosition(supplierBalances[draft.supplier]) !== 'debt')}
                 onClick={() => chooseEditBasis(basis)}
                 className={`procurement-form-tab border-b-2 px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${editBasis === basis ? 'border-[#9a6d46] text-[#785537]' : 'border-transparent text-slate-500 hover:text-slate-900'}`}>
-                {basis === 'ORDER' ? 'По заказу' : 'В счёт долга поставщику'}
+                {basisLabels[basis]}
               </button>)}
             </div>
             {editBasisLocked ? <p className="text-xs text-slate-500">{editHasPayment ? 'По заявке уже есть оплата — основание не меняется.' : 'Смена основания временно недоступна.'}</p> : null}
-            {editBasis === 'DEBT' ? <p className="text-sm text-slate-600">Без привязки к заказу.</p> : draft.supplier ? (
+            {editBasis !== 'ORDER' ? <p className="text-sm text-slate-600">Без привязки к заказу.</p> : draft.supplier ? (
               <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
                 <div className="flex items-center justify-between gap-3 text-sm font-bold">
                   <span>Заказы поставщика</span>
@@ -1010,7 +1014,7 @@ export default function ProcurementPaymentCalendarClient({
             </details>}
             {editingPlan?.paymentPurpose!=='DELIVERY'?<ProcurementPaymentDebtSummary
               balance={supplierBalances[draft.supplier]} unavailable={supplierDebtError}
-              orders={editBasis==='DEBT'?[]:draft.orderRefs.map(ref=>supplierOrders.find(order=>order.ref===ref)??{
+              orders={editBasis!=='ORDER'?[]:draft.orderRefs.map(ref=>supplierOrders.find(order=>order.ref===ref)??{
                 ref,number:editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—',
               })}
             />:null}
@@ -1078,6 +1082,9 @@ export default function ProcurementPaymentCalendarClient({
               />
             </label>
             {plans.find(plan => plan.id === editingId)?.status === "APPROVED" ? <label className="block text-sm font-bold">{dateOnlyEdit?'Комментарий к переносу · необязательно':'Причина изменения *'}<textarea required={!dateOnlyEdit} minLength={dateOnlyEdit?undefined:3} maxLength={500} value={changeReason} onChange={event => setChangeReason(event.target.value)} rows={2} placeholder="Например: поставщик перенёс отгрузку" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"/><span className="mt-1 block text-xs font-normal text-slate-500">{dateOnlyEdit?'Дата изменится сразу. Администратор получит уведомление, согласование оплаты сохранится.':'Изменение суммы и условий требует повторного согласования. Перенос только даты — без согласования, с уведомлением администратору. При частичной оплате укажите новую общую сумму, включая уже оплаченную часть.'}</span></label> : null}
+            {editingPlan&&!editBasisLocked&&<ProcurementCancelAction key={editingId} id={editingId} version={editingVersion}
+              disabled={saving||!!readOnlyPreview||!!preview||basisPreview||editingBlocked||!!editingPlan.revision||JSON.stringify(draft)!==JSON.stringify(originalEditDraft)||editBasis!==planBasis(editingPlan)||!!changeReason}
+              onSaved={updated=>{setPlans(rows=>rows.map(p=>p.id===updated.id?{...p,...updated}:p));closePaymentForm();setExpandedPlan(null);setMessage('Заявка отменена.');router.refresh();}}/>}
             {message ? (
               <p className="text-sm font-bold text-red-600">{message}</p>
             ) : null}
@@ -1103,7 +1110,7 @@ export default function ProcurementPaymentCalendarClient({
                 {saving
                   ? "Проверяем оплату в 1С…"
                   : editingId
-                    ? editingPlan?.status === 'APPROVED' && editBasis !== (editingPlan.orderRefs.length ? 'ORDER' : 'DEBT') ? 'Передать изменения' : "Сохранить"
+                    ? editingPlan?.status === 'APPROVED' && editBasis !== planBasis(editingPlan) ? 'Передать изменения' : "Сохранить"
                     : "Передать на согласование"}
               </button>
             </div>

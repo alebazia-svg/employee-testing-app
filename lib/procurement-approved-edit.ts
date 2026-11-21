@@ -5,7 +5,7 @@ import type { RevisionData } from './procurement-plan-revision';
 const editable = ['plannedDate','plannedAmount','foreignAmount','exchangeRate','paymentMethod','condition'] as const;
 export function approvedEditData(plan:Record<string,any>,payload:unknown,today:string) {
   const body=payload as Record<string,unknown>|null;
-  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>![...editable,'reason','version'].includes(k)))throw Error('Проверьте данные изменения.');
+  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>![...editable,'reason','version','basis','orderRefs'].includes(k)))throw Error('Проверьте данные изменения.');
   if(typeof body.version!=='string'||body.version!==new Date(plan.updatedAt).toISOString())throw Error('Заявка изменилась. Обновите страницу.');
   const reason=typeof body.reason==='string'?body.reason.trim():'';
   if((body.reason!=null&&typeof body.reason!=='string')||reason.length>500)throw Error('Комментарий должен быть не длиннее 500 символов.');
@@ -33,6 +33,12 @@ export function approvedEditData(plan:Record<string,any>,payload:unknown,today:s
       ...(!['USDT','CNY'].includes(method)?{foreignAmount:null,exchangeRate:null}:{})},!before.orderRefs.length);
     if(!checked.ok||!checked.data.plannedAmount)throw Error(checked.errors.join(' ')||'Укажите сумму оплаты.');
     data={...checked.data,condition:data.condition};
+  }
+  if (body.basis !== undefined || body.orderRefs !== undefined) {
+    if (plan.paymentPurpose==='DELIVERY' || !['ORDER','ADVANCE','DEBT'].includes(String(body.basis)) ||
+        !Array.isArray(body.orderRefs) || !body.orderRefs.every(r=>typeof r==='string' && r.trim()) ||
+        (body.basis==='ORDER') !== Boolean(body.orderRefs.length)) throw Error('Проверьте основание и выбранные заказы.');
+    data={...data,orderRefs:body.orderRefs,orderNumbers:[],paymentPurpose:body.basis==='ADVANCE'?'SUPPLIER_ADVANCE':'GOODS'};
   }
   // Date/comment-only edits preserve the exact approved RUB estimate and FX terms.
   return {data,reason,financialChanged};

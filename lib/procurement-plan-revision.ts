@@ -33,6 +33,7 @@ function normal(key: string, value: unknown): string {
   return String(value || '').trim();
 }
 function display(key: string, value: unknown) {
+  if (key==='paymentPurpose') return value==='SUPPLIER_ADVANCE'?'Аванс поставщику':value==='DELIVERY'?'Доставка':'Оплата поставщику';
   if (key==='fundingSource') return value==='WALLET'?'Из кассы USDT':value==='CASH_EXCHANGE'?'Наличные для обмена':'Не выбран';
   const normalized=normal(key,value);
   if(key==='plannedDate' && /^\d{4}-\d{2}-\d{2}$/.test(normalized))return new Date(`${normalized}T12:00:00Z`).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
@@ -60,7 +61,7 @@ export function assertRevisionPaymentSafety(before: Record<string, any>, data: R
   const paid = evidence.issuedAmount + evidence.paidAmount;
   if (paid <= 0 && evidence.paidForeignAmount <= 0) return;
   const changed = revisionChanges(before, data);
-  if (changed.some(c => ['supplierPartner', 'supplierCounterparty', 'orderRefs', 'paymentMethod', 'currency'].includes(c.key))) throw new Error('После частичной оплаты нельзя менять поставщика, заказы и способ оплаты. Меняйте только оставшуюся потребность.');
+  if (changed.some(c => ['supplierPartner', 'supplierCounterparty', 'orderRefs', 'paymentPurpose', 'paymentMethod', 'currency'].includes(c.key))) throw new Error('После частичной оплаты нельзя менять поставщика, заказы и способ оплаты. Меняйте только оставшуюся потребность.');
   if (Math.round(Number(data.plannedAmount) * 100) < Math.round(paid * 100) || (data.foreignAmount != null && data.foreignAmount < evidence.paidForeignAmount)) throw new Error('Новая общая сумма не может быть меньше уже оплаченной.');
   if (evidence.paidForeignAmount > 0 && data.foreignAmount == null && evidence.paidAmount <= 0) throw new Error('Укажите общую сумму USDT, чтобы сохранить уже оплаченную часть.');
 }

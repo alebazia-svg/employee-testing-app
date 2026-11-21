@@ -9,7 +9,7 @@ import { buyerPaymentComment } from '../lib/procurement-buyer-comment';
 test('isolated revision lifecycle preserves review evidence, requires approval for totals and protects paid part',async t=>{
   const condition=reviewRequestCondition([{planningState:'needs_review',number:'DEMO',planningReason:'Сверить аванс'}],'Старый комментарий');
   const state:any={events:[],paid:{state:'PARTIALLY_ISSUED',issuedAmount:40000,paidAmount:0,paidForeignAmount:0},plan:{
-    id:'demo',planCode:'DEMO',managerUserId:1,manager:{name:'Закупщик'},supplierPartner:'Учебный поставщик',supplierCounterparty:'',
+    id:'demo',planCode:'DEMO',managerUserId:1,manager:{name:'Закупщик'},paymentPurpose:'GOODS',supplierPartner:'Учебный поставщик',supplierCounterparty:'',
     orderRefs:['demo-order'],orderNumbers:['DEMO'],plannedDate:new Date('2026-09-25T00:00:00Z'),plannedAmount:100000,
     paymentMethod:'CASH',currency:'RUB',foreignAmount:null,exchangeRate:null,commissionAmount:null,exchangerName:'',supplierConfirmation:'',
     condition,status:'APPROVED',oneCCashEvidence:{},createdAt:new Date('2026-09-24T00:00:00Z'),updatedAt:new Date('2026-09-24T01:00:00Z')}};
@@ -17,8 +17,8 @@ test('isolated revision lifecycle preserves review evidence, requires approval f
   t.after(()=>{delete (globalThis as any).buyerRevisionTest;});
   const mocks:Record<string,string>={
     prisma:`const s=globalThis.buyerRevisionTest;const update=({data})=>{s.plan={...s.plan,...data,updatedAt:new Date(s.plan.updatedAt.getTime()+1000)};return s.plan};const tx={$executeRaw:async()=>{},supplierPaymentPlan:{findMany:async()=>[s.plan],findFirst:async()=>s.plan,findUniqueOrThrow:async()=>s.plan,updateMany:async arg=>{update(arg);return {count:1}},update:async arg=>update(arg)},supplierPaymentPlanEvent:{create:async({data})=>{s.events.push(data);return {id:String(s.events.length)}}}};export const prisma={...tx,$transaction:async fn=>fn(tx)};`,
-    'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:[],conversions:[]});',
-    'expense-request-source':'export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-01T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});',
+    'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,rubPaymentsSupported:true,payments:[],conversions:[]});',
+    'expense-request-source':'export const expenseRequestMoscowCalendarDate=date=>date.toISOString().slice(0,10);export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-01T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});',
     'procurement-ruble-payment-evidence':'export const paymentEvidenceFrom=(_p,d)=>d;',
     'procurement-currency-payment-evidence':'export const matchProcurementPaymentEvidence=()=>new Map([["demo",globalThis.buyerRevisionTest.paid]]);',
     'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',

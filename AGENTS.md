@@ -419,3 +419,16 @@ Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 - The image observer records future events, not guaranteed historical actor
   attribution. Distinguish the confirmed conflicting cron from an unrecorded
   individual delete invocation. Preserve all capability/data/rollback guards.
+
+## Payment calendar verification on every portal release — owner decision 2026-11-21
+
+Before installing, run the read-only `ops/release/checks/payment-calendar-snapshot.cjs`
+in the currently running portal container. Run the same check after installation
+and compare using `ops/release/checks/compare-payment-calendar.py BEFORE AFTER`.
+Keep the snapshots private and outside Git. A missing record, changed financial
+link, missing receipt file or Luxo reconciliation failure needs investigation
+before recording a release as verified. Distinguish genuine concurrent business
+activity by its audit event and repeat the comparison on a consistent baseline.
+Verify both authenticated calendar views and the employee preview. Exercise actual
+edit/approval/cancel writes in an isolated database with the candidate, and inspect
+the available actions on real unpaid cards without modifying a working plan.

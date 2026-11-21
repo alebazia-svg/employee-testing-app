@@ -20,3 +20,13 @@ export function debtRequestConflict(
     !isFinishedPaymentState(evidence.get(plan.id)?.state) &&
     planningRequestOverlap([{supplierPartner:supplier,orderRefs:[],plannedDate}],[plan],evidence));
 }
+
+export type PaymentBasis = 'ORDER' | 'DEBT' | 'ADVANCE';
+type Target = {orderRefs: unknown; paymentPurpose?: string};
+export function planBasis(plan: Target): PaymentBasis {
+  return plan.paymentPurpose === 'SUPPLIER_ADVANCE' ? 'ADVANCE' : isSupplierDebtPlan(plan) ? 'DEBT' : 'ORDER';
+}
+export function paymentTargetChanged(before: Target, after: Target) {
+  const refs = (plan: Target) => Array.isArray(plan.orderRefs) ? [...plan.orderRefs].sort() : [];
+  return planBasis(before) !== planBasis(after) || JSON.stringify(refs(before)) !== JSON.stringify(refs(after));
+}

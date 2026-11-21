@@ -70,3 +70,11 @@ test('1C single-digit hours preserve the instant and confirm only the existing e
  const cancelled={...plan,status:'CANCELLED'};
  assert.equal(match([plan,cancelled],source).get(plan.id)!.state,'none','cancelled ownership still prevents reassignment');
 });
+
+test('a destructive action waits for review of a competing QR transfer', () => {
+ const candidates=[plan,{...plan,id:'other',planCode:'PAY-20261020-234567'}];
+ const guarded=matchQrFunding(candidates,payload,'buyer',payload.date_from,payload.date_to,'2026-10-22T12:00:00Z',plan.id);
+ assert.equal(guarded.get(plan.id)?.state,'unavailable');
+ assert.equal(guarded.get('other')?.state,'none');
+ assert.equal(match(candidates).get(plan.id)?.state,'none');
+});

@@ -6,7 +6,7 @@ import {matchQrFunding,type QrFunding,type QrFundingPlan} from './procurement-qr
 import type {ProcurementPaymentEvidence} from './procurement-currency-payment-evidence';
 
 const read=createInFlightRead<{payload:unknown;target:string}>();
-export async function readQrFunding(plans:QrFundingPlan[],today:string) {
+export async function readQrFunding(plans:QrFundingPlan[],today:string,guardPlanId?:string) {
  const checkedAt=new Date().toISOString();
  const unavailable=()=>new Map(plans.map(p=>[p.id,{state:'unavailable',checkedAt} as QrFunding]));
  if(!plans.some(p=>p.paymentMethod==='ACCOUNTABLE_QR'&&p.status==='APPROVED'))return new Map<string,QrFunding>();
@@ -26,7 +26,7 @@ export async function readQrFunding(plans:QrFundingPlan[],today:string) {
     return {payload:await response.json(),target:boxes[0].ref};
    }finally{clearTimeout(timer);}
   });
-  return matchQrFunding(plans,payload,target,from,today,checkedAt);
+  return matchQrFunding(plans,payload,target,from,today,checkedAt,guardPlanId);
  }catch{return unavailable();}
 }
 /** Adds an operational annotation only. Never modifies paid/issued amounts,
