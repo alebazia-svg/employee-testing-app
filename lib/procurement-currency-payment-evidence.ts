@@ -9,7 +9,10 @@ import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
 import { procurementCollections, type ProcurementCollection } from './procurement-collection';
 import { SMALL_REMAINDER_COMPLETED, smallRubleRemainder, smallForeignRubleFundingRemainder } from './procurement-small-remainder';
 
+import { confirmedPaymentIndex, collectConfirmedPayments, paymentKey, type PaymentConfirmation } from './procurement-confirmed-payment';
+
 export type EvidencePlan = {
+  oneCCashEvidence?: unknown;
   paymentPurpose?: string;
   id: string;
   planCode: string;
@@ -43,6 +46,7 @@ export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidenc
   completionByRubleEstimate?: boolean;
   collection?: ProcurementCollection;
   rubleAllocationNeedsReview?: boolean;
+  paymentReviewReasons?: {ref: string; message: string}[];
 };
 
 function oneCDateTimestamp(value: string) {
@@ -73,10 +77,12 @@ export function matchProcurementPaymentEvidence(
   requests: ExpenseRequestSourceRow[],
   currencyPayments: SupplierCurrencyPaymentRow[],
   conversions: CurrencyConversionRow[],
-  options: { allowSmallRemainder?: boolean } = {},
+  options: { allowSmallRemainder?: boolean; confirmations?: PaymentConfirmation[] } = {},
 ) {
   const linkedPayments = attachRequestOrderLinks(currencyPayments, requests);
   const uniquePayments = uniqueSupplierPayments(linkedPayments);
+  const anchors = confirmedPaymentIndex(plans, uniquePayments);
+  const newOwners = new Map<string, string>();
   const knownOrders = plans.flatMap(plan => plan.orderRefs);
   const evidence = new Map<string, ProcurementPaymentEvidence>();
   const allocations = new Map<string, { rubles: number; foreign: number; referenceRubles: number; rateRubles: number; rateForeign: number; unknownEquivalent: boolean; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
@@ -84,6 +90,14 @@ export function matchProcurementPaymentEvidence(
     const cash = matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
       `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase())));
     const cashOrders = cash.cashOrders.filter(row => {
+      const ref = paymentKey(row.ref);
+      const owner = anchors.owners.get(ref);
+      if (owner && owner !== plan.id) {
+        const message = 'Расходник ' + row.number + ' указан в другой заявке 1С';
+        anchors.review(owner, ref, message);
+        anchors.review(plan.id, ref, message);
+      }
+      if (anchors.blocked.has(ref)) return false;
       if(plan.paymentPurpose==='DELIVERY'&&!uniquePayments.some(p=>p.ref.toLowerCase()===row.ref.toLowerCase()&&p.posted&&!p.deleted&&samePaymentSupplier(plan,p)))return false;
       // A portal plan code identifies the request, but cannot manufacture a
       // missing native contract/order basis for a supplier-debt payment.
@@ -110,6 +124,13 @@ export function matchProcurementPaymentEvidence(
     });
     allocations.set(plan.id, { rubles: 0, foreign: 0, referenceRubles: 0, rateRubles: 0, rateForeign: 0, unknownEquivalent: false, payments: [] });
   }
+  // Detect conflicting native request links before reconciling any plan.
+  for (const [id, e] of evidence) {
+    const valid = e.cashOrders.filter(p => !anchors.blocked.has(paymentKey(p.ref)));
+    if (valid.length !== e.cashOrders.length) {
+      evidence.set(id, {...e, cashOrders: valid, issuedAmount: valid.reduce((sum, p) => sum + p.amount, 0), state: 'NEEDS_REVIEW'});
+    }
+  }
   const eligiblePlans = plans
     .filter((plan) => plan.status !== 'CANCELLED' && plan.paymentMethod === 'USDT')
     .sort((a, b) => (a.plannedDate || '').localeCompare(b.plannedDate || '') || (a.createdAt || '').localeCompare(b.createdAt || '') || a.planCode.localeCompare(b.planCode));
@@ -134,7 +155,7 @@ export function matchProcurementPaymentEvidence(
       });
     }
     const earlier = uniquePayments.filter(p => oneCDateTimestamp(p.date) < at);
-    applyRublePaymentEvidence(plans, earlier, coverage, options.allowSmallRemainder === true);
+    applyRublePaymentEvidence(plans, earlier, coverage, options.allowSmallRemainder === true, anchors);
     return {rows: coverage, covered: (plan: EvidencePlan) => {
       const row = coverage.get(plan.id)!;
       if (row.state === 'MISMATCH' || row.state === 'NEEDS_REVIEW' || row.rubleAllocationNeedsReview) return false;
@@ -155,6 +176,9 @@ export function matchProcurementPaymentEvidence(
   const ambiguousDebtPlans = new Set<string>();
 
   for (const payment of payments) {
+    const ref = paymentKey(payment.ref);
+    if (anchors.blocked.has(ref)) continue;
+    const retainedOwner = anchors.owners.get(ref);
     const completedOwners = plans.filter(p => p.status === COMPLETED_WITHOUT_TOPUP && p.completedPaymentRefs?.includes(payment.ref));
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => link.ref.toLowerCase() === payment.ref.toLowerCase()));
     const rate = conversionRateBefore(payment, conversions);
@@ -175,7 +199,7 @@ export function matchProcurementPaymentEvidence(
         Number.isFinite(created)&&created<=paymentAt&&!covered&&samePaymentSupplier(candidate,payment)&&
         candidate.orderRefs.some(ref=>ref.trim().toLowerCase()===orderRef);
     });
-    if(!manualOwners.length && !payment.baseDocumentRef && settlementOwners.length>1){
+    if(!retainedOwner && !manualOwners.length && !payment.baseDocumentRef && settlementOwners.length>1){
       for(const owner of settlementOwners){const current=evidence.get(owner.id)!;evidence.set(owner.id,{...current,state:'NEEDS_REVIEW'});}
     }
     let lastAllocation: ProcurementPaymentEvidence['currencyPayments'][number] | undefined;
@@ -188,35 +212,39 @@ export function matchProcurementPaymentEvidence(
     let debtOwner: EvidencePlan | undefined;
     const cancelledOrderOwner = plans.some(p => p.status === 'CANCELLED' && orderRef &&
       p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef));
-    if (!manualOwners.length && !completedOwners.length && !cargoOwner && !cancelledOrderOwner && Number.isFinite(paymentAt) && paymentAt <= Date.now() && hasConfirmedPaymentBasis(payment) &&
-        eligiblePlans.some(p => p.status === 'APPROVED' && !p.orderRefs.length &&
+    const retainedCompletion = completedOwners.length === 1 && completedOwners[0].id === retainedOwner;
+    const openForDebt = (p: EvidencePlan) => p.status === 'APPROVED' || retainedCompletion && p.id === retainedOwner;
+    if (!manualOwners.length && (!completedOwners.length || retainedCompletion) && (retainedOwner || !cargoOwner && !cancelledOrderOwner) &&
+        Number.isFinite(paymentAt) && paymentAt <= Date.now() && hasConfirmedPaymentBasis(payment) &&
+        eligiblePlans.some(p => openForDebt(p) && !p.orderRefs.length &&
           Date.parse(p.createdAt || '') <= paymentAt && samePaymentSupplier(p,payment)) &&
         ![...evidence.values()].some(row => row.cashOrders.some(p => p.ref.toLowerCase() === payment.ref.toLowerCase()))) {
       const {covered, rows: priorEvidence} = coveredBefore(paymentAt);
-      const outstanding = plans.filter(p => p.status === 'APPROVED' && Number.isFinite(Date.parse(p.createdAt || '')) &&
+      const outstanding = plans.filter(p => openForDebt(p) && Number.isFinite(Date.parse(p.createdAt || '')) &&
         Date.parse(p.createdAt!) <= paymentAt && samePaymentSupplier(p, payment) && !covered(p));
       // A current exact order owner wins; paid historical owners keep their
       // original RKOs but do not compete for this later debt payment.
       const exactOwner = eligiblePlans.some(p => orderRef && Date.parse(p.createdAt || '') <= paymentAt &&
         samePaymentSupplier(p,payment) && !covered(p) && p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef) &&
         (p.status !== COMPLETED_WITHOUT_TOPUP || p.completedPaymentRefs?.includes(payment.ref)));
-      if (outstanding.some(p => !p.orderRefs.length) && !exactOwner && !outstanding.some(p => orderRef &&
-        p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef))) {
-        const candidate = outstanding.length === 1 ? outstanding[0] : undefined;
+      if (retainedOwner || (outstanding.some(p => !p.orderRefs.length) && !exactOwner && !outstanding.some(p => orderRef &&
+        p.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef)))) {
+        const candidate = retainedOwner ? outstanding.find(p => p.id === retainedOwner) : outstanding.length === 1 ? outstanding[0] : undefined;
         const target = Number(candidate?.foreignAmount || 0);
         const prior = candidate ? allocations.get(candidate.id)! : undefined;
         const conflict = candidate?.supplierCounterparty.trim() && payment.counterparty?.trim() &&
           !samePaymentSupplier({supplierPartner:'',supplierCounterparty:candidate.supplierCounterparty}, {...payment,supplier:''});
         const supplierConflict = candidate?.supplierPartner.trim() && payment.supplier?.trim() &&
           !samePaymentSupplier({supplierPartner:candidate.supplierPartner,supplierCounterparty:''}, {...payment,counterparty:''});
-        if (candidate?.paymentMethod === 'USDT' && !candidate.orderRefs.length && !candidate.hasPendingRevision &&
+        if (candidate?.paymentMethod === 'USDT' && !candidate.orderRefs.length && (!candidate.hasPendingRevision || retainedOwner === candidate.id) &&
             target > 0 && Number.isFinite(target) && !conflict && !supplierConflict && prior &&
             !priorEvidence.get(candidate.id)!.cashOrders.length &&
             payment.documentAmount <= Math.max(0, target - prior.foreign) + tolerance(target)) debtOwner = candidate;
-        else for (const p of outstanding) if (p.paymentMethod === 'USDT') ambiguousDebtPlans.add(p.id);
+        else for (const p of outstanding.filter(p => !retainedOwner || p.id === retainedOwner)) if (p.paymentMethod === 'USDT') ambiguousDebtPlans.add(p.id);
       }
     }
     for (const plan of eligiblePlans) {
+      if (retainedOwner && debtOwner?.id !== plan.id) continue;
       if (debtOwner && debtOwner.id !== plan.id) continue;
       if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))continue;
       if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))continue;
@@ -264,6 +292,7 @@ export function matchProcurementPaymentEvidence(
       allocation.payments.push(lastAllocation);
       availableForeign -= takeForeign;
     }
+    if (debtOwner && !retainedOwner && lastAllocation?.foreignAmount === payment.documentAmount) newOwners.set(ref, debtOwner.id);
     // Preserve the remainder exactly once, outside request coverage/totals.
     // It is not automatically supplier overpayment or a new payment request.
     if(lastAllocation && availableForeign>0.0000001)lastAllocation.unallocatedForeignAmount=Math.round(availableForeign*1e8)/1e8;
@@ -293,7 +322,7 @@ export function matchProcurementPaymentEvidence(
       manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,
     });
   }
-  applyRublePaymentEvidence(plans, linkedPayments, evidence, options.allowSmallRemainder === true);
+  applyRublePaymentEvidence(plans, linkedPayments, evidence, options.allowSmallRemainder === true, anchors, newOwners);
   // Derived only from a complete fresh read. Keep all actual amounts and RKO
   // ownership; a removed/unposted payment makes the request active again.
   if (options.allowSmallRemainder === true) for (const plan of plans) {
@@ -304,6 +333,17 @@ export function matchProcurementPaymentEvidence(
       (smallRubleRemainder(plan, row.issuedAmount) !== null ||
         (!row.currencyPayments.length && row.paidForeignAmount === 0 && smallForeignRubleFundingRemainder(plan, row.issuedAmount) !== null))) row.state = SMALL_REMAINDER_COMPLETED;
   }
+  for (const [ref, owner] of anchors.owners) {
+    const current = evidence.get(owner)!;
+    if (!anchors.blocked.has(ref) && ![...current.currencyPayments, ...current.cashOrders].some(p => paymentKey(p.ref) === ref)) {
+      const number = uniquePayments.find(p => paymentKey(p.ref) === ref)?.number || ref;
+      anchors.review(owner, ref, 'Проверьте привязку расходника ' + number + ' к заявке');
+    }
+  }
+  for (const [id, reasons] of anchors.issues) {
+    Object.assign(evidence.get(id)!, {state: 'NEEDS_REVIEW', rubleAllocationNeedsReview: true, paymentReviewReasons: reasons});
+  }
+  if (options.confirmations && newOwners.size) collectConfirmedPayments(newOwners, evidence, uniquePayments, options.confirmations);
   for (const [id, collection] of procurementCollections(plans, requests, evidence)) evidence.get(id)!.collection = collection;
   return evidence;
 }

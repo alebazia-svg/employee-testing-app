@@ -10,7 +10,7 @@ import {hasConfirmedPaymentBasis} from '@/lib/procurement-payment-basis';
 type Plan = { paymentPurpose?: string; id: string; supplierPartner: string; supplierCounterparty: string; orderRefs?: string[]; orderNumbers: string[]; remaining: number; remainingForeign: number | null; status: string; paymentMethod: string; hasPendingRevision?: boolean };
 export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'review', allowSmallExcess = false }: {
   payments: SupplierCurrencyPaymentRow[]; plans: Plan[];
-  linked: { planId: string; ref: string; label: string; confirmed: boolean }[];
+  linked: { planId: string; ref: string; label: string; confirmed: boolean; reason?: string; canUnlink?: boolean; automaticFingerprint?: string }[];
   view?: 'review' | 'history';
   allowSmallExcess?: boolean;
 }) {
@@ -20,11 +20,11 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'r
   const [message, setMessage] = useState('');
   const [expanded, setExpanded] = useState(false);
   const money = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
-  async function save(id: string, ref: string, action: 'LINK' | 'UNLINK') {
+  async function save(id: string, ref: string, action: 'LINK' | 'UNLINK', automaticFingerprint?: string) {
     setBusy(ref); setMessage('');
     try {
       const response = await fetch(`/api/admin/procurement/payment-plans/${id}/payment-link`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref, action }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref, action, automaticFingerprint }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Не удалось сохранить.');
@@ -62,8 +62,8 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'r
     {visiblePayments.length > 5 && <button onClick={() => setExpanded(!expanded)} className="text-sm font-semibold text-slate-600">{expanded ? 'Свернуть' : `Показать все ${visiblePayments.length}`}</button>}
     <div className="divide-y divide-slate-100 text-sm">{visibleLinks.map((link) => <div className="flex flex-wrap items-center justify-between gap-3 py-3" key={`${link.planId}:${link.ref}`}>
       <div className="min-w-0 break-words"><p className="font-semibold text-slate-900">{link.label}</p>
-        {!link.confirmed && <p className="mt-1 text-amber-800">Привязка требует проверки: оплата изменилась или не подтверждена.</p>}</div>
-      <button disabled={Boolean(busy)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40" onClick={() => save(link.planId, link.ref, 'UNLINK')}>Отменить привязку</button>
+        {!link.confirmed && <p className="mt-1 text-amber-800">{link.reason || 'Привязка требует проверки: оплата изменилась или не подтверждена.'}</p>}</div>
+      {link.canUnlink !== false && <button disabled={Boolean(busy)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40" onClick={() => save(link.planId, link.ref, 'UNLINK', link.automaticFingerprint)}>Отменить привязку</button>}
     </div>)}</div>
   </section>;
 }

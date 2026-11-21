@@ -59,6 +59,8 @@ export function applyRublePaymentEvidence(
   plans: EvidencePlan[], payments: SupplierCurrencyPaymentRow[],
   evidence: Map<string, ProcurementPaymentEvidence>,
   allowSmallRemainder = false,
+  anchors?: Pick<ReturnType<typeof import('./procurement-confirmed-payment').confirmedPaymentIndex>, 'blocked' | 'owners'>,
+  newOwners?: Map<string, string>,
 ) {
   const eligible = plans.filter((plan) => ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') &&
     ['CASH', 'ACCOUNTABLE_QR', 'BANK', 'CNY', 'USDT'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
@@ -100,6 +102,9 @@ export function applyRublePaymentEvidence(
     .filter(payment => Number.isFinite(paymentTimestamp(payment.date)))
     .sort((a, b) => paymentTimestamp(a.date) - paymentTimestamp(b.date) || key(a.ref).localeCompare(key(b.ref)));
   for (const payment of orderedPayments) {
+    const ref = key(payment.ref);
+    if (anchors?.blocked.has(ref)) continue;
+    const retainedOwner = anchors?.owners.get(ref);
     if (!payment.posted || payment.deleted || !['РУБ', 'RUB'].includes(payment.documentCurrency) ||
         !Number.isFinite(payment.documentAmount) || payment.documentAmount <= 0) continue;
     const at = paymentTimestamp(payment.date);
@@ -136,6 +141,10 @@ export function applyRublePaymentEvidence(
         supplierDebtFallback = true;
       }
     }
+    if (retainedOwner) {
+      candidates = availablePlans.filter(plan => plan.id === retainedOwner && !plan.orderRefs.length && samePaymentSupplier(plan, payment));
+      supplierDebtFallback = true;
+    }
     // Operational completion releases a later request, but must not discard a
     // real top-up when the original request is still the sole exact owner.
     if (!manualOwners.length && !completedOwners.length && candidates.length > 1) {
@@ -161,6 +170,7 @@ export function applyRublePaymentEvidence(
       continue;
     }
     const plan = candidates[0];
+    if (retainedOwner && retainedOwner !== plan.id) continue;
     const current = evidence.get(plan.id)!;
     if (current.state === 'MISMATCH') continue;
     // RUB funding plus a separate USDT RKO could describe the same transfer.
@@ -177,6 +187,7 @@ export function applyRublePaymentEvidence(
         amount: payment.documentAmount, cashbox: payment.cashbox || '',
       }],
     });
+    if (supplierDebtFallback && !retainedOwner) newOwners?.set(ref, plan.id);
     claims.set(key(payment.ref), new Set([plan.id]));
   }
   for (const plan of eligible) {

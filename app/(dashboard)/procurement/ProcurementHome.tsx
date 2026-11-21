@@ -1,3 +1,5 @@
+import { retainDisplayConfirmations } from '@/lib/procurement-confirmed-payment-server';
+import { type PaymentConfirmation } from '@/lib/procurement-confirmed-payment';
 import {Suspense} from 'react';
 import {randomUUID} from 'node:crypto';
 import {readAdminPlans,sameAdminPlanVersions,type AdminPlans} from '@/lib/procurement-admin-plans';
@@ -134,6 +136,7 @@ async function readLive({user,initialPlans,generation,readOnly}:{user:Procuremen
   const plans = allPlans.filter((plan) => plan.managerUserId === user.id);
   const requests = requestsResult.status === "fulfilled" ? requestsResult.value.rows : [];
   const currencySource = currencyPaymentsResult.status === "fulfilled" ? currencyPaymentsResult.value : null;
+  const confirmations: PaymentConfirmation[] = [];
   const paymentEvidence = matchProcurementPaymentEvidence(
     allPlans.map((plan) => ({
       id: plan.id,
@@ -151,17 +154,19 @@ async function readLive({user,initialPlans,generation,readOnly}:{user:Procuremen
       status: plan.status,
       currency: plan.currency,
       hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)),
+      oneCCashEvidence: plan.oneCCashEvidence,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
       completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
-    { allowSmallRemainder: !evidenceSourceError && !plansSourceError },
+    { confirmations, allowSmallRemainder: !evidenceSourceError && !plansSourceError },
   );
+  const retention = await retainDisplayConfirmations(allPlans, !readOnly && !evidenceSourceError && !plansSourceError ? confirmations : [], evidenceReadStartedAt);
   attachQrFunding(paymentEvidence,await qrFundingPromise);
-  const displayEvidence = await preservePaymentEvidenceViews(allPlans, paymentEvidence,
-    !evidenceSourceError && !plansSourceError, evidenceReadStartedAt, prisma.supplierPaymentPlan, new Date(), { persist: !readOnly });
+  const displayEvidence = await preservePaymentEvidenceViews(retention.plans, paymentEvidence,
+    !evidenceSourceError && !plansSourceError, evidenceReadStartedAt, prisma.supplierPaymentPlan, new Date(), { persist: !readOnly, deferred: retention.deferred });
   const serializedPlans = plans.map((plan) => {
     const latestSnapshot = plan.events[0]?.snapshot;
     const snapshot = latestSnapshot && typeof latestSnapshot === "object" && !Array.isArray(latestSnapshot)
