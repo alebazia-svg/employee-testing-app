@@ -13,7 +13,8 @@ import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { plannedFxRubles } from '@/lib/procurement-planned-fx';
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { proposeApprovedRevision, freshEvidence } from "@/lib/procurement-plan-revision-server";
-import { isSupplierDebtPlan, paymentBasisChanged } from '@/lib/procurement-debt-request';
+import { assertUnpaidAction } from '@/lib/procurement-unpaid-action';
+import { isSupplierDebtPlan, paymentTargetChanged } from '@/lib/procurement-debt-request';
 import { validateBasisChangeTarget } from '@/lib/procurement-basis-change-server';
 import { assertRevisionPaymentSafety, revisionChanges } from '@/lib/procurement-plan-revision';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
@@ -44,19 +45,23 @@ export async function PATCH(
     );
   const payload = await req.json().catch(() => null);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return Response.json({error:'Проверьте данные заявки.'}, {status:400});
-  if(payload.paymentPurpose!=null&&payload.paymentPurpose!==existing.paymentPurpose)return Response.json({error:'Назначение существующей заявки не меняется.'},{status:400});
-  payload.paymentPurpose=existing.paymentPurpose;
+  // Earlier mobile clients serialized an unchanged supplier advance as DEBT.
+  if(payload.basis==='DEBT' && payload.paymentPurpose==='SUPPLIER_ADVANCE' && existing.paymentPurpose==='SUPPLIER_ADVANCE')payload.basis='ADVANCE';
+  const purpose = existing.paymentPurpose==='DELIVERY' || payload.basis==null ? existing.paymentPurpose
+    : payload.basis==='ADVANCE' ? 'SUPPLIER_ADVANCE' : 'GOODS';
+  if(payload.paymentPurpose!=null&&payload.paymentPurpose!==purpose)return Response.json({error:'Назначение существующей заявки не меняется.'},{status:400});
+  payload.paymentPurpose=purpose;
   if(existing.paymentPurpose==='DELIVERY'){
     const cargoError=cargoRequestError(payload,user.oneCManagerName?.trim()||user.name);
     if(cargoError)return Response.json({error:cargoError},{status:400});
     if(payload.basis!=null&&payload.basis!=='DEBT')return Response.json({error:'Доставка оформляется без заказа.'},{status:400});
   }
-  if (payload.basis != null && !['ORDER', 'DEBT'].includes(payload.basis)) return Response.json({error:'Неизвестное основание оплаты.'}, {status:400});
+  if (payload.basis != null && !['ORDER', 'DEBT', 'ADVANCE'].includes(payload.basis)) return Response.json({error:'Неизвестное основание оплаты.'}, {status:400});
   const wasDebt = isSupplierDebtPlan(existing);
-  const debt = payload.basis === 'DEBT' || (payload.basis == null && wasDebt);
+  const debt = payload.basis === 'ADVANCE' || payload.basis === 'DEBT' || (payload.basis == null && wasDebt);
   const checked = validatePaymentPlan({...payload,fundingSource:payload.fundingSource===undefined?existing.fundingSource:payload.fundingSource}, debt);
   if (debt && checked.data.orderRefs.length) return Response.json({error:'Для оплаты долга уберите выбранные заказы.'}, {status:400});
-  const basisChanged = paymentBasisChanged(existing, checked.data);
+  const basisChanged = paymentTargetChanged(existing, checked.data);
   if ((wasDebt || basisChanged) && checked.data.supplierPartner !== existing.supplierPartner)
     return Response.json({ error: 'При смене основания оставьте того же поставщика.' }, { status: 400 });
   if (basisChanged && payload.basis == null) return Response.json({error:'Выберите основание оплаты.'}, {status:400});
@@ -118,7 +123,7 @@ export async function PATCH(
         return Response.json({ error: "Заказы должны относиться к выбранному поставщику." }, { status: 400 });
       return null;
     })(),
-    freshEvidence().catch(() => null),
+    freshEvidence({guardPlanId: basisChanged || existing.paymentMethod !== checked.data.paymentMethod ? id : undefined}).catch(() => null),
     readFundingBalance([checked.data]).then(balance => ({ balance, failed: false })).catch(() => ({ balance: null, failed: true })),
   ]);
   if (orderError) return orderError;
@@ -132,12 +137,13 @@ export async function PATCH(
     .$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
       await assertFundingBalance(tx,[checked.data],fundingBalance,overlapEvidence,id);
-      if (basisChanged) {
+      if (basisChanged || existing.paymentMethod!==checked.data.paymentMethod) {
         const current = await tx.supplierPaymentPlan.findFirst({where:{id,managerUserId:user.id,status:{in:['SUBMITTED','NEEDS_CHANGES']}}});
         if (!current || current.updatedAt.toISOString() !== existing.updatedAt.toISOString()
           || overlapEvidence.versions.get(id) !== current.updatedAt.toISOString()) throw new Error('Заявка изменилась. Обновите страницу.');
         const paid = overlapEvidence.get(id);
         if (!paid) throw new Error('Не удалось проверить оплату заявки. Повторите позже.');
+        await assertUnpaidAction(tx,current,paid);
         assertRevisionPaymentSafety(current, {...checked.data, plannedAmount}, paid);
       }
       const otherPlans = await tx.supplierPaymentPlan.findMany({ where: { id: { not: id }, status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
@@ -145,6 +151,7 @@ export async function PATCH(
       const changed = await tx.supplierPaymentPlan.updateMany({
         where: { id, managerUserId: user.id, updatedAt: existing.updatedAt, status: { in: ["SUBMITTED", "NEEDS_CHANGES"] } },
         data: {
+          paymentPurpose: checked.data.paymentPurpose,
           supplierPartner: checked.data.supplierPartner,
           supplierCounterparty: checked.data.supplierCounterparty,
           orderRefs: checked.data.orderRefs,

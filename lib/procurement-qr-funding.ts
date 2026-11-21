@@ -13,7 +13,7 @@ export function qrMovementTime(value:unknown) {
  * equal posted movements, exact supplier token or code, and one-to-one ownership.
  * No fuzzy names, balance inference, nearest-date guesses or amount-only matches.
  */
-export function matchQrFunding(plans:QrFundingPlan[],raw:unknown,targetRef:string,from:string,to:string,checkedAt:string) {
+export function matchQrFunding(plans:QrFundingPlan[],raw:unknown,targetRef:string,from:string,to:string,checkedAt:string,guardPlanId?:string) {
  const p=obj(raw);const result=new Map<string,QrFunding>();
  const unavailable=()=>new Map(plans.map(plan=>[plan.id,{state:'unavailable',checkedAt} as QrFunding]));
  if(p.ok!==true||p.endpoint!=='money-statement'||p.money_type!=='cash'||p.date_from!==from||p.date_to!==to||p.complete!==true||p.truncated!==false||!Array.isArray(p.movements)||!targetRef)return unavailable();
@@ -38,6 +38,11 @@ export function matchQrFunding(plans:QrFundingPlan[],raw:unknown,targetRef:strin
   // Include cancelled/finished/other methods in competition: an old transfer
   // must never migrate to a newer request after the original one closes.
   const candidates=plans.filter(plan=>codes.length?codes.length===1&&plan.planCode.toUpperCase()===codes[0]:[key(plan.supplierPartner),key(plan.supplierCounterparty)].filter(Boolean).includes(supplier)&&minor(plan.plannedAmount)===amount&&Date.parse(plan.createdAt)<=at);
+  // A competing transfer cannot prove payment, but it also cannot establish
+  // that it is safe to cancel or change the request's accounting basis.
+  if (guardPlanId && candidates.some(candidate => candidate.id === guardPlanId)) {
+    result.set(guardPlanId, {state:'unavailable', checkedAt});
+  }
   if(candidates.length!==1)continue;
   const plan=candidates[0];
   if(plan.paymentMethod!=='ACCOUNTABLE_QR'||plan.status!=='APPROVED'||plan.hasPendingRevision||minor(plan.plannedAmount)!==amount||!Number.isFinite(Date.parse(plan.createdAt))||Date.parse(plan.createdAt)>at)continue;

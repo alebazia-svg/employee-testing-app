@@ -51,6 +51,7 @@ export async function saveProcurementReceipt(db:PrismaClient,user:ReceiptActor,p
       const plan=await tx.supplierPaymentPlan.findUnique({where:{id:planId}});
       const currentUser=await tx.user.findUnique({where:{id:user.id}});
       if (!plan || !currentUser || !canAccessProcurementReceipts(currentUser,plan.managerUserId)) throw new ReceiptError('Нет доступа к заявке.',403);
+      if(plan.status==='CANCELLED')throw new ReceiptError('Заявка отменена.',409);
       if(options.planVersion && plan.updatedAt.toISOString()!==options.planVersion)throw new ReceiptError('Заявка изменилась. Обновите её перед добавлением файла.',409);
       if(options.paymentRefs)validateReceiptAssociation(plan,purpose,options.paymentRefs);
       const paymentSnapshots=options.paymentRefs?documentPaymentSnapshots({evidence:savedPaymentEvidence(plan)?.evidence},options.paymentRefs):null;

@@ -19,6 +19,10 @@ export async function validateBasisChangeTarget(before: { supplierPartner: strin
   if (!balances || balances.unsupportedCurrencyRows) throw new Error('Данные взаиморасчётов недоступны. Изменения не сохранены.');
   const balance = balances.bySupplier[input.supplierPartner];
   const data = { ...input, condition: buyerPaymentComment(input.condition) };
+  if (data.paymentPurpose==='SUPPLIER_ADVANCE') {
+    if(data.orderRefs.length) throw Error('Аванс оформляется без заказа.');
+    return {...data, orderNumbers:[], supplierCounterparty:''};
+  }
   if (isSupplierDebtPlan(data)) {
     if (supplierPosition(balance) !== 'debt') throw new Error('Подтверждённого долга поставщику нет. Оставьте оплату по заказу.');
     return { ...data, orderNumbers: [], supplierCounterparty: '' };

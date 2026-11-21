@@ -1,3 +1,4 @@
+import { cancelPayment } from '@/lib/procurement-cancel-server';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import { notifyProcurementManagerAboutDecision } from '@/lib/procurement-payment-notifications';
@@ -13,6 +14,10 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
   const reason = typeof payload.reason === 'string' ? payload.reason.trim().slice(0, 300) : '';
   if (!['APPROVE', 'RETURN', 'CANCEL'].includes(action)) return Response.json({ error: 'Недопустимое действие' }, { status: 400 });
   if (action === 'RETURN' && reason.length < 3) return Response.json({ error: 'Коротко укажите, что нужно исправить.' }, { status: 400 });
+  if(action==='CANCEL') {
+    try{return Response.json(await cancelPayment(id,access.user,payload.version));}
+    catch(error){return Response.json({error:error instanceof Error && /^[А-ЯЁ]/.test(error.message)?error.message:'Не удалось проверить отмену. Обновите заявку.'},{status:409});}
+  }
   // Approval must be protected here, not by whether the browser has finished
   // loading an unrelated catalogue/forecast. Read before taking the DB lock.
   let verifiedVersion: Date | undefined;
@@ -30,7 +35,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     }
     verifiedVersion = candidate.updatedAt;
   }
-  const status = action === 'APPROVE' ? 'APPROVED' : action === 'RETURN' ? 'NEEDS_CHANGES' : 'CANCELLED';
+  const status = action === 'APPROVE' ? 'APPROVED' : 'NEEDS_CHANGES';
   const plan = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     const changed = await tx.supplierPaymentPlan.updateMany({ where: { id, status: 'SUBMITTED', ...(verifiedVersion ? { updatedAt: verifiedVersion } : {}) }, data: { status, approvedAt: action === 'APPROVE' ? new Date() : null, approvedById: action === 'APPROVE' ? access.user.id : null } });

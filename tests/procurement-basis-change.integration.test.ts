@@ -12,13 +12,15 @@ test('basis changes keep one plan, preserve terms, reapprove and reject paid/sta
   const admin = await db.user.create({data:{name:marker+'admin',login:marker+'admin',passwordHash:'not-login',role:'ADMIN'}});
   const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow'}).format(new Date());
   const none = {state:'NO_EVIDENCE',issuedAmount:0,paidAmount:0,paidForeignAmount:0};
-  const state:any = {db,user,supplier:marker,complete:true,debt:500000,paid:none,orders:[
+  const state:any = {db,user,admin,supplier:marker,complete:true,debt:500000,paid:none,orders:[
     {ref:'basis-order',number:'DEMO-334',date:today,supplierPartner:marker,supplierCounterparty:'',manager:marker,
       amount:250000,orderPaymentGap:100000,planningState:'receipt_debt'},
     {ref:'foreign-order',number:'FOREIGN',date:today,supplierPartner:'Other',supplierCounterparty:'',manager:'Other',orderPaymentGap:100000,planningState:'receipt_debt'},
   ]};
   (globalThis as any).basisChangeTest = state;
   const mocks:Record<string,string> = {
+    'admin-api-auth':'export const requireAdminApi=async()=>({ok:true,user:globalThis.basisChangeTest.admin});',
+    'procurement-qr-funding-source':'export const readQrFunding=async plans=>new Map(plans.map(p=>[p.id,{state:globalThis.basisChangeTest.qrState||"none"}]));',
     auth:'export const getCurrentUser=async()=>globalThis.basisChangeTest.user;',
     prisma:'export const prisma=globalThis.basisChangeTest.db;',
     'procurement-request-catalogue':'export const fetchRequestOrderCatalogue=async()=>({complete:globalThis.basisChangeTest.complete,rows:globalThis.basisChangeTest.orders});',
@@ -26,11 +28,11 @@ test('basis changes keep one plan, preserve terms, reapprove and reject paid/sta
     'procurement-supplier-roster':'export const fetchManagerSupplierNames=async()=>[globalThis.basisChangeTest.supplier];',
     'procurement-supplier-settlements':'export const fetchSupplierSettlements=async()=>({complete:globalThis.basisChangeTest.complete,rows:[]});export const summarizeSupplierSettlements=()=>({bySupplier:{[globalThis.basisChangeTest.supplier]:{debt:globalThis.basisChangeTest.debt,advance:0,closingBalance:-globalThis.basisChangeTest.debt,reviewRequired:false}},unsupportedCurrencyRows:0});',
     'procurement-planning-sync':'export const verifySelectedPlanningOrders=async rows=>rows;',
-    'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,payments:[],conversions:[]});',
+    'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,rubPaymentsSupported:true,payments:[],conversions:[]});',
     'expense-request-source':'export const expenseRequestMoscowDayEnd=()=>new Date("2026-09-26T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-25";',
     'procurement-currency-payment-evidence':'export const matchProcurementPaymentEvidence=plans=>new Map(plans.map(p=>[p.id,globalThis.basisChangeTest.paid]));',
     'procurement-usdt-rate':'export const getLatestProcurementUsdtRate=async()=>({rate:90});',
-    'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',
+    'procurement-payment-notifications':'export const notifyProcurementManagerAboutPendingEdit=async()=>{};export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',
   };
   async function load(entry:string) {
     const result=await build({entryPoints:[entry],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'test-io',setup(b){
@@ -47,7 +49,7 @@ test('basis changes keep one plan, preserve terms, reapprove and reject paid/sta
       orderRefs:[],orderNumbers:[],plannedDate:new Date(`${today}T00:00:00Z`),plannedAmount:12345,condition:'Не менять комментарий',
       paymentMethod:'CASH',currency:'RUB',status:'SUBMITTED'}});
     const read=()=>db.supplierPaymentPlan.findUniqueOrThrow({where:{id:plan.id}});
-    const payload=async(basis:'ORDER'|'DEBT', extra:any={})=>({...await read(),basis,orderRefs:basis==='ORDER'?['basis-order']:[],
+    const payload=async(basis:'ORDER'|'DEBT'|'ADVANCE', extra:any={})=>({...await read(),basis,orderRefs:basis==='ORDER'?['basis-order']:[],
       orderNumbers:[],plannedDate:today,plannedAmount:12345,version:(await read()).updatedAt.toISOString(),...extra});
     const send=async(body:any)=>route.PATCH(new Request('http://localhost/test',{method:'PATCH',body:JSON.stringify(body)}),{params:Promise.resolve({id:plan.id})});
     const expectStatus=async(body:any,status:number)=>{const response=await send(body);const value=await response.json();assert.equal(response.status,status,JSON.stringify(value));return value;};
@@ -111,7 +113,56 @@ test('basis changes keep one plan, preserve terms, reapprove and reject paid/sta
     assert.equal(Number((await read()).plannedAmount),12345);
     assert.equal((await read()).condition,'Не менять комментарий');
     assert.equal(await db.supplierPaymentPlan.count({where:{managerUserId:user.id}}),1);
+
+    state.paid=none;
+    const advance=await expectStatus(await payload('ADVANCE',{paymentPurpose:'SUPPLIER_ADVANCE',changeReason:'Аванс поставщику'}),200);
+    assert.equal((await read()).paymentPurpose,'GOODS');
+    await revisions.decideApprovedRevision(plan.id,admin.id,advance.revision.id,true,'');
+    assert.equal((await read()).paymentPurpose,'SUPPLIER_ADVANCE');
+    const edit=await load('app/api/admin/procurement/payment-plans/[id]/edit/route.ts');
+    const params={params:Promise.resolve({id:plan.id})};
+    const adminEdit=async(basis:string,refs:string[])=>edit.PATCH(new Request('http://localhost/test',{method:'PATCH',body:JSON.stringify({basis,orderRefs:refs,version:(await read()).updatedAt.toISOString()})}),params);
+    assert.equal((await adminEdit('ORDER',['basis-order'])).status,200);
+    assert.deepEqual((await read()).orderNumbers,['DEMO-334']);
+    state.debt=0;
+    assert.equal((await adminEdit('DEBT',[])).status,409);
+    assert.equal((await adminEdit('ADVANCE',[])).status,200);
+    assert.equal((await read()).paymentPurpose,'SUPPLIER_ADVANCE');
+    const req=await db.supplierPaymentReceipt.create({data:{planId:plan.id,authorUserId:user.id,originalName:'fixture',storageKey:marker,mimeType:'image/png',size:1,sha256:marker,purpose:'RECEIPT'}});
+    const cancel=await load('app/api/procurement/payment-plans/[id]/cancel/route.ts');
+    const asBuyer=async(version:string)=>cancel.POST(new Request('http://localhost/test',{method:'POST',body:JSON.stringify({version})}),params);
+    const version=async()=>(await read()).updatedAt.toISOString();
+    assert.equal((await asBuyer(await version())).status,409,'payment receipt protects the plan');
+    await db.supplierPaymentReceipt.update({where:{id:req.id},data:{purpose:'REQUISITES'}});
+    state.user={...user,id:admin.id};
+    assert.equal((await asBuyer(await version())).status,409,'other buyers cannot cancel');
+    state.user=user;
+    await db.supplierPaymentPlan.update({where:{id:plan.id},data:{paymentMethod:'ACCOUNTABLE_QR'}});
+    for(const qrState of ['confirmed','unavailable']){
+      state.qrState=qrState;
+      assert.equal((await asBuyer(await version())).status,409);
+      assert.equal((await adminEdit('ORDER',['basis-order'])).status,409);
+    }
+    state.qrState='none';
+    assert.equal((await asBuyer('stale')).status,409);
+    const v=await version();
+    const concurrent=await Promise.all([asBuyer(v),asBuyer(v)]);
+    assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+    assert.equal((await read()).status,'CANCELLED');
+    assert.equal(await db.supplierPaymentReceipt.count({where:{planId:plan.id}}),1);
+    const cancellation=await db.supplierPaymentPlanEvent.findFirstOrThrow({where:{planId:plan.id,action:'CANCELLED'}});
+    assert.equal((cancellation.snapshot as any).actorName,user.name);
+    const adminCancel=await load('app/api/admin/procurement/payment-plans/[id]/route.ts');
+    for(const status of ['SUBMITTED','APPROVED']){
+      await db.supplierPaymentPlan.update({where:{id:plan.id},data:{status}});
+      const sendCancel=async()=>adminCancel.PATCH(new Request('http://localhost/test',{method:'PATCH',body:JSON.stringify({action:'CANCEL',version:await version()})}),params);
+      state.paid={...none,state:'PAID_BY_ONE_C',paidAmount:12345};
+      assert.equal((await sendCancel()).status,409);
+      state.paid=none;
+      assert.equal((await sendCancel()).status,200);
+    }
   } finally {
+    await db.supplierPaymentReceipt.deleteMany({where:{authorUserId:user.id}});
     await db.supplierPaymentPlan.deleteMany({where:{managerUserId:user.id}});
     await db.user.deleteMany({where:{id:{in:[user.id,admin.id]}}});
     await db.$disconnect();delete (globalThis as any).basisChangeTest;

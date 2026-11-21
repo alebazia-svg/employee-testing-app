@@ -50,7 +50,7 @@ function meaningfulComment(value: string) {
 export async function notifyAdminsAboutProcurementPlans(input: {
   db: NotificationDb;
   eventKey: string;
-  action: 'SUBMITTED' | 'UPDATED';
+  action: 'SUBMITTED' | 'UPDATED' | 'CANCELLED';
   revisionProposal?: boolean;
   dateChange?: {before:Date;after:Date};
   managerName: string;
@@ -63,7 +63,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   const first = input.plans[0];
   const single = input.plans.length === 1;
   const comment = single ? meaningfulComment(first.condition) : '';
-  const title = input.dateChange ? 'Дата подготовки денег изменена' : input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : single && first.paymentPurpose === SUPPLIER_ADVANCE ? 'Новый аванс поставщику' : 'Новая оплата поставщику';
+  const title = input.action==='CANCELLED' ? 'Заявка на оплату отменена' : input.dateChange ? 'Дата подготовки денег изменена' : input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : single && first.paymentPurpose === SUPPLIER_ADVANCE ? 'Новый аванс поставщику' : 'Новая оплата поставщику';
   const body = single
     ? [
         input.managerName,
@@ -84,7 +84,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
     where: { eventKey: input.eventKey },
     create: {
       eventKey: input.eventKey,
-      type: input.action === 'UPDATED' ? 'procurement.payment_updated' : 'procurement.payment_submitted',
+      type: input.action !== 'SUBMITTED' ? 'procurement.payment_updated' : 'procurement.payment_submitted',
       title,
       body,
       href: '/admin/procurement',
@@ -139,7 +139,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
   // Approving a previously deferred request must not promise its old date.
   const preparationDate = approved ? paymentPreparationDate({status:'APPROVED',plannedDate:input.plan.plannedDate.toISOString(),oneCCashEvidence:input.plan.oneCCashEvidence}) : input.plan.plannedDate.toISOString().slice(0,10);
   const dateText = preparationDate ? `к ${shortDate.format(new Date(preparationDate+'T00:00:00Z'))}` : 'Дата подготовки денег уточняется';
-  if (input.rescheduled || input.scheduleChange || input.revisionDecision && approved) {
+  if (input.decision==='CANCELLED' || input.rescheduled || input.scheduleChange || input.revisionDecision && approved) {
     // Do not leave the old approved date in the unread inbox or pending push queue.
     await input.db.workdayNotification.updateMany({where:{userId:input.plan.managerUserId,kind:'procurement_payment_approved',fingerprint:{startsWith:`procurement-payment:${input.plan.id}:approved:`},status:{in:['pending','sent']}},data:{status:'cancelled',readAt:now,nextPushAttemptAt:null}});
   }
