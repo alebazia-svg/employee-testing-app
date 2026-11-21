@@ -15,6 +15,7 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
       import React from 'react';
       import {createRoot} from 'react-dom/client';
       import {flushSync} from 'react-dom';
+      import {ProcurementMobilePresentation as Mobile} from './components/ProcurementMobilePresentation';
       import {ProcurementDocumentSections} from './components/ProcurementDocumentSections';
       const root=createRoot(document.getElementById('root'));
       let sequence=0;
@@ -22,7 +23,7 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
         window.saved=[]; window.changed=[]; window.uploadOk=true;
         const {count=1,method='USDT',admin=true,disabled=false,currency=false,files=[]}=options;
         const payments=Array.from({length:count},(_,i)=>({ref:'payment-'+i,number:'RKO-'+i,amount:50,date:'2026-10-25'}));
-        flushSync(()=>root.render(<ProcurementDocumentSections key={++sequence}
+        flushSync(()=>root.render(<Mobile.Provider value={options.mobile===false?null:{target:null,openAccountable(){}}}><ProcurementDocumentSections key={++sequence}
           plan={{id:'isolated',supplierPartner:'Test',plannedAmount:100,orderNumbers:[],
             plannedDate:'2026-10-25',status:'APPROVED',paymentMethod:method,
             evidence:{state:count?'PARTIALLY_ISSUED':'NO_EVIDENCE',issuedAmount:count?50:0,
@@ -32,16 +33,17 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
           onAdd={async(files,purpose,replacement,refs)=>{
             window.saved.push({names:files.map(f=>f.name),purpose,replacement,refs});
             return window.uploadOk;
-          }}/>));
+          }}/></Mobile.Provider>));
       };
-    `}, bundle: true, write: false, platform: 'browser', format: 'iife',
-    define: {'process.env.NODE_ENV': '"test"'},
+    `}, outdir: 'out', bundle: true, write: false, platform: 'browser', format: 'iife',
+    define: {'process.env':'{}','process.env.NODE_ENV': '"test"'},
   });
   const browser = await chromium.launch({headless:true, ...(process.env.PROCUREMENT_TEST_BROWSER?{executablePath:process.env.PROCUREMENT_TEST_BROWSER}:{})});
   try {
     const page = await browser.newPage({viewport:{width:390,height:844}});
     await page.setContent('<div id="root"></div>');
-    await page.addScriptTag({content:bundle.outputFiles[0].text});
+    await page.addStyleTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.css'))!.text});
+    await page.addScriptTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.js'))!.text});
     const mount = (options:Record<string,unknown>)=>page.evaluate((o:unknown)=>(window as any).mount(o),options);
     const saved = ()=>page.evaluate(()=>(window as any).saved);
     const picker = async(name='Добавить чек')=>{
@@ -50,11 +52,21 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
       await page.getByRole('button',{name,exact:true}).click();
       return event;
     };
+    async function requisites(name:string,file?:any){
+      await page.getByRole('button',{name,exact:true}).click();
+      const dialog=page.getByRole('dialog');
+      const event=page.waitForEvent('filechooser');
+      await dialog.getByRole('button',{name:'Выбрать файл',exact:true}).click();
+      await (await event).setFiles(file??[]);
+      await dialog.getByRole('button',{name:file?'Сохранить':'Отмена',exact:true}).click();
+      await dialog.waitFor({state:'hidden'});
+    }
     const file={name:'receipt.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\n%%EOF')};
     for(const admin of [true,false])for(const currency of [false,true]){
       await mount({admin,currency});
       // Switching from requisites must not retain their purpose for this upload.
-      await (await picker('Добавить реквизиты')).setFiles([]);
+      await requisites('Добавить реквизиты');
+
       const chooser=await picker();
       assert.equal(await page.getByText('Чек за оплату',{exact:true}).count(),0);
       await chooser.setFiles(file);
@@ -64,10 +76,17 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
       assert.equal((await saved()).length,1);
       await page.evaluate(()=>(window as any).uploadOk=false);
       await (await picker()).setFiles(file);
-      assert.equal(await page.getByRole('button',{name:'Повторить отправку',exact:true}).count(),1);
+      await page.getByRole('button',{name:'Повторить отправку',exact:true}).waitFor({timeout:5000});
       await page.evaluate(()=>(window as any).uploadOk=true);
       await page.getByRole('button',{name:'Повторить отправку',exact:true}).click();
       assert.equal((await saved()).length,3);
+    }
+    for(const admin of [true,false]){
+      await mount({count:1,admin,mobile:false});
+      const event=page.waitForEvent('filechooser');
+      await page.getByRole('button',{name:'Добавить чек',exact:true}).click();
+      await (await event).setFiles(file);
+      assert.deepEqual((await saved())[0].refs,['cash:payment-0']);
     }
     await mount({count:0,method:'ACCOUNTABLE_QR'});
     await (await picker()).setFiles(file);
@@ -83,18 +102,18 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
     assert.deepEqual((await saved())[0].refs,['cash:payment-1']);
     for(const admin of [true,false])for(const method of ['USDT','CNY','BANK']){
       await mount({admin,method});
-      await (await picker('Добавить реквизиты')).setFiles(file);
+      await requisites('Добавить реквизиты',file);
       assert.deepEqual(await saved(),[{names:['receipt.pdf'],purpose:method==='BANK'?'REQUISITES':'QR',replacement:undefined,refs:undefined}]);
       assert.equal(await page.getByText('Что добавляем',{exact:true}).count(),0);
       assert.equal(await page.getByRole('button',{name:'Выбрать файл',exact:true}).count(),0);
       // Switching back from a receipt must reset its payment reference/purpose.
       await (await picker()).setFiles([]);
-      await (await picker('Добавить реквизиты')).setFiles(file);
+      await requisites('Добавить реквизиты',file);
       assert.deepEqual((await saved())[1],(await saved())[0]);
     }
     const previous={id:'old',planId:'isolated',purpose:'REQUISITES',originalName:'old.pdf',size:30,createdAt:'2026-10-20',author:{name:'Test'}};
     await mount({files:[previous]});
-    await (await picker('Заменить')).setFiles(file);
+    await requisites('Заменить',file);
     assert.deepEqual((await saved())[0],{names:['receipt.pdf'],purpose:'REQUISITES',replacement:previous,refs:undefined});
     await (await picker()).setFiles(file);
     assert.equal((await saved())[1].replacement,undefined);
@@ -104,8 +123,8 @@ test('receipt picker: camera/file choice, exact links, cancellation, retained re
       assert.equal(await page.getByRole('button',{name:'Это чек оплаты',exact:true}).count(),0);
       assert.equal(await page.getByRole('radio').count(),0);
       assert.equal(await page.getByText(/QR кошелька|Реквизиты кошелька|QR Alipay|Другие реквизиты/).count(),0);
-      assert.equal(await page.getByRole('button',{name:'Открыть old.pdf',exact:true}).count(),1);
-      assert.equal(await page.getByRole('button',{name:'Открыть paid.pdf',exact:true}).count(),1);
+      assert.equal(await page.getByRole('button',{name:'Открыть Реквизиты для оплаты',exact:true}).count(),1);
+      assert.equal(await page.getByRole('button',{name:'Открыть Чек оплаты',exact:true}).count(),1);
       assert.deepEqual(await page.evaluate(()=>(window as any).changed),[]);
     }
     await mount({count:0,method:'USDT'});
