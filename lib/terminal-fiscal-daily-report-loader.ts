@@ -3,6 +3,7 @@ import {loadFiscalManager} from './terminal-fiscal-manager-loader';
 import {bankOperationKey} from './terminal-fiscal-matching';
 import 'server-only';
 import {loadFiscalSettlementSource} from './terminal-fiscal-settlement-loader';
+import {settlementReceiptTotals} from './terminal-fiscal-settlement-receipts';
 import {compareFiscalSettlement} from './terminal-fiscal-settlement';
 import { prisma } from './prisma';
 import { runTerminalFiscalHistoricalDryRun } from './terminal-fiscal-runner';
@@ -73,6 +74,7 @@ export async function loadDailyFiscalReport(day:string) {
     if(review)transaction.reviewHref=`/admin/workday/payment-checks/${review.id}`;
   }
   const source=await settlementSource;
-  const settlement=compareFiscalSettlement(source.raw,{from:source.from,to:source.to,fiscalKopecks:report.nativeFiscalKopecks,fiscalComplete:report.nativeFiscalComplete&&configurationComplete});
+  const receiptTotals=settlementReceiptTotals(from,to,results);
+  const settlement=compareFiscalSettlement(source.raw,{from:source.from,to:source.to,receiptTotals,fiscalKopecks:receiptTotals.rmkKopecks+receiptTotals.acquiringKopecks,fiscalComplete:receiptTotals.complete&&configurationComplete});
   return {...report,settlement,configurationComplete,updatedAt:new Date().toISOString()};
 }

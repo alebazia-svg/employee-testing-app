@@ -5,7 +5,7 @@ export function statementDay(v:unknown):string {
  if(typeof v!=='string')return '';const s=v.slice(0,10),d=/^\d{2}\.\d{2}\.\d{4}$/.test(s)?s.split('.').reverse().join('-'):s;
  return /^\d{4}-\d{2}-\d{2}$/.test(d)&&!Number.isNaN(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d?d:'';
 }
-export function compareFiscalSettlement(raw:unknown,input:{from:string;to:string;fiscalKopecks:number;fiscalComplete:boolean}) {
+export function compareFiscalSettlement(raw:unknown,input:{from:string;to:string;fiscalKopecks:number;fiscalComplete:boolean;receiptTotals?:{rmkKopecks:number;acquiringKopecks:number;complete:boolean}}) {
  const root=record(raw),period=record(root.control_period),warnings:string[]=[];
  const rows=Array.isArray(root.operations)?root.operations.map(record):[];
  const summaries=Array.isArray(root.statement_summaries)?root.statement_summaries.map(record):[];
@@ -38,7 +38,7 @@ export function compareFiscalSettlement(raw:unknown,input:{from:string;to:string
  const candidates=input.fiscalKopecks>0&&selected.length>0&&settlementKopecks===input.fiscalKopecks?[{day:nextDay,amountKopecks:settlementKopecks}]:[];
  if(!complete)warnings.push('Выписка за период получена не полностью.');
  if(commissionKopecks)warnings.push('В выписке есть комиссии. Их связь с зачислениями требует проверки.');
- return {complete,from:input.from,to:input.to,fiscalKopecks:input.fiscalKopecks,credits,daily,selected,settlementKopecks,differenceKopecks:settlementKopecks-input.fiscalKopecks,commissionKopecks,candidates,
+ return {...(input.receiptTotals ? {receiptTotals:input.receiptTotals} : {}),complete,from:input.from,to:input.to,fiscalKopecks:input.fiscalKopecks,credits,daily,selected,settlementKopecks,differenceKopecks:settlementKopecks-input.fiscalKopecks,commissionKopecks,candidates,
   status:!complete||!input.fiscalComplete?'incomplete':candidates.length===1?'amount_equal':candidates.length>1?'ambiguous':'not_linked',warnings};
 }
 export type FiscalSettlement=ReturnType<typeof compareFiscalSettlement>;

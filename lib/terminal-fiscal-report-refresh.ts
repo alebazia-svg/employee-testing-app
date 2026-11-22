@@ -11,8 +11,9 @@ export function selectFiscalReportRefresh(previous:SavedFiscalReport|null,fresh:
   if(previous?.settlement.complete&&!fresh.settlement.complete){
     // Keep statement evidence independently. Never compare new receipt totals
     // with a stale statement's old green conclusion or old fiscal denominator.
-    const settlement={...previous.settlement,fiscalKopecks:fresh.nativeFiscalKopecks,
-      differenceKopecks:previous.settlement.settlementKopecks-fresh.nativeFiscalKopecks,
+    const fiscalKopecks=fresh.settlement.receiptTotals ? fresh.settlement.fiscalKopecks : fresh.nativeFiscalKopecks;
+    const settlement={...previous.settlement,receiptTotals:fresh.settlement.receiptTotals,fiscalKopecks,
+      differenceKopecks:previous.settlement.settlementKopecks-fiscalKopecks,
       candidates:[],status:'incomplete' as const};
     return {report:{...fresh,settlement,settlementReused:true,
       settlementUpdatedAt:previous.settlementUpdatedAt??previous.updatedAt},retained:null};
