@@ -262,6 +262,33 @@ test('prefers a KKM check over a duplicate acquiring-register document', () => {
   assert.equal(result.candidateCount, 1);
 });
 
+test('retains the exact acquiring receipt after the other equal payment claims its own KKM receipt', () => {
+  const at = (time: string) => `2026-11-19T${time}+03:00`;
+  const early = { ...bank, transactionDate: at('13:52:29'), amountKopecks: 50000 };
+  const later = { ...early, rrn: 'other', transactionDate: at('14:14:34') };
+  const native = { ...check, sourceRef: 'RMK', dateTime: at('14:16:00'), fiscalDocumentNumber: '823',
+    totalKopecks: 50000, electronicKopecks: 50000, cardPayments: [{ ...check.cardPayments[0], amountKopecks: 50000 }],
+    items: [{ name: 'Стекло', quantity: 1, priceKopecks: 50000, sumKopecks: 50000 }] };
+  const acquiring: OneCCheck = { ...native, sourceType: 'acquiring_operation', sourceRef: '00OF-000090',
+    items: [], dateTime: at('13:55:01'), fiscalDocumentNumber: '821', fiscalSign: '0615053770' };
+  const direct = { ...receipt, receiptAt: at('13:42:00'), fiscalDocumentNumber: '821', fiscalSign: '615053770',
+    totalKopecks: 50000, electronicKopecks: 50000 };
+  const other = { ...direct, receiptAt: at('14:01:00'), fiscalDocumentNumber: '823', fiscalSign: native.fiscalSign!, items: native.items.map(i => ({ ...i, name: i.name + ' (шт)' })) };
+  const scope = input({ now: at('20:00:00'), bankOperations: [early, later], oneCChecks: [native, acquiring], ofdReceipts: [direct, other] });
+  const run = (overrides: Partial<TerminalFiscalMatchingInput> = {}) => reconcileTerminalFiscalMvp({ ...scope, ...overrides }).records;
+  assert.deepEqual(run().map(r => [r.status, r.oneCCheckKey, r.ofdReceiptKey]), [
+    ['confirmed', acquiring.sourceRef, canonicalFiscalKey(direct)], ['confirmed', native.sourceRef, canonicalFiscalKey(other)],
+  ]);
+  for (const overrides of [
+    { bankOperations: [early, later, { ...early, rrn: 'competing' }] },
+    { ofdReceipts: [other] }, { ofdReceipts: [direct, direct, other] },
+    { oneCChecks: [native, { ...acquiring, fiscalConflict: true }] },
+    { oneCChecks: [native, { ...acquiring, fiscalSign: undefined }] },
+    { oneCChecks: [native, acquiring, { ...acquiring, sourceRef: 'duplicate' }] },
+    { ofdReceipts: [direct, { ...other, items: [] }] },
+  ]) assert.notEqual(run(overrides)[0].status, 'confirmed');
+});
+
 test('does not accept an acquiring operation from another terminal or without unique OFD evidence', () => {
   const acquiringDocument: OneCCheck = {
     ...check,
