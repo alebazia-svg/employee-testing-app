@@ -6,6 +6,21 @@ export type FiscalClaimDay = {transactions:FiscalTransactionRow[]; complete:bool
 const dayKey = (time:number) => new Date(time + 3*3600000).toISOString().slice(0,10);
 const successful = (row:FiscalTransactionRow) => row.status==='matched'||row.status==='covered';
 
+// A later daily amount balance cannot claim a receipt already matched to an
+// earlier payment on the same terminal when both receipt records predate it.
+function keepsEarlierMatch(owner:FiscalTransactionRow, later:FiscalTransactionRow) {
+  if (owner.status !== 'matched' || owner.chain || later.status !== 'covered' || !later.chain) return false;
+  if (![owner,later].every(row => row.bank.length === 1 && row.oneC.length === 1 && row.ofd.length === 1
+    && Object.values(row.complete).every(Boolean))) return false;
+  const payment = owner.bank[0], next = later.bank[0];
+  const terminal = payment.key.split('|')[0];
+  if (!terminal || !payment.key.includes('|') || !next.key.startsWith(terminal + '|')
+    || owner.oneC[0].key !== later.oneC[0].key || payment.amountKopecks <= 0) return false;
+  return [owner.oneC[0],owner.ofd[0],next].every(cell => cell.amountKopecks === payment.amountKopecks)
+    && [owner.oneC[0],owner.ofd[0]].every(cell =>
+      Date.parse(payment.at) < Date.parse(cell.at) && Date.parse(cell.at) < Date.parse(next.at));
+}
+
 // Each daily matcher reads fiscal evidence from its Moscow midnight through
 // the late window. Only reports capable of reading this actual receipt compete.
 export async function checkCrossDayClaims(day:string, rows:FiscalTransactionRow[], load:(day:string)=>Promise<FiscalClaimDay>) {
@@ -31,7 +46,8 @@ export async function checkCrossDayClaims(day:string, rows:FiscalTransactionRow[
       for(const candidate of peer.transactions){
         if(!candidate.bank.length||!successful(candidate))continue;
         for(const receipt of candidate.ofd)for(const target of keys.get(receipt.key)??[]){
-          if(candidate.bank.some(b=>!target.bank.some(v=>v.key===b.key)))conflict.add(target);
+          const differentPayment = candidate.bank.some(bank => !target.bank.some(other => other.key === bank.key));
+          if (differentPayment && !keepsEarlierMatch(target, candidate)) conflict.add(target);
         }
       }
   }
