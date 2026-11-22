@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {settlementReceiptTotals} from '../lib/terminal-fiscal-settlement-receipts';
 import assert from 'node:assert/strict';
 import { buildDailyFiscalReport, type DailyFiscalEvidence } from '../lib/terminal-fiscal-daily-report';
 import type { OneCCheck, BankOperation, MatchingAuditRecord, OfdReceipt } from '../lib/terminal-fiscal-matching';
@@ -43,4 +44,28 @@ test('OFD candidate with complete day coverage preserves totals and does not inv
  p.oneCChecks=[];const missing=report([p]);assert.equal(missing.status,'difference');assert.equal(missing.unresolved,1);
  assert.ok(missing.transactions.some(t=>t.status==='review'&&t.message==='Проверить связь с ОФД'));
  p.complete.ofd=false;assert.equal(report([p]).status,'incomplete');
+});
+
+const settlementTotals=(...parts:DailyFiscalEvidence[])=>settlementReceiptTotals(new Date('2026-10-12T00:00:00+03:00'),new Date('2026-10-13T00:00:00+03:00'),parts);
+test('settlement counts a fiscal identity once across workstations and document types, on the OFD day',()=>{
+  const p=evidence();
+  const acquiring={...p.oneCChecks[0],sourceType:'acquiring_operation' as const,dateTime:'2026-10-11T18:00:00Z',sourceRef:'acquiring'};
+  p.oneCChecks=[acquiring];
+  assert.deepEqual(settlementTotals(p,p),{rmkKopecks:0,acquiringKopecks:10000,complete:true});
+  p.oneCChecks.push(evidence().oneCChecks[0]);
+  assert.deepEqual(settlementTotals(p,p),{rmkKopecks:10000,acquiringKopecks:0,complete:true});
+  p.ofdReceipts[0].receiptAt='2026-10-12T21:00:00Z';
+  assert.equal(settlementTotals(p).rmkKopecks,0);
+});
+test('acquiring refunds subtract the electronic portion and missing or contradictory evidence cannot confirm a total',()=>{
+  const p=evidence(),c=p.oneCChecks[0],r=p.ofdReceipts[0];
+  c.sourceType='acquiring_operation';c.operationType='refund';r.operationType=2;
+  c.totalKopecks=r.totalKopecks=20000;
+  assert.deepEqual(settlementTotals(p),{rmkKopecks:0,acquiringKopecks:-10000,complete:true});
+  for(const change of [{fiscalState:'unconfirmed' as const},{fiscalConflict:true},{kktRegistrationNumber:'other'},{electronicKopecks:5000},{operationType:'sale' as const}]){
+    assert.deepEqual(settlementTotals({...p,oneCChecks:[{...c,...change}]}),{rmkKopecks:0,acquiringKopecks:0,complete:false});
+  }
+  assert.equal(settlementTotals({...p,ofdReceipts:[]}).complete,false);
+  assert.equal(settlementTotals({...p,oneCChecks:[]}).complete,false);
+  assert.equal(settlementTotals(p,{...p,ofdReceipts:[{...r,totalKopecks:10000}]}).complete,false);
 });

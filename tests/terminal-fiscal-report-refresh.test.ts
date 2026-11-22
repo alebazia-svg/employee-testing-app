@@ -35,3 +35,14 @@ test('late old responses do not overwrite newer data and first incomplete reads 
  const partial=report('2026-11-20T19:00Z');partial.sourceComplete.ofd=false;partial.complete.ofd=false;partial.status='incomplete';const r=selectFiscalReportRefresh(null,partial);assert.equal(r.report.status,'incomplete');assert.equal(hasCompleteFiscalSources(r.report),false);
  const legacy=report('2026-11-20T11:09Z');delete (legacy as any).sourceComplete;assert.equal(hasCompleteFiscalSources(legacy),true);
 });
+
+test('reused bank credits keep the current confirmed RMK and acquiring breakdown',()=>{
+ const old=report('2026-11-20T11:09Z'),fresh=report('2026-11-20T19:00Z');
+ old.settlement.settlementKopecks=1350000;
+ fresh.nativeFiscalKopecks=1170000;
+ fresh.settlement={...fresh.settlement,complete:false,fiscalKopecks:1350000,receiptTotals:{complete:true,rmkKopecks:1170000,acquiringKopecks:180000}};
+ const result=selectFiscalReportRefresh(old,fresh).report.settlement;
+ assert.deepEqual(result.receiptTotals,fresh.settlement.receiptTotals);
+ assert.equal(result.differenceKopecks,0);
+ assert.equal(result.status,'incomplete');
+});
