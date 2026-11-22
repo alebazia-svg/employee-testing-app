@@ -486,6 +486,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     mapping?: TerminalMapping;
     mappingsCount: number;
     candidates: Array<{ check: OneCCheck; difference: number }>;
+    exactAcquiring: Array<{ check: OneCCheck; difference: number }>;
     strictCandidateCount: number;
     dayCandidates: Array<{ check: OneCCheck; difference: number }>;
   };
@@ -519,7 +520,12 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     const candidates = dayCandidates.filter(({ check, difference }) => orderBacked
       ? moscowDay(check.dateTime) === moscowDay(operation.transactionDate)
       : difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
-    return { operation, operationType: type, mapping, mappingsCount: mappings.length,
+    const exactAcquiring = allDayCandidates.filter(({ check, difference }) =>
+      isAcquiringOperation(check) && check.fiscalState === 'confirmed' && !check.fiscalConflict
+      && canonicalFiscalKey(check) && check.kktRegistrationNumber === mapping?.kktRegistrationNumber
+      && moscowDay(check.dateTime) === moscowDay(operation.transactionDate)
+      && difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
+    return { operation, operationType: type, mapping, mappingsCount: mappings.length, exactAcquiring,
       candidates, strictCandidateCount: candidates.length, dayCandidates };
   });
 
@@ -589,18 +595,21 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
   // Resolve only forced one-to-one assignments. Item/fiscal proof confirms
   // that the candidate really is a receipt; it never invents a bank link.
   // Equal two-by-two alternatives remain ambiguous instead of being guessed.
-  function hasReceiptProof(context: Context, check: OneCCheck) {
+  function hasReceiptProof(context: Context, check: OneCCheck, stripUnitSuffix = false) {
     if (isAcquiringOperation(check) || check.fiscalConflict || check.fiscalState !== 'confirmed'
       || !check.items.length || !canonicalFiscalKey(check)) return false;
     const receipts = input.ofdReceipts.filter(receipt => canonicalFiscalKey(receipt) === canonicalFiscalKey(check));
     if (receipts.length !== 1) return false;
     const receipt = receipts[0];
+    const items = stripUnitSuffix
+      ? receipt.items.map(item => ({ ...item, name: item.name.replace(/\s*\(шт\.?\)\s*$/iu, '') }))
+      : receipt.items;
     return receipt.operationType === expectedOfdOperationType(context.operationType!)
       && receipt.kktRegistrationNumber === context.mapping?.kktRegistrationNumber
       && receipt.totalKopecks === check.totalKopecks
       && receipt.electronicKopecks === check.electronicKopecks
       && receipt.electronicKopecks === context.operation.amountKopecks
-      && sameItems(check.items, receipt.items);
+      && sameItems(check.items, items);
   }
   if (!sourceFailure(input)) {
     let changed = true;
@@ -623,6 +632,33 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         context.candidates = remaining;
         changed = true;
       }
+    }
+  }
+
+  // An RMK receipt owned by another payment must not mask a distinct fiscalized
+  // acquiring document. Restore only a forced, exact one-to-one assignment.
+  const masked = contexts.filter(c => !c.candidates.length && c.exactAcquiring.length === 1);
+  if (masked.length && !sourceFailure(input) && input.orderCompetition?.bankComplete !== false && input.orderCompetition?.ofdComplete !== false) {
+    const provenNative = new Set<string>();
+    for (const context of contexts) {
+      if (context.candidates.length !== 1) continue;
+      const { check } = context.candidates[0];
+      if (hasReceiptProof(context, check, true) && !duplicateBankKeys.has(bankOperationKey(context.operation))
+        && contexts.every(peer => peer === context || !peer.candidates.some(c => c.check.sourceRef === check.sourceRef))
+        && input.oneCChecks.filter(c => canonicalFiscalKey(c) === canonicalFiscalKey(check)).length === 1) {
+        provenNative.add(check.sourceRef);
+      }
+    }
+    for (const context of masked) {
+      const sameDay = context.dayCandidates.filter(({ check }) => moscowDay(check.dateTime) === moscowDay(context.operation.transactionDate));
+      if (!sameDay.length || !sameDay.every(({ check }) => provenNative.has(check.sourceRef))) continue;
+      const candidate = context.exactAcquiring[0];
+      const key = canonicalFiscalKey(candidate.check);
+      if (contexts.some(peer => peer !== context && peer.exactAcquiring.some(c => c.check.sourceRef === candidate.check.sourceRef))
+        || input.oneCChecks.filter(c => canonicalFiscalKey(c) === key).length !== 1
+        || input.ofdReceipts.filter(r => canonicalFiscalKey(r) === key).length !== 1
+        || !input.ofdReceipts.some(r => acquiringReceiptCandidate(context, candidate.check, r))) continue;
+      context.candidates = [candidate];
     }
   }
 
