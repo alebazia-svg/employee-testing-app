@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementQrTransferDetails} from '@/components/ProcurementQrTransferDetails';
 import { workflowEvent,workflowJson } from '@/lib/employee-workflow-client';
 import { employeeObservedFetch } from "@/lib/employee-observed-fetch";
 import {ProcurementCalendarRates} from '@/components/ProcurementCalendarRates';
@@ -320,7 +321,7 @@ export default function ProcurementPaymentCalendarClient({
   const [plans, setPlans] = useState(initialPlans);
   const [receiptCounts,setReceiptCounts]=useState<Record<string,number>>({});
   const [receiptLoadState,setReceiptLoadState]=useState<'loading'|'ready'|'error'>('loading');
-  const stage=(plan:Plan)=>qrPaymentStage(plan,receiptCounts[plan.id]??null);
+  const stage=(plan:Plan)=>qrPaymentStage(plan,receiptCounts[plan.id]??null,false);
   const receiptStageUnknown=(plan:Plan)=>mobile&&process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED==='1'&&canCollectQrReceiptBeforePayment(plan)&&receiptCounts[plan.id]===undefined;
   const visibleStage=(plan:Plan)=>stage(plan)||(receiptStageUnknown(plan)?(receiptLoadState==='error'?'Статус чеков недоступен':'Проверяем чеки…'):'');
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -863,7 +864,8 @@ export default function ProcurementPaymentCalendarClient({
                             {buyerPaymentComment(plan.condition) ? <p><span className="font-semibold">Комментарий: </span>{buyerPaymentComment(plan.condition)}</p> : <p>Комментарий не указан.</p>}
                           </>}
                           {activePaymentDeferral(plan)?<p>{paymentScheduleDetail(plan)}{activePaymentDeferral(plan)?.comment?` · ${activePaymentDeferral(plan)?.comment}`:''}</p>:null}
-                          {plan.evidence?.qrFunding?.lastConfirmed?<p className="text-xs text-slate-500">Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
+                          <ProcurementQrTransferDetails funding={plan.evidence?.qrFunding} plannedAmount={Number(plan.plannedAmount)}/>
+            {plan.evidence?.qrFunding?.lastConfirmed?<p className="text-xs text-slate-500">Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
                           {!mobile && <p className="text-xs text-slate-500">Подготовить к: {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(plan.plannedDate))} · {leadTimeLabel(plan)}</p>}
                           {visualPreview?.detail?.(plan.id) ?? <ProcurementSavedRate plan={plan} showRequestRate={mobile||!procurementListRate(plan)}/>}
                           {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts request={visualPreview?.receiptRequest} plans={[plan]} single inline onBusyChange={setPlanDocumentsBusy}/> : null}

@@ -1,3 +1,5 @@
+import {SMALL_REMAINDER_MAX_PERCENT, SMALL_REMAINDER_MAX_RUB} from './procurement-small-remainder';
+
 /** Funding is a transfer to the accountable cashbox, NEVER supplier payment. */
 export type QrFunding = {state:'confirmed'|'none'|'unavailable';checkedAt:string;lastConfirmed?:boolean;documentRef?:string;documentNumber?:string;date?:string;amount?:number;match?:'code'|'supplier'};
 export type QrFundingPlan = {id:string;planCode:string;supplierPartner:string;supplierCounterparty:string;plannedAmount:number;paymentMethod:string;status:string;createdAt:string;hasPendingRevision?:boolean};
@@ -5,6 +7,14 @@ type Row = Record<string, any>;
 const obj=(v:unknown):Row=>v&&typeof v==='object'&&!Array.isArray(v)?v as Row:{};
 const key=(v:unknown)=>String(v||'').normalize('NFKC').toLocaleLowerCase('ru-RU').replaceAll('ё','е').replace(/[^\p{L}\p{N}]/gu,'');
 const minor=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0&&Number.isSafeInteger(Math.round(v*100))&&Math.abs(v*100-Math.round(v*100))<0.00001?Math.round(v*100):null;
+export function qrFundingAmountMatches(plannedAmount: number, transferredAmount: number) {
+ const planned = minor(plannedAmount);
+ const transferred = minor(transferredAmount);
+ if (planned === null || transferred === null) return false;
+ const difference = Math.abs(planned - transferred);
+ return difference <= SMALL_REMAINDER_MAX_RUB * 100
+   && difference <= Math.floor(planned * SMALL_REMAINDER_MAX_PERCENT / 100);
+}
 export function qrMovementTime(value:unknown) {
  const s=String(value||'');const m=/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{1,2}):(\d{2}):(\d{2}))?$/.exec(s);
  return Date.parse(m?`${m[3]}-${m[2]}-${m[1]}T${(m[4]||'00').padStart(2,'0')}:${m[5]||'00'}:${m[6]||'00'}+03:00`:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)?s+'+03:00':s);
@@ -37,7 +47,7 @@ export function matchQrFunding(plans:QrFundingPlan[],raw:unknown,targetRef:strin
   const supplier=key(comment.replace(/^qr(?:\s*[-–]?\s*код)?/i,''));
   // Include cancelled/finished/other methods in competition: an old transfer
   // must never migrate to a newer request after the original one closes.
-  const candidates=plans.filter(plan=>codes.length?codes.length===1&&plan.planCode.toUpperCase()===codes[0]:[key(plan.supplierPartner),key(plan.supplierCounterparty)].filter(Boolean).includes(supplier)&&minor(plan.plannedAmount)===amount&&Date.parse(plan.createdAt)<=at);
+  const candidates=plans.filter(plan=>codes.length?codes.length===1&&plan.planCode.toUpperCase()===codes[0]:[key(plan.supplierPartner),key(plan.supplierCounterparty)].filter(Boolean).includes(supplier)&&qrFundingAmountMatches(plan.plannedAmount,amount!/100)&&Date.parse(plan.createdAt)<=at);
   // A competing transfer cannot prove payment, but it also cannot establish
   // that it is safe to cancel or change the request's accounting basis.
   if (guardPlanId && candidates.some(candidate => candidate.id === guardPlanId)) {
@@ -45,7 +55,7 @@ export function matchQrFunding(plans:QrFundingPlan[],raw:unknown,targetRef:strin
   }
   if(candidates.length!==1)continue;
   const plan=candidates[0];
-  if(plan.paymentMethod!=='ACCOUNTABLE_QR'||plan.status!=='APPROVED'||plan.hasPendingRevision||minor(plan.plannedAmount)!==amount||!Number.isFinite(Date.parse(plan.createdAt))||Date.parse(plan.createdAt)>at)continue;
+  if(plan.paymentMethod!=='ACCOUNTABLE_QR'||plan.status!=='APPROVED'||plan.hasPendingRevision||!qrFundingAmountMatches(plan.plannedAmount,amount!/100)||!Number.isFinite(Date.parse(plan.createdAt))||Date.parse(plan.createdAt)>at)continue;
   proposals.push({id:plan.id,funding:{state:'confirmed',checkedAt,documentRef:outgoingRef,documentNumber:String(obj(out.document).number||''),date:String(out.period),amount:amount!/100,match:codes.length?'code':'supplier'}});
  }
  for(const proposal of proposals)if(proposals.filter(p=>p.id===proposal.id).length===1&&proposals.filter(p=>p.funding.documentRef===proposal.funding.documentRef).length===1)result.set(proposal.id,proposal.funding);
