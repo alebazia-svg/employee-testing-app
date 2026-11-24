@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import './employee-discoverability.css';
 import { resolvePayrollEmployeeSalaryType } from '@/lib/payroll-employee-rules';
 import { useRouter } from 'next/navigation';
-import { Eye, KeyRound, Pencil, Search, UserPlus } from 'lucide-react';
+import { ChevronDown, Eye, History, KeyRound, Pencil, Search, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -92,13 +93,31 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
     });
   }, [filter, query, users]);
 
+  useEffect(() => {
+    const dismiss = () => document.querySelector<HTMLElement>('.employee-desktop-popup:popover-open')?.hidePopover();
+    window.addEventListener('resize', dismiss);
+    window.addEventListener('scroll', dismiss, true);
+    return () => {
+      window.removeEventListener('resize', dismiss);
+      window.removeEventListener('scroll', dismiss, true);
+    };
+  }, []);
+
   function startCreate() {
     setError('');
     setEditingId('new');
     setDraft(emptyDraft);
   }
 
+  function closeManagement() {
+    document.querySelectorAll<HTMLDetailsElement>('details.employee-management[open]').forEach(menu => {
+      menu.open = false;
+      menu.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+    });
+  }
+
   function startEdit(user: User) {
+    closeManagement();
     setError('');
     setEditingId(user.id);
     setDraft({
@@ -113,6 +132,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
   }
 
   function openAccess(user: AccessUser) {
+    closeManagement();
     setIssuedAccess(null);
     setAccessUser(user);
   }
@@ -157,13 +177,64 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
     finally { setPreviewBusy(null); }
   }
 
-  function accessAction(user: User) {
+  function cabinetAction(user: User) {
+    if (user.role !== 'EMPLOYEE' || !['WORKDAY', 'PROCUREMENT'].includes(user.portalArea)) return null;
+    return <Button disabled={!user.isActive || previewBusy !== null} aria-label={`Посмотреть кабинет: ${user.name}`} title='Просмотр кабинета сотрудника' className='employee-cabinet-action h-9 gap-2 bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50' onClick={() => void openPreview(user)}><Eye className='h-4 w-4'/>{previewBusy === user.id ? 'Открываем…' : 'Посмотреть кабинет'}</Button>;
+  }
+
+  function accessAction(user: User, desktopMenu = false) {
     if (user.id === currentUserId) return <span className='self-center text-xs text-slate-500'>Ваш аккаунт</span>;
-    return <div className='flex flex-wrap items-center gap-2'>{user.role === 'EMPLOYEE' && ['WORKDAY', 'PROCUREMENT'].includes(user.portalArea) && <Button disabled={!user.isActive || previewBusy !== null} aria-label={`Посмотреть как сотрудник: ${user.name}`} className='h-9 gap-2 whitespace-nowrap bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50' onClick={() => void openPreview(user)}><Eye className='h-4 w-4'/>{previewBusy === user.id ? 'Открываем…' : 'Посмотреть'}</Button>}<Button disabled={!user.isActive} className='h-9 gap-2 whitespace-nowrap bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => openAccess(user)}><KeyRound className='h-4 w-4' />Выдать доступ</Button></div>;
+    const Control = desktopMenu ? 'button' : Button;
+    return <Control type='button' disabled={!user.isActive} className={desktopMenu ? undefined : 'h-9 gap-2 whitespace-nowrap bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900'} onClick={() => openAccess(user)}><KeyRound className='h-4 w-4' />Выдать доступ</Control>;
+  }
+
+  function desktopManagement(user: User) {
+    const id = `employee-management-${user.id}`;
+    return <>
+      <button type="button" className="employee-desktop-trigger" popoverTarget={id}
+        aria-label={`Управление сотрудником: ${user.name}`}
+        onClick={event => {
+          const menu = document.getElementById(id);
+          if (!menu) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          menu.style.right = `${Math.max(8, document.documentElement.clientWidth - rect.right)}px`;
+          const below = window.innerHeight - rect.bottom >= 132;
+          menu.style.top = below ? `${rect.bottom + 4}px` : 'auto';
+          menu.style.bottom = below ? 'auto' : `${window.innerHeight - rect.top + 4}px`;
+        }}>
+        Управление <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      <div id={id} popover="auto" className="employee-desktop-popup"
+        role="group" aria-label={`Доступ и настройки: ${user.name}`}
+        onClickCapture={event => {
+          if (event.target instanceof Element && event.target.closest('button:enabled')) event.currentTarget.hidePopover();
+        }}>
+        {user.role === 'EMPLOYEE' && (
+          <button type="button" onClick={() => setActivityUser(user)}>
+            <History size={16} aria-hidden="true" />
+            История действий
+          </button>
+        )}
+        {accessAction(user, true)}
+        <button type="button" onClick={() => startEdit(user)}><Pencil size={16} />Настройки сотрудника</button>
+      </div>
+    </>;
+  }
+
+  function managementActions(user: User) {
+    return <details className='employee-management' onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector<HTMLElement>('summary')?.focus(); }
+    }}>
+      <summary aria-label={`Управление сотрудником: ${user.name}`}>Управление<ChevronDown size={14} aria-hidden='true'/></summary>
+      <div className='employee-management-items' role='group' aria-label={`Доступ и настройки: ${user.name}`}>
+        {accessAction(user)}
+        <Button className='h-9 gap-2 bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50' onClick={() => startEdit(user)}><Pencil className='h-4 w-4'/>Настройки сотрудника</Button>
+      </div>
+    </details>;
   }
 
   return (
-    <div className='space-y-5'>
+    <div className='employee-discoverability space-y-5'>
       {activityUser && <EmployeeActivityDialog user={activityUser} onClose={() => setActivityUser(null)} />}
       {accessUser && <EmployeeAccessDialog user={accessUser} initialAccess={issuedAccess} onIssued={accessChanged} onClose={() => { setAccessUser(null); setIssuedAccess(null); }} />}
       <nav className='admin-section-tabs' aria-label='Группы сотрудников'>
@@ -237,7 +308,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
             )}
             <label className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700'>
               <input type='checkbox' checked={draft.isActive} onChange={(event) => setDraft((value) => ({ ...value, isActive: event.target.checked }))} />
-              Активен
+              Разрешить вход в портал
             </label>
           </div>
           {editingId === 'new' && <p className='mt-3 text-sm text-slate-500'>Пароль будет создан автоматически после сохранения. Данные для входа можно скопировать и передать сотруднику.</p>}
@@ -251,22 +322,28 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
 
       <div className='grid gap-3 md:hidden'>
         {filteredUsers.map((user) => (
-          <Card key={user.id} className='admin-material-card p-4'>
-            <div className='flex items-start justify-between gap-3'>
+          <Card key={user.id} className='admin-material-card employee-mobile-card p-4'>
+            <div className='employee-mobile-header'>
               <div className='min-w-0'>
-                <p className='font-extrabold text-slate-950'>{user.name}</p>{user.role === 'EMPLOYEE' && <button onClick={() => setActivityUser(user)} className='mt-1 min-h-9 text-sm font-semibold text-[#945e3b] hover:underline'>Активность</button>}
+                <p className='employee-person-name font-extrabold text-slate-950'>{user.name}</p><div className='employee-mobile-actions'>{cabinetAction(user)}{user.role === 'EMPLOYEE' && <button onClick={() => setActivityUser(user)} className='mt-1 min-h-9 text-sm font-semibold text-[#945e3b] hover:underline'>История действий</button>}</div>
                 <p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p>
               </div>
-              <Badge className={user.isActive ? 'shrink-0 bg-green-100 text-green-800' : 'shrink-0 bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge>
+              <Badge className={user.isActive ? 'shrink-0 bg-green-100 text-green-800' : 'shrink-0 bg-slate-100 text-slate-500'}>{user.isActive ? 'Вход разрешён' : 'Вход отключён'}</Badge>
             </div>
-            <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+            <div className='employee-mobile-facts mt-4 grid grid-cols-2 gap-3 text-sm'>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Отдел</p><p className='mt-1 font-bold text-slate-700'>{departmentLabels[user.department] ?? user.department}</p></div>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Роль</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</p></div>
-              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Рабочий экран</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</p></div>
-              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-semibold ${user.payrollSalaryType ? 'text-slate-500' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></div>
+              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Кабинет сотрудника</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</p></div>
+                <details className="col-span-2 employee-management">
+                  <summary>
+                    <span>Для зарплаты{!user.payrollReportGroup && <span className="ml-2 text-amber-700">Требует настройки</span>}</span>
+                    <ChevronDown size={14} aria-hidden="true" />
+                  </summary>
+                  {user.payrollName?.trim() && user.payrollName.trim() !== user.name.trim() && <p>{user.payrollName}</p>}
+                  {user.payrollReportGroup && <p className="text-slate-700">{user.payrollReportGroup}</p>}
+                </details>
             </div>
-            <div className='mt-4'>{accessAction(user)}</div>
-            <Button className='mt-3 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
+            <div className='employee-access-group mt-4'>{managementActions(user)}</div>
           </Card>
         ))}
         {!filteredUsers.length && <Card className='p-8 text-center text-sm font-medium text-slate-500'>По выбранному фильтру сотрудников нет.</Card>}
@@ -279,30 +356,24 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
               <th className='px-5 py-4'>Сотрудник</th>
               <th className='px-5 py-4'>Отдел</th>
               <th className='px-5 py-4'>Роль</th>
-              <th className='px-5 py-4'>Рабочий экран</th>
+              <th className='px-5 py-4'>Кабинет сотрудника</th>
               <th className='px-5 py-4'>Для зарплаты</th>
-              <th className='px-5 py-4'>Доступ</th>
-              <th className='px-5 py-4'>Действия</th>
+              <th className='px-5 py-4'>Статус доступа</th>
+              <th className='px-5 py-4'>Управление</th>
             </tr>
           </thead>
           <tbody>
             {filteredUsers.map((user) => {
               return (
               <tr key={user.id} className='border-t border-slate-200/80'>
-                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p>{user.role === 'EMPLOYEE' && <button onClick={() => setActivityUser(user)} className='mt-1 min-h-9 text-sm font-semibold text-[#945e3b] hover:underline'>Активность</button>}<p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
+                <td className='px-5 py-4'><div className='employee-person-heading'><p className='employee-person-name font-bold text-slate-950'>{user.name}</p>{cabinetAction(user)}</div><p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</td>
-                <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-medium ${user.payrollSalaryType ? 'text-slate-400' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></td>
-                <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge></td>
+                <td className='px-5 py-4'>{(user.payrollName?.trim() && user.payrollName.trim() !== user.name.trim()) && <p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p>}<p className={`mt-0.5 text-xs font-medium ${user.payrollSalaryType ? 'text-slate-400' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></td>
+                <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Вход разрешён' : 'Вход отключён'}</Badge></td>
                 <td className='px-5 py-4'>
-                  <div className='flex flex-wrap gap-2'>
-                  {accessAction(user)}
-                  <Button className='h-9 gap-2 bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}>
-                    <Pencil className='h-4 w-4' />
-                    Настроить
-                  </Button>
-                  </div>
+                  {desktopManagement(user)}
                 </td>
               </tr>
             )})}
