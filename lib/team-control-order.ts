@@ -14,7 +14,7 @@ export type TeamStatus = typeof teamStatusFilters[number][0];
 export function teamRowStatus(row:TeamStatusRow):TeamStatus {
   if(row.calendarState==='off')return 'off';
   if(row.calendarState==='vacation')return 'vacation';
-  if(row.calendarState==='working')return 'recorded';
+  if(row.calendarState==='working'&&row.start==='—'&&row.end==='—')return 'recorded';
   if(row.end!=='—')return 'finished';
   if(row.state==='Работает')return 'working';
   if(row.state==='Не завершил смену')return 'unfinished';

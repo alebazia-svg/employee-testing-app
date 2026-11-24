@@ -1535,7 +1535,7 @@ export default async function AdminWorkdayPage(
       const plan = resolveTeamSchedule({ name: employee.name, appStatus: schedule?.status, googlePlan: googleControl.plan, googleAvailable: googleSnapshot.planAvailable, vacation: Boolean(vacation) });
       const planState = plan.state;
       const evidence = calendarEvidence.get(calendarCorrectionSourceId(employee.id, selectedDate));
-      const calendarDay = resolveControlCalendarDay({date:selectedDate, department:employee.department, plan:planState, source:plan.source, vacation:Boolean(vacation), qrAccepted:evidence?.qrAccepted??false, correction:evidence?.history[0], now:calendarNow, hasWorkDay:Boolean(workDay)});
+      const calendarDay = resolveControlCalendarDay({date:selectedDate, department:employee.department, plan:planState, source:plan.source, vacation:Boolean(vacation), qrAccepted:evidence?.qrAccepted??false, googleArrival:googleControl.arrival, googleDeparture:googleControl.departure, googleMarksAvailable:googleSnapshot.marksAvailable, correction:evidence?.history[0], now:calendarNow, hasWorkDay:Boolean(workDay)});
       const effectiveScheduleStatus = calendarDay.calendarState === 'off' ? 'off' : plan.status;
       const attendance = usesAppAttendance(selectedDate) ? resolveTeamAttendance({
         date: selectedDate, today, workDay, google: googleControl,

@@ -9,14 +9,16 @@ test('an abandoned or expired scan is not a working day; a committed QR workday 
  const result=await loadTeamCalendarEvidence(db,{userIds:[4,5],dates:[date],now});
  assert.equal(result.get(`4:${date}`)?.qrAccepted,true);
  assert.equal(result.get(`5:${date}`)?.qrAccepted,false);
+ assert.equal(result.get(`4:${date}`)?.appStarted,true);
+ assert.equal(result.get(`5:${date}`)?.appStarted,false,'a scan intent is not a committed application workday');
  for(const department of ['retail','wholesale','procurement']){
- const day=resolveControlCalendarDay({date,department,plan:'working',source:'Приложение',vacation:false,qrAccepted:result.get(`5:${date}`)!.qrAccepted,hasWorkDay:false,now});
+ const day=resolveControlCalendarDay({date,department,plan:'working',source:'Приложение',vacation:false,qrAccepted:result.get(`5:${date}`)!.qrAccepted,googleMarksAvailable:true,hasWorkDay:false,now});
  assert.equal(day.state,'Выходной');assert.equal(day.sourceLabel,'Нет отметки');
  }
 });
 test('a manually corrected day does not pretend the employee has an active shift',()=>{
  const correction={version:1 as const,userId:6,date,status:'working' as const,actorId:1,actorName:'Админ',reason:'Подтверждено',correctedAt:now.toISOString()};
- const day=resolveControlCalendarDay({date,department:'retail',plan:'off',source:'Приложение',vacation:false,qrAccepted:false,hasWorkDay:false,now,correction});
+ const day=resolveControlCalendarDay({date,department:'retail',plan:'off',source:'Приложение',vacation:false,qrAccepted:false,googleMarksAvailable:true,hasWorkDay:false,now,correction});
  assert.equal(day.state,'Рабочий день');assert.equal(day.fact.source,'Исправлено администратором');assert.equal(day.calendarState,'working');
  assert.notEqual(day.state,'Работает');
 });

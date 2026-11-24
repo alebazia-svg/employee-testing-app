@@ -23,7 +23,7 @@ test('isolated PostgreSQL: audited correction, retries, cancellation and preserv
   assert.equal(await db.adminInboxEvent.count({where:{sourceType:'workday_calendar_fact',sourceId:{in:users.map(id=>`${id}:2026-11-10`)}}}),1);
   const correction=parseCalendarWorkingCorrection(first.body)!;
   assert.equal(correction.actorId,admin.id);assert.equal(correction.reason,input.reason);
-  const base={date,department:'procurement',plan:'off',source:'Приложение',vacation:false,qrAccepted:false,now};
+  const base={date,department:'procurement',plan:'off',source:'Приложение',vacation:false,qrAccepted:false,googleMarksAvailable:true,now};
   assert.equal(resolveCalendarFact({...base,correction}).state,'working');
   assert.deepEqual(await counts(),before,'no fake QR/workday, task, money or notification writes');
   assert.deepEqual(await db.workScheduleEntry.findUnique({where:{id:plan.id}}),plan,'saved plan is unchanged');
