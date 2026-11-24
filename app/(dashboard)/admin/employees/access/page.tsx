@@ -70,7 +70,7 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
       pushLabel: accessPushLabel(r.pushState, r.pushSubscription, r.userId), pushSubscriptionId: r.pushSubscriptionId }; });
     if (!history) rows = accessCurrentConnections(rows);
   } catch { unavailable = true; }
-  return <AdminShell pageTitle="Устройства и входы" pageDescription="Кто пользуется порталом и где подключены уведомления." headerWidthClass="max-w-6xl"><div className='mx-auto max-w-6xl mb-4 text-sm'><Link href='/admin/employees' className='text-slate-600 hover:underline'>← Сотрудники</Link></div>
+  return <AdminShell pageTitle="Устройства и входы" pageDescription="Последние подключения, уведомления и версии портала."><div className='mb-4 text-sm'><Link href='/admin/employees' className='text-slate-600 hover:underline'>← Сотрудники</Link></div>
 
     <PortalAccessDevices rows={rows} query={query} history={history} service={params.view === 'service'} page={page} hasMore={hasMore} unavailable={unavailable} nowIso={now.toISOString()} currentRelease={serverAppRelease()} historyFilters={historyFilters} />
   </AdminShell>;

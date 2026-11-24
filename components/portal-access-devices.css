@@ -184,3 +184,130 @@
 /* Confirmed device groups: compact browser rows, each cabinet keeps its own data. */
 .access-account[data-browser-group] .access-connection { padding-top:11px; padding-bottom:11px; }
 .access-account[data-browser-group] .access-browser-cabinet { color:#42494e; }
+
+.access-employees-layout .access-filter-heading {
+  margin-bottom: 4px;
+  color: #625b53;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.access-employees-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 6px 0 12px;
+}
+
+.access-employees-layout .access-employees-context :is(.access-current-connection, .access-period) {
+  margin: 0;
+}
+
+.access-employees-layout .access-employees-context .access-current-connection {
+  min-height: 34px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+@media (min-width: 900px) {
+  html:has(.access-screen-compact) { scrollbar-gutter: stable; }
+}
+
+.access-employees-layout .access-common-columns { display: none; }
+
+@media (min-width: 1200px) {
+  .access-employees-layout .access-toolbar {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto auto auto;
+    gap: 8px 12px;
+  }
+  .access-employees-layout .access-toolbar form { width: min(100%, 520px); }
+  .access-employees-layout .access-toolbar button { width: auto; }
+  .access-employees-layout .access-common-columns { display: grid; }
+  .access-employees-layout .access-account .access-column-head { display: none; }
+  .access-employees-layout :is(.access-column-head, .access-connection) {
+    grid-template-columns: minmax(140px, 2fr) minmax(85px, .85fr) minmax(105px, 1fr) clamp(110px, 11vw, 164px) 98px;
+  }
+  .access-employees-layout .access-accounts {
+    gap: 0;
+    border: 1px solid #e2dcd4;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .access-employees-layout .access-account { border: 0; border-radius: 0; box-shadow: none; }
+  .access-employees-layout .access-account + .access-account { border-top: 1px solid #eae5de; }
+  .access-employees-layout .access-account-header {
+    min-height: 34px;
+    padding: 7px 16px 2px;
+    border: 0;
+    background: transparent;
+  }
+  .access-employees-layout .access-connection { padding-block: 8px 10px; }
+  .access-employees-layout .access-connection .access-detail-button {
+    min-height: 36px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: #765337;
+  }
+  .access-employees-layout .access-connection .access-detail-button:hover { text-decoration: underline; }
+}
+
+
+.access-screen-compact {
+  --access-status-ok-bg: #eaf3ed;
+  --access-status-ok-fg: #236346;
+  --access-status-unknown-bg: #eef0f2;
+  --access-status-unknown-fg: #545b62;
+  --access-status-action-bg: #f7ecdc;
+  --access-status-action-fg: #805022;
+}
+
+.access-screen-compact :is(.access-push .access-badge, .access-dialog .access-badge, .access-version-state[data-access-version]) {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  gap: 5px;
+  min-height: 23px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.access-screen-compact .access-badge > svg { width: 12px; height: 12px; }
+.access-screen-compact :is(.access-badge-ok, [data-access-version="current"]) {
+  color: var(--access-status-ok-fg);
+  background: var(--access-status-ok-bg);
+}
+.access-screen-compact :is(.access-badge-unknown, [data-access-version="unknown"]) {
+  color: var(--access-status-unknown-fg);
+  background: var(--access-status-unknown-bg);
+}
+.access-screen-compact :is(.access-badge-warning, [data-access-version="update"]) {
+  color: var(--access-status-action-fg);
+  background: var(--access-status-action-bg);
+}
+.access-screen-compact [data-access-version="attention"] { color: #8b4027; background: #f9e9df; }
+
+@media (min-width: 1200px) {
+  .access-screen-compact .access-connection:has(.access-version-state) .access-push:not(:has(.access-send-warning)) {
+    align-self: center;
+    display: flex;
+    align-items: center;
+    padding-top: 23px;
+  }
+  .access-screen-compact.access-service-layout .access-toolbar {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto auto auto;
+    gap: 8px 12px;
+  }
+  .access-screen-compact.access-service-layout .access-toolbar form { width: min(100%, 520px); }
+  .access-screen-compact.access-service-layout .access-toolbar button { width: auto; }
+}

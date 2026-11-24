@@ -24,7 +24,7 @@ test('observed snapshots preserve displayed connections without fabricating brow
   const rows = [row, { ...row, id: 'second-observed-card' }];
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={rows} presentation='observed-snapshot' history={false} unavailable={false} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
   assert.equal((html.match(/<article /g) ?? []).length, 2);
-  assert.doesNotMatch(html, /Текущий браузер пока не сопоставлен|Старая запись · устройство не подтверждено|Этот браузер/);
+  assert.doesNotMatch(html, /Текущий браузер пока не сопоставлен|Старая запись · устройство не подтверждено|Текущий браузер/);
   assert.match(render(rows), /Последние известные сведения/);
 });
 
@@ -94,22 +94,26 @@ test('shared names stay absolute for either administrator; current marker is req
     assert.match(html, /Mac Беллы/); assert.match(html, /Mac Аслана/);
     assert.doesNotMatch(html, /Мой Mac|Ваш Mac/);
   }
-  assert.match(bella, /Этот браузер · Mac Беллы/);
-  assert.match(aslan, /Этот браузер · Mac Аслана/);
+  assert.match(bella, /<h2>Mac Беллы<\/h2>(?:(?!<\/section>).)*>Текущий браузер<\/span>/);
+  assert.match(aslan, /<h2>Mac Аслана<\/h2>(?:(?!<\/section>).)*>Текущий браузер<\/span>/);
+  for (const html of [bella, aslan]) {
+    assert.equal((html.match(/>Текущий браузер<\/span>/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /access-current-connection|Изменить название/);
+  }
   const unnamed = service([{ ...records[0], connectionLabel: null }]);
   assert.match(unnamed, /Подробности подключения/);
   assert.match(unnamed, /Владелец не подтверждён/);
   const missing = service(records.map(r => ({ ...r, isCurrentBrowser: false })));
   assert.match(missing, /Текущий браузер пока не сопоставлен/);
-  assert.doesNotMatch(missing, /Назвать это устройство/);
+  assert.doesNotMatch(missing, /Назвать устройство/);
 });
 test('self naming is offered only for the exactly matched manageable ADMIN connection', () => {
   const current = { ...row, role: 'ADMIN', device: 'iPhone', browser: 'Safari', browserInstanceId: 'phone', isCurrentBrowser: true, canMarkOwner: true };
   const screen = (record: AccessJournalRow) => renderToStaticMarkup(<PortalAccessDevicesView rows={[record]} onSetOwner={async () => {}} history={false} query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
-  assert.match(screen(current), /Назвать это устройство/);
-  assert.match(screen({ ...current, connectionLabel: 'iPhone Бэлы' }), /Изменить название/);
+  assert.match(screen(current), /Назвать устройство/);
+  assert.doesNotMatch(screen({ ...current, connectionLabel: 'iPhone Бэлы' }), /Назвать устройство|Изменить название/);
   for (const patch of [{ isCurrentBrowser: false }, { canMarkOwner: false }, { role: 'EMPLOYEE' }]) {
-    assert.doesNotMatch(screen({ ...current, ...patch }), /Назвать это устройство/);
+    assert.doesNotMatch(screen({ ...current, ...patch }), /Назвать устройство/);
   }
   assert.doesNotMatch(screen(current), /iPhone Бэлы/); // No inferred owner before confirmation.
 });
