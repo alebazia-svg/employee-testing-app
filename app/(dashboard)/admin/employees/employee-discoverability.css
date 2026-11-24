@@ -1,0 +1,110 @@
+/* Local visual candidate. Existing columns, data and action handlers retained. */
+.employee-discoverability table{width:100%;font-size:13px}
+.employee-discoverability table th,.employee-discoverability table td{padding:14px 12px}
+.employee-discoverability table td:first-child{min-width:180px}
+.employee-discoverability table th:last-child,.employee-discoverability table td:last-child{width:138px;min-width:138px}
+.employee-discoverability .employee-person-heading{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.employee-discoverability .employee-person-name{overflow-wrap:anywhere;font-weight:700;line-height:1.4}
+.employee-discoverability .employee-cabinet-action{height:auto;min-height:30px;padding:3px 0;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important;--tw-ring-shadow:0 0 #0000;color:#855c42;font-size:12px;font-weight:600;white-space:nowrap;gap:5px}
+.employee-discoverability .employee-cabinet-action svg{width:14px;height:14px;flex-shrink:0}
+.employee-discoverability .employee-cabinet-action:hover{text-decoration:underline}
+.employee-discoverability .employee-person-heading+button{min-height:28px;margin-top:2px;font-size:12px;font-weight:500;color:#7b726b}
+.employee-discoverability .employee-person-heading~p{font-size:11px;font-weight:400!important;color:#6d655e}
+.employee-discoverability .employee-management summary{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:38px;padding:4px 0;font-size:12px;font-weight:500;color:#6f655d;cursor:pointer;list-style:none}
+.employee-discoverability .employee-management summary::-webkit-details-marker{display:none}
+.employee-discoverability .employee-management summary:focus-visible,.employee-discoverability .employee-cabinet-action:focus-visible{outline:2px solid #a77c5c;outline-offset:3px}
+.employee-discoverability .employee-management[open] summary svg{transform:rotate(180deg)}
+.employee-discoverability .employee-management-items{display:grid;gap:4px;padding-top:4px;border-top:1px solid #e7e0d9}
+.employee-discoverability .employee-management-items button{justify-content:flex-start;height:auto;min-height:36px;padding:6px 0;background:transparent!important;box-shadow:none!important;--tw-ring-shadow:0 0 #0000;white-space:normal;text-align:left;font-size:12px;font-weight:500;line-height:1.4}
+.employee-discoverability .employee-management-items button:hover{color:#855c42;text-decoration:underline}
+.employee-discoverability .employee-access-group{border-top:1px solid #e7e0d9;padding-top:8px}
+@media(max-width:767px){
+ .employee-discoverability .employee-cabinet-action{min-height:40px;font-size:13px}
+ .employee-discoverability .employee-management summary{min-height:44px}
+ .employee-discoverability .employee-management-items button{min-height:44px}
+ .employee-discoverability button{max-width:100%}
+}
+
+@media(max-width:767px){
+ .employee-discoverability .employee-mobile-card{padding:14px 16px}
+ .employee-discoverability .employee-mobile-header{display:flex;flex-direction:column;gap:6px}
+ .employee-discoverability .employee-mobile-header>div{width:100%}
+ .employee-discoverability .employee-mobile-card .employee-person-name{font-size:15px;line-height:1.35;overflow-wrap:break-word}
+ .employee-discoverability .employee-mobile-actions{display:flex;align-items:center;flex-wrap:wrap;column-gap:18px;row-gap:0}
+ .employee-discoverability .employee-mobile-actions>button{min-height:44px;margin:0;font-size:12px}
+ .employee-discoverability .employee-mobile-actions>button:not(.employee-cabinet-action){color:#7b726b;font-weight:500}
+ .employee-discoverability .employee-mobile-header>div>p:last-child{margin:0;font-size:11px;line-height:1.4;color:#6d655e;font-weight:400}
+ .employee-discoverability .employee-mobile-header>span{align-self:flex-start;font-size:10px;line-height:1.4}
+ .employee-discoverability .employee-mobile-facts{margin-top:12px;gap:8px 14px}
+ .employee-discoverability .employee-mobile-facts>div{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+ .employee-discoverability .employee-mobile-facts>div>p{margin:0;line-height:1.45}
+ .employee-discoverability .employee-mobile-facts>div>p:first-child{font-size:10px;letter-spacing:0;text-transform:none;font-weight:500;color:#6d655e}
+ .employee-discoverability .employee-mobile-facts>div>p:not(:first-child){font-size:12px;font-weight:500}
+ .employee-discoverability .employee-mobile-facts>div>p:nth-child(3){flex-basis:100%;padding-left:0;font-size:11px}
+ .employee-discoverability .employee-mobile-card .employee-access-group{margin-top:10px;padding-top:0}
+}
+
+.employee-discoverability .employee-desktop-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: #6f655d;
+  font-size: 12px;
+}
+.employee-discoverability .employee-desktop-popup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 232px;
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #ded6cc;
+  border-radius: 10px;
+  box-shadow: 0 6px 22px #33251b26;
+}
+.employee-discoverability .employee-desktop-popup:not(:popover-open) {
+  display: none;
+}
+.employee-desktop-popup:popover-open { display: grid; gap: 2px; }
+.employee-discoverability .employee-desktop-popup button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #403d3a;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+.employee-discoverability .employee-desktop-popup button:enabled:hover { background: #f4f3f1; }
+.employee-discoverability .employee-desktop-popup button:focus-visible { outline: 2px solid #88674e; outline-offset: -2px; }
+.employee-discoverability .employee-desktop-popup button:disabled { opacity: .5; }
+
+.employee-discoverability .employee-desktop-popup svg {
+  flex: 0 0 16px;
+}
+.employee-discoverability table thead {
+  background: #f6f3ef;
+}
+.employee-discoverability table tbody tr + tr {
+  border-top: 1px solid #eae5df;
+}
+.employee-discoverability table td:nth-child(6) span {
+  display: inline-block;
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .employee-discoverability .employee-mobile-card {
+    border: 1px solid #e5dfd8;
+    box-shadow: 0 1px 2px #3928190b;
+  }
+  .employee-discoverability .employee-mobile-facts > div > p:first-child {
+    font-size: 11px;
+  }
+}
