@@ -866,7 +866,7 @@ export default function ProcurementPaymentCalendarClient({
                           </>}
                           {activePaymentDeferral(plan)?<p>{paymentScheduleDetail(plan)}{activePaymentDeferral(plan)?.comment?` · ${activePaymentDeferral(plan)?.comment}`:''}</p>:null}
                           <ProcurementPartialCashDetails evidence={plan.evidence} plannedAmount={Number(plan.plannedAmount)}/>
-                          <ProcurementQrTransferDetails funding={plan.evidence?.qrFunding} plannedAmount={Number(plan.plannedAmount)}/>
+                          <ProcurementQrTransferDetails buyer funding={plan.evidence?.qrFunding} plannedAmount={Number(plan.plannedAmount)}/>
             {plan.evidence?.qrFunding?.lastConfirmed?<p className="text-xs text-slate-500">Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
                           {!mobile && <p className="text-xs text-slate-500">Подготовить к: {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(plan.plannedDate))} · {leadTimeLabel(plan)}</p>}
                           {visualPreview?.detail?.(plan.id) ?? <ProcurementSavedRate plan={plan} showRequestRate={mobile||!procurementListRate(plan)}/>}
