@@ -1,6 +1,6 @@
 import {isFinishedPaymentState} from './procurement-small-remainder';
 import {paymentPreparationDate} from './procurement-schedule';
-import type {QrFunding} from './procurement-qr-funding';
+import {qrFundingAmountMatches, type QrFunding} from './procurement-qr-funding';
 
 export type PreparationPlan={id:string;status:string;plannedDate:string;oneCCashEvidence?:unknown;plannedAmount:string|number;paymentMethod:string;fundingSource?:string|null;foreignAmount:string|number|null;exchangeRate?:string|number|null;commissionAmount?:string|number|null;evidence:{state:string;verification?:string;issuedAmount:number;paidAmount:number;paidForeignAmount?:number;remainingAmount:number;remainingForeignAmount:number|null;paymentAmountNeedsConfirmation?:boolean;qrFunding?:QrFunding}};
 export type DayPreparation={id:string;day:string|null;route:'cash'|'bank'|'wallet'|'unknown';amount:number|null;estimated:boolean;reason:string};
@@ -44,7 +44,7 @@ export function calculateDayPreparation(plans:PreparationPlan[],wallet:{balance:
     // Supplier RKO spends the same transferred money: use max, not sum.
     const funded=number(q.amount);
     const owners=plans.filter(other=>other.evidence.qrFunding?.state==='confirmed'&&other.evidence.qrFunding.documentRef===q.documentRef);
-    if(!q.documentRef||owners.length!==1||funded===null||funded!==planned){results.set(p.id,unknown(p,'Связь перемещения уточняется'));continue;}
+    if(!q.documentRef||owners.length!==1||funded===null||!qrFundingAmountMatches(planned,funded)){results.set(p.id,unknown(p,'Связь перемещения уточняется'));continue;}
     amount=0;
    }
   }

@@ -78,3 +78,21 @@ test('a destructive action waits for review of a competing QR transfer', () => {
  assert.equal(guarded.get('other')?.state,'none');
  assert.equal(match(candidates).get(plan.id)?.state,'none');
 });
+
+test('V12 transfer within both limits advances the QR stage only for a unique match', () => {
+ const v12 = {...plan, supplierPartner: 'В12', plannedAmount: 113000};
+ const movements = [{...out, comment: 'qr в12', outgoing: 112700}, {...inc, incoming: 112700}];
+ const source = {...payload, movements};
+ const funding = match([v12], source).get(v12.id);
+ assert.equal(funding?.amount, 112700);
+ const view = {...v12, evidence: {state:'NO_EVIDENCE', verification:'current', qrFunding:funding}};
+ assert.equal(qrPaymentStage(view, 0), 'Ожидает чека');
+ assert.equal(qrPaymentStage(view, 0, false), 'Нужен чек');
+ assert.equal(qrPaymentStage(view, 1, false), 'Чек добавлен');
+ assert.equal(match([v12, {...v12, id:'b', plannedAmount:112700}], source).get(v12.id)?.state, 'none');
+ for (const plannedAmount of [113201, 114000]) {
+  assert.equal(match([{...v12, plannedAmount}], source).get(v12.id)?.state, 'none');
+ }
+ const small = {...source, movements:[{...movements[0], outgoing:9700}, {...movements[1], incoming:9700}]};
+ assert.equal(match([{...v12, plannedAmount:10000}], small).get(v12.id)?.state, 'none');
+});

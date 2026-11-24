@@ -64,11 +64,11 @@ export function qrReceiptStatus(plan: ReceiptPaymentPlan, receiptCount: number, 
 }
 
 /** A stage label, not financial evidence or permission to finish a request. */
-export function qrPaymentStage(plan:ReceiptPaymentPlan,receiptCount:number|null) {
+export function qrPaymentStage(plan:ReceiptPaymentPlan,receiptCount:number|null, admin = true) {
   if(!canCollectQrReceiptBeforePayment(plan)||!plan.evidence||plan.evidence.verification==='unavailable'||
     ['MISMATCH','NEEDS_REVIEW','SOURCE_UNAVAILABLE'].includes(plan.evidence.state||''))return '';
-  if(receiptCount!==null&&receiptCount>0)return 'Ожидает расходника';
-  if(receiptCount===0&&plan.evidence.qrFunding?.state==='confirmed')return 'Ожидает чека';
+  if(receiptCount!==null&&receiptCount>0)return admin?'Ожидает расходника':'Чек добавлен';
+  if(receiptCount===0&&plan.evidence.qrFunding?.state==='confirmed')return admin?'Ожидает чека':'Нужен чек';
   return '';
 }
 

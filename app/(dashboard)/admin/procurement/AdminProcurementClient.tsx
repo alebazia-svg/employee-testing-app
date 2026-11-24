@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementQrTransferDetails} from '@/components/ProcurementQrTransferDetails';
 import { ProcurementMissingOrderWarning } from '@/components/ProcurementMissingOrderWarning';
 import {ProcurementCancelledHistory} from '@/components/ProcurementCancelledHistory';
 import {ProcurementCancelAction} from '@/components/ProcurementCancelAction';
@@ -623,6 +624,7 @@ export default function AdminProcurementClient({
             <div className="flex items-center gap-2">{priority === "overdue" ? <AlertTriangle className="h-5 w-5 shrink-0"/> : <CalendarDays className="h-5 w-5 shrink-0"/>}<strong>{stage(plan)||paymentScheduleLabel(plan)|| (priority === "overdue" ? "Срок оплаты прошёл" : priority === "today" ? "Оплата сегодня" : priority === "tomorrow" ? "Оплата завтра" : "Предстоящая оплата")}</strong></div>
             <p>{stage(plan)?stage(plan)==='Ожидает чека'?'Деньги переданы в подотчёт. После оплаты Астемир добавит чек.':'Чек добавлен. Оформите оплату поставщику в 1С.':<>{deferred?paymentScheduleDetail(plan):date(plan.plannedDate)} · {refreshState!=='ready' ? "Статус оплаты уточняется" : plan.evidence.collection ? "Выдача из кассы назначена" : needsCheck ? "Проверьте найденную оплату и остаток" : deferred ? (deferred.comment||'Согласование сохраняется') : priority === "overdue" ? "Проверьте оплату — срок уже прошёл" : priority === "today" ? "Подготовьте деньги к оплате сегодня" : priority === "tomorrow" ? "Подготовьте деньги заранее" : "Подготовьте деньги к указанной дате"}</>}</p>
             {deferred?<p>В заявке: подготовить к {date(plan.plannedDate)}</p>:null}
+            <ProcurementQrTransferDetails funding={plan.evidence?.qrFunding} plannedAmount={Number(plan.plannedAmount)}/>
             {plan.evidence.qrFunding?.lastConfirmed?<p>Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
           </div><article key={plan.id} data-confirmed-only={!needsCheck} className="procurement-detail procurement-approved-detail">
                     {plan.evidence.paymentAmountNeedsConfirmation ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900 sm:col-span-4">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Рублёвый эквивалент не подтверждён — проверьте выполнение заявки перед повторной оплатой.</p> : null}
