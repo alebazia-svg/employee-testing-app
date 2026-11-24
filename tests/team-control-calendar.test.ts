@@ -6,7 +6,16 @@ import { teamRowStatus } from '../lib/team-control-order';
 import { teamControlSummary } from '../lib/team-control-summary';
 import { resolveTeamAttendance } from '../lib/team-attendance';
 
-const base = {date:'2026-11-11',department:'retail',plan:'working',source:'Приложение',vacation:false,qrAccepted:false,hasWorkDay:false,now:new Date('2026-11-11T20:00:00+03:00')};
+const base = {date:'2026-11-11',department:'retail',plan:'working',source:'Приложение',vacation:false,qrAccepted:false,googleMarksAvailable:true,hasWorkDay:false,now:new Date('2026-11-11T20:00:00+03:00')};
+test('a planned day off is not presented as a missing QR in Day Control',()=>{
+ for(const department of ['retail','wholesale','procurement'])for(const source of ['Приложение','Google']) {
+  const result=resolveControlCalendarDay({...base,department,plan:'off',source});
+  assert.equal(result.state,'Выходной');assert.equal(result.calendarState,'off');
+  assert.equal(result.fact.source,source);assert.equal(result.sourceLabel,undefined);assert.equal(result.stateNote,undefined);
+  const google={plan:'off' as const,arrival:null,departure:null,shift:'',lateMinutes:0,note:'',ambiguous:false};
+  assert.equal(resolveTeamAttendance({date:base.date,today:base.date,workDay:null,google,googleAvailable:true,fallbackState:'Выходной'}).state,'Выходной');
+ }
+});
 for(const [department,end] of [['retail','20:00'],['wholesale','19:00'],['procurement','18:00']]) {
  test(`${department}: no QR becomes off exactly at department close; original plan stays working`,()=>{
   const now=new Date(`2026-11-11T${end}:00+03:00`),input={...base,department,now};
@@ -68,7 +77,7 @@ test('an existing app shift without a QR field is never auto-closed or hidden',(
 test('compact status and source describe the result without changing the plan or real shift lifecycle',()=>{
  const off=resolveControlCalendarDay(base);
  assert.equal(off.sourceLabel,'Нет отметки');
- assert.equal(off.stateNote,'Выходной учтён автоматически: нет QR-отметки начала смены');
+ assert.equal(off.stateNote,'Выходной учтён автоматически: нет отметки начала в приложении, подтверждения из Google не получено');
  assert.equal(resolveControlCalendarDay({...base,qrAccepted:true}).sourceLabel,undefined);
  const real=resolveControlCalendarDay({...base,qrAccepted:true,hasWorkDay:true});
  assert.equal(real.sourceLabel,undefined);assert.equal(real.state,null);assert.equal(real.stateNote,undefined);

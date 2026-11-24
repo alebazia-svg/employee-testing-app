@@ -55,9 +55,10 @@ async function workday(now:Date):Promise<HomeWorkday>{
   const g=googleDay(user.name,date,google.plans,google.marks);
   const plan=resolveTeamSchedule({name:user.name,appStatus:schedules.find(row=>row.userId===user.id)?.status,googlePlan:g.plan,googleAvailable:google.planAvailable,vacation:vacations.some(row=>row.userId===user.id)});
   const evidence=calendarEvidence.get(calendarCorrectionSourceId(user.id,date));
-  const calendarDay=resolveControlCalendarDay({date,department:user.department,plan:plan.state,source:plan.source,vacation:vacations.some(row=>row.userId===user.id),qrAccepted:evidence?.qrAccepted??false,correction:evidence?.history[0],now,hasWorkDay:Boolean(day)});
+  const calendarDay=resolveControlCalendarDay({date,department:user.department,plan:plan.state,source:plan.source,vacation:vacations.some(row=>row.userId===user.id),qrAccepted:evidence?.qrAccepted??false,googleArrival:g.arrival,googleDeparture:g.departure,googleMarksAvailable:google.marksAvailable,correction:evidence?.history[0],now,hasWorkDay:Boolean(day)});
   const attendance=resolveTeamAttendance({date,today:date,workDay:day,google:g,googleAvailable:google.marksAvailable,fallbackState:plan.label});
-  if(calendarDay.calendarState==='off'||calendarDay.calendarState==='vacation')result.off++;
+  if(calendarDay.usesGoogleAttendance){if(attendance.end!=='—')result.completed++;else{result.working++;groups.set(user.department,(groups.get(user.department)||0)+1);}}
+  else if(calendarDay.calendarState==='off'||calendarDay.calendarState==='vacation')result.off++;
   // An audited working day without a created shift is accounted,
   // but must not invent current presence or a completed shift on the home page.
   else if(!calendarDay.settled){if(attendance.active){result.working++;groups.set(user.department,(groups.get(user.department)||0)+1);}else if(attendance.end!=='—'||day?.status==='completed')result.completed++;else if(plan.status==='off')result.off++;}

@@ -22,17 +22,20 @@ test('future calendar plans preserve sources, departments and the existing layou
     { userId: 10, date: '2026-11-04', status: 'off' },
   ];
   const before = JSON.stringify(schedules);
+  let marksAvailable=true;
+  const googleMarks:Array<{employee:string;date:string;timestamp:string;action:string;time:string;shift:string}>=[];
   const mocks: Record<string, any> = {
     '@/lib/prisma': { prisma: {
       user: { findMany: async ({ where }: any) => users.filter(user => user.role === where.role && user.isActive === where.isActive && where.department.in.includes(user.department)) },
       workScheduleEntry: { findMany: async () => schedules },
+      workScheduleChange: { findMany: async () => [] },
       workDayEntry: { findMany: async () => [] },
       workdayStartIntent: { findMany: async () => [] },
       adminInboxEvent: { findMany: async () => [] },
       employeeVacation: { findMany: async () => [{ userId: 10, dateFrom: '2026-11-05', dateTo: '2026-11-06' }] },
     } },
     '@/lib/team-control-source': { getTeamGoogleSnapshot: async () => ({
-      planAvailable: true, marksAvailable: true, readAt: '2026-11-03T09:00:00Z', marks: [],
+      planAvailable: true, marksAvailable, readAt: '2026-11-03T09:00:00Z', marks: googleMarks,
       plans: [
         { employee: 'Ахобекова Залина', date: '2026-11-03', plannedWork: false, scheduleNote: '' },
         { employee: 'Ахобекова Залина', date: '2026-11-04', plannedWork: true, scheduleNote: '' },
@@ -79,7 +82,33 @@ test('future calendar plans preserve sources, departments and the existing layou
   assert.match(actual, /aria-label="Ахобекова Залина, 2026-11-03, Выходной"/);
   assert.match(actual, /aria-label="Астемир Тохов, 2026-11-03, Выходной"/);
   assert.match(actual, /aria-label="Кумыков Мухамед, 2026-11-03, Выходной"/);
+  assert.match(actual, /Кумыков Мухамед<\/th>/, 'saved off has no extra source caption');
+  assert.match(actual, /Абшаева Зухра<small>По QR<\/small>/, 'a successful QR workday still overrides saved off');
   assert.match(await render('2026-11-02', '2026-11-03T20:01:00+03:00'), /aria-label="Кумыков Мухамед, 2026-11-02, Выходной"/);
+  mocks['@/lib/prisma'].prisma.workDayEntry.findMany = async () => [
+    {userId:10,date:'2026-11-03',qrAcceptedAt:new Date('2026-11-03T09:00:00+03:00')},
+    {userId:7,date:'2026-11-03',qrAcceptedAt:new Date('2026-11-03T09:00:00+03:00')},
+  ];
+  mocks['@/lib/prisma'].prisma.workScheduleChange.findMany = async () => [
+    {userId:7,date:'2026-11-03',source:'qr_start',nextStatus:'working'},
+    {userId:10,date:'2026-11-03',source:'employee',nextStatus:'working'},
+    {userId:10,date:'2026-11-03',source:'qr_start',nextStatus:'working'},
+  ];
+  const matched=await render('2026-11-03','2026-11-03T20:01:00+03:00');
+  assert.match(matched,/Астемир Тохов<\/th>/,'an explicit working plan confirmed by QR needs no extra caption');
+  assert.match(matched,/Ахобекова Залина<small>По QR<\/small>/,'an automatically QR-created plan is not mistaken for a separately filled plan');
+  mocks['@/lib/prisma'].prisma.workDayEntry.findMany=async()=>[{userId:7,date:'2026-11-03',qrAcceptedAt:new Date('2026-11-03T09:00:00+03:00')}];
+  googleMarks.push(...[4,10,11].map(id=>({employee:users.find(u=>u.id===id)!.name,date:'2026-11-03',timestamp:'',action:id===11?'Окончание рабочего дня':'Начало рабочего дня',time:id===11?'18:00':'09:07',shift:'09:00–18:00'})));
+  const reserve=await render('2026-11-03','2026-11-03T20:01:00+03:00');
+  assert.match(reserve,/aria-label="Абшаева Зухра, 2026-11-03, Рабочий день"/);
+  assert.match(reserve,/Абшаева Зухра<small>Google · резерв<\/small>/);
+  assert.match(reserve,/Астемир Тохов<\/th>/,'a planned working day confirmed by Google needs no extra caption');
+  assert.match(reserve,/aria-label="Кумыков Мухамед, 2026-11-03, Рабочий день"/,'a Google checkout does not fabricate an automatic day off');
+  marksAvailable=false;
+  const unavailable=await render('2026-11-03','2026-11-03T20:01:00+03:00');
+  assert.match(unavailable,/aria-label="Астемир Тохов, 2026-11-03, Выходной"/,'optional Google outage must not block automatic accounting');
+  assert.match(unavailable,/aria-label="Абшаева Зухра, 2026-11-03, Выходной"/,'a chosen day off remains a valid plan');
+  assert.doesNotMatch(unavailable,/Google · резерв<\/small>/,'unavailable rows are not used as fresh evidence');
   assert.equal(JSON.stringify(schedules), before, 'calendar reads never modify saved plans');
   mocks['@/lib/prisma'].prisma.workDayEntry.findMany = async () => { throw new Error('QR database unavailable'); };
   await assert.rejects(render('2026-11-03', '2026-11-03T20:01:00+03:00'), /QR database unavailable/, 'failed QR read must not invent days off');

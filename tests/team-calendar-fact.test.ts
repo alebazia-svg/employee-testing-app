@@ -2,17 +2,49 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calendarQrAccepted, resolveCalendarFact, parseCalendarWorkingCorrection } from '../lib/team-calendar-fact';
 const at=(date:string,time:string)=>new Date(`${date}T${time}:00+03:00`);
-const base={date:'2026-11-11',department:'retail',plan:'working',source:'Приложение',vacation:false,qrAccepted:false,now:at('2026-11-11','20:01')};
+const base={date:'2026-11-11',department:'retail',plan:'working',source:'Приложение',vacation:false,qrAccepted:false,googleMarksAvailable:true,now:at('2026-11-11','20:01')};
 
 for(const plan of ['working','off','unset','unknown','unavailable']) {
  test(`${plan}: no QR after department closing is a day off`,()=>{
   const input={...base,plan},before=JSON.stringify(input);const r=resolveCalendarFact(input);
-  assert.equal(r.state,'off');assert.equal(r.source,'Автоматически');assert.equal(JSON.stringify(input),before);
+  assert.equal(r.state,'off');assert.equal(r.source,plan==='off'?'Приложение':'Автоматически');assert.equal(JSON.stringify(input),before);
  });
  test(`${plan}: accepted QR is a working day regardless of plan`,()=>{
   const r=resolveCalendarFact({...base,plan,qrAccepted:true});assert.equal(r.state,'working');assert.equal(r.source,'По QR');
  });
 }
+test('a planned day off retains its source before and after closing, including historical days',()=>{
+ for(const [department,end] of [['retail','20:00'],['wholesale','19:00'],['procurement','18:00']]) {
+  const close=at(base.date,end);
+  for(const source of ['Приложение','Google'])for(const now of [new Date(+close-1),close,at('2026-11-12','12:00')]) {
+   const input={...base,department,plan:'off',source,now},before=JSON.stringify(input);
+   const result=resolveCalendarFact(input);
+   assert.equal(result.state,'off');assert.equal(result.source,source);assert.equal(result.explanation,'');
+   assert.equal(JSON.stringify(input),before,'accounting must never rewrite the saved plan');
+   const worked=resolveCalendarFact({...input,qrAccepted:true});
+   assert.equal(worked.state,'working');assert.equal(worked.source,'По QR');
+  }
+ }
+});
+test('calendar captions distinguish matching plans, missing plans and QR-created plans',()=>{
+ const rows = [
+  {plan:'working',qrAccepted:true,caption:'',state:'working'},
+  {plan:'off',qrAccepted:false,googleMarksAvailable:true,caption:'',state:'off'},
+  {plan:'off',qrAccepted:true,caption:'По QR',state:'working'},
+  {plan:'unset',qrAccepted:true,caption:'По QR',state:'working'},
+  {plan:'working',qrAccepted:false,googleMarksAvailable:true,caption:'Автоматически',state:'off'},
+  {plan:'unset',qrAccepted:false,googleMarksAvailable:true,caption:'Автоматически',state:'off'},
+ ];
+ for(const row of rows) {
+  const result=resolveCalendarFact({...base,...row});
+  assert.equal(result.state,row.state);assert.equal(result.caption,row.caption);
+ }
+ const autoPlan=resolveCalendarFact({...base,qrAccepted:true,planFromQr:true});
+ assert.equal(autoPlan.state,'working');assert.equal(autoPlan.caption,'По QR');
+ assert.equal(resolveCalendarFact({...base,qrAccepted:true}).source,'По QR','normal-day details retain their actual evidence');
+ for(const source of ['Приложение','Google'])assert.equal(resolveCalendarFact({...base,plan:'off',source}).caption,'');
+ assert.equal(resolveCalendarFact({...base,plan:'off',date:'2026-11-12'}).caption,'Приложение','future plan sources remain unchanged');
+});
 for(const [department,end] of [['retail','20:00'],['wholesale','19:00'],['procurement','18:00']]) {
  test(`${department}: changes only at the agreed end of day`,()=>{
   const close=at(base.date,end),before=new Date(+close-1);

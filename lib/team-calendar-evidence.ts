@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { calendarCorrectionSourceId, calendarQrAccepted, CALENDAR_CORRECTION_SOURCE, parseCalendarWorkingCorrection, type CalendarWorkingCorrection } from './team-calendar-fact';
 
 type QrRow = { userId: number; date: string; qrAcceptedAt: Date | null };
-export type CalendarEvidence = { qrAccepted: boolean; history: Array<CalendarWorkingCorrection & { id: string }> };
+export type CalendarEvidence = { qrAccepted: boolean; appStarted: boolean; history: Array<CalendarWorkingCorrection & { id: string }> };
 // Only a successfully created workday confirms a QR start; an unconsumed or
 // expired scan intent never changes day accounting.
 // Shared read-only evidence for ADMIN calendar and day control. Failed reads
@@ -25,7 +25,8 @@ export async function loadTeamCalendarEvidence(db: Pick<PrismaClient, 'workDayEn
       const correction = parseCalendarWorkingCorrection(e.body);
       return correction?.userId === id && correction.date === date ? [{ id: e.id, ...correction }] : [];
     });
-    result.set(key, { qrAccepted: calendarQrAccepted(date, workdays.filter(r => r.userId === id && r.date === date).map(r => r.qrAcceptedAt), now), history });
+    const days = workdays.filter(r => r.userId === id && r.date === date);
+    result.set(key, { qrAccepted: calendarQrAccepted(date, days.map(r => r.qrAcceptedAt), now), appStarted: days.length > 0, history });
   }
   return result;
 }

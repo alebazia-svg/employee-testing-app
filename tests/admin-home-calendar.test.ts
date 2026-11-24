@@ -39,9 +39,18 @@ test('home uses calendar cutoffs while keeping actual active/completed shifts an
  for(const id of ['cash-92','issue-91','close-close'])assert.ok(after.actions.some((a:any)=>a.id===id),id);
  assert.equal(JSON.stringify([f.users,f.plans,f.days,f.intents,f.corrections]),before);
 });
-test('Google arrival/checkout cannot override the agreed QR day accounting or fabricate an app shift',async()=>{
+test('Google arrival/checkout are reserves without fabricating app shifts or rewriting plans',async()=>{
  const f=await fixture();
+ const before=JSON.stringify([f.plans,f.days,f.intents,f.corrections]);
  f.google.marks.push(...[1,2].flatMap(id=>[{employee:`Сотрудник ${id}`,date:'2026-11-11',action:'Начало',time:'09:00',timestamp:'2026-11-11T09:00:00+03:00',shift:'09:00–18:00'},{employee:`Сотрудник ${id}`,date:'2026-11-11',action:'Окончание',time:'18:00',timestamp:'2026-11-11T18:00:00+03:00',shift:'09:00–18:00'}]));
  const after=await f.load('2026-11-11T20:05:00+03:00');
- assert.equal(after.off,4);assert.equal(after.completed,1);assert.equal(after.working,1);assert.equal(after.notStarted,0);
+ assert.equal(after.off,2);assert.equal(after.completed,3);assert.equal(after.working,1);assert.equal(after.notStarted,0);
+ assert.equal(JSON.stringify([f.plans,f.days,f.intents,f.corrections]),before);
+});
+test('optional Google outage does not block automatic day accounting or erase actual app shifts',async()=>{
+ const f=await fixture();f.google.marksAvailable=false;
+ const after=await f.load('2026-11-11T20:05:00+03:00');
+ assert.equal(after.off,4,'Google availability does not change the application-first day accounting');
+ assert.equal(after.working,1);assert.equal(after.completed,1);assert.equal(after.notStarted,0);
+ assert.ok(!after.timing.some((a:any)=>a.id.includes('workday-not-started')));
 });

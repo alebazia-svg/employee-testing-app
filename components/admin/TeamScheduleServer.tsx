@@ -13,7 +13,13 @@ export async function TeamScheduleServer({date,view,now = new Date()}:{date:stri
   prisma.employeeVacation.findMany({where:{status:'active',dateFrom:{lte:to},dateTo:{gte:from}}}),getTeamGoogleSnapshot()]);
  const [year,m]=month.split('-').map(Number),length=new Date(Date.UTC(year,m,0)).getUTCDate();
  const dates=Array.from({length},(_,i)=>month+'-'+String(i+1).padStart(2,'0'));
- const evidence = await loadTeamCalendarEvidence(prisma, {userIds:users.map(u=>u.id),dates,now});
+ const [evidence,planChanges] = await Promise.all([
+  loadTeamCalendarEvidence(prisma, {userIds:users.map(u=>u.id),dates,now}),
+  prisma.workScheduleChange.findMany({where:{userId:{in:users.map(u=>u.id)},date:{gte:from,lte:to}},
+   orderBy:[{createdAt:'desc'},{id:'desc'}],select:{userId:true,date:true,source:true,nextStatus:true}}),
+ ]);
+ const latestPlanChange = new Map<string,(typeof planChanges)[number]>();
+ for(const change of planChanges){const key=calendarCorrectionSourceId(change.userId,change.date);if(!latestPlanChange.has(key))latestPlanChange.set(key,change);}
  const people=users.map(u=>{const days=dates.map(d=>{
   const app=schedules.find(s=>s.userId===u.id&&s.date===d)?.status??'unset';
   const g=googleDay(u.name,d,google.plans,google.marks);const gp=google.planAvailable?g.plan??'unknown':'unavailable';
@@ -22,10 +28,11 @@ export async function TeamScheduleServer({date,view,now = new Date()}:{date:stri
   const plannedState=plan.state==='unknown'&&plan.app?'unset':plan.state;
   const savedSource=teamCalendarSourceLabel(plan,g.ambiguous),key=calendarCorrectionSourceId(u.id,d);
   const dayEvidence=evidence.get(key),history=dayEvidence?.history??[];
-  const fact=resolveCalendarFact({date:d,department:u.department,plan:plannedState,source:savedSource,vacation,qrAccepted:dayEvidence?.qrAccepted??false,correction:history[0],now});
-  return {date:d,app,google:gp,plan:fact.state,source:fact.source,vacation,note:g.note,savedPlan:plannedState,savedSource,
+  const change=latestPlanChange.get(key),planFromQr=app==='working'&&change?.source==='qr_start'&&change.nextStatus==='working';
+  const fact=resolveCalendarFact({date:d,department:u.department,plan:plannedState,source:savedSource,vacation,qrAccepted:dayEvidence?.qrAccepted??false,appStarted:dayEvidence?.appStarted??false,googleArrival:g.arrival,googleDeparture:g.departure,googleMarksAvailable:google.marksAvailable,planFromQr,correction:history[0],now});
+  return {date:d,app,google:gp,plan:fact.state,source:fact.source,caption:fact.caption,planFromQr,vacation,note:g.note,savedPlan:plannedState,savedSource,
     factExplanation:fact.explanation,factual:fact.factual,canMarkWorking:fact.canMarkWorking,correctionId:history[0]?.id??null,
     correctionActive:history[0]?.status==='working',correctionHistory:history.map(h=>({actor:h.actorName,at:h.correctedAt,reason:h.reason,status:h.status}))};
- });return {...u,source:days.find(d=>d.date===date)?.source??'Приложение',days};});
- return <TeamSchedule people={people} month={month} date={date} initialView={view} readAt={formatTime(new Date(google.readAt))} warning={!google.planAvailable?'График Google сейчас недоступен.':''}/>;
+ });const selected=days.find(d=>d.date===date);return {...u,source:selected?.source??'Приложение',caption:selected?.caption,days};});
+ return <TeamSchedule people={people} month={month} date={date} initialView={view} readAt={formatTime(new Date(google.readAt))} warning={!google.planAvailable||!google.marksAvailable?'Часть данных Google сейчас недоступна.':''}/>;
 }
