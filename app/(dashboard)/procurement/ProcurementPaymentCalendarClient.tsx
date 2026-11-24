@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementPartialCashDetails} from '@/components/ProcurementPartialCashDetails';
 import {ProcurementQrTransferDetails} from '@/components/ProcurementQrTransferDetails';
 import { workflowEvent,workflowJson } from '@/lib/employee-workflow-client';
 import { employeeObservedFetch } from "@/lib/employee-observed-fetch";
@@ -128,7 +129,7 @@ type Plan = {
     remainingForeignAmount: number | null;
     actualExchangeRate: number | null;
     manualPaymentCount?: number;
-    cashOrders?: { ref: string; number: string; date?: string }[];
+    cashOrders?: { ref: string; number: string; date?: string; amount?: number }[];
     currencyPayments?: { ref: string; number: string; date: string }[];
   };
 };
@@ -790,7 +791,7 @@ export default function ProcurementPaymentCalendarClient({
                         {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
                         {!compact && <ProcurementChangeHistory events={plan.events} buyerView />}
                         {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="text-xs text-slate-600">{fundingSourceLabel(plan.fundingSource)}</p>:null}
-                        {plan.evidence?.state === 'PARTIALLY_ISSUED' ? <p className="text-xs font-bold text-blue-800">Оплачено {rub.format(plan.evidence.issuedAmount)} · осталось по заявке {rub.format(Math.max(0, Number(plan.plannedAmount) - plan.evidence.issuedAmount))}</p> : null}
+                        {plan.evidence?.state === 'PARTIALLY_ISSUED' && (!compact || !plan.evidence.cashOrders?.length) ? <p className="text-xs font-bold text-blue-800">Оплачено {rub.format(plan.evidence.issuedAmount)} · осталось по заявке {rub.format(Math.max(0, Number(plan.plannedAmount) - plan.evidence.issuedAmount))}</p> : null}
                         {plan.evidence?.paymentAmountNeedsConfirmation ? <p className="text-xs font-bold text-amber-800">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Выполнение заявки ещё не подтверждено.</p> : null}
                         {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
                       </>;
@@ -864,6 +865,7 @@ export default function ProcurementPaymentCalendarClient({
                             {buyerPaymentComment(plan.condition) ? <p><span className="font-semibold">Комментарий: </span>{buyerPaymentComment(plan.condition)}</p> : <p>Комментарий не указан.</p>}
                           </>}
                           {activePaymentDeferral(plan)?<p>{paymentScheduleDetail(plan)}{activePaymentDeferral(plan)?.comment?` · ${activePaymentDeferral(plan)?.comment}`:''}</p>:null}
+                          <ProcurementPartialCashDetails evidence={plan.evidence} plannedAmount={Number(plan.plannedAmount)}/>
                           <ProcurementQrTransferDetails funding={plan.evidence?.qrFunding} plannedAmount={Number(plan.plannedAmount)}/>
             {plan.evidence?.qrFunding?.lastConfirmed?<p className="text-xs text-slate-500">Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
                           {!mobile && <p className="text-xs text-slate-500">Подготовить к: {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(plan.plannedDate))} · {leadTimeLabel(plan)}</p>}

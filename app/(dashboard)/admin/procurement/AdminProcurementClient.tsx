@@ -1,4 +1,5 @@
 "use client";
+import {ProcurementPartialCashDetails} from '@/components/ProcurementPartialCashDetails';
 import {ProcurementQrTransferDetails} from '@/components/ProcurementQrTransferDetails';
 import { ProcurementMissingOrderWarning } from '@/components/ProcurementMissingOrderWarning';
 import {ProcurementCancelledHistory} from '@/components/ProcurementCancelledHistory';
@@ -640,6 +641,7 @@ export default function AdminProcurementClient({
                     </div>:null}
                     <ProcurementCollectionNotice collection={plan.evidence.collection} today={todayKey} />
                     <div className="procurement-comment-section"><ProcurementAdminComment value={planComment(plan)} /></div>
+                    {plan.evidence.state === "PARTIALLY_ISSUED" && <div className="sm:col-span-4"><ProcurementPartialCashDetails evidence={plan.evidence}/></div>}
                     {visualPreview?.detail ? <div className="sm:col-span-4">{visualPreview.detail(plan.id)}</div> : null}
                     {!visualPreview || visualPreview.persistedReceipts ? <div className="procurement-document-section"><ProcurementReceipts admin plans={[plan]} single inline onBusyChange={setDocumentBusy}/></div> : null}
                     <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} /></div>
