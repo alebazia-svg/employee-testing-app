@@ -85,3 +85,24 @@ test('compact status and source describe the result without changing the plan or
  assert.equal(resolveControlCalendarDay({...base,now:new Date('2026-11-11T12:00:00+03:00')}).sourceLabel,undefined);
  assert.equal(resolveControlCalendarDay({...base,date:'2026-11-12'}).sourceLabel,undefined);
 });
+
+test('Timur’s blank days before 19 November are unfilled, with confirmed evidence and other employees preserved', () => {
+  const input = {
+    ...base, date: '2026-11-18', now: new Date('2026-11-24T22:00:00+03:00'),
+    employeeLogin: 't.nazranov', plan: 'unknown', source: 'Нет записи',
+  };
+  for (const date of ['2026-11-01', '2026-11-18']) {
+    const day = resolveControlCalendarDay({ ...input, date });
+    assert.equal(day.fact.state, 'unknown');
+    assert.equal(day.fact.source, 'Нет записи');
+    assert.equal(day.settled, false);
+    assert.equal(day.sourceLabel, undefined);
+    assert.equal(day.calendarState, undefined);
+  }
+  assert.equal(resolveControlCalendarDay({ ...input, googleMarksAvailable: false, plan: 'unavailable' }).fact.state, 'unavailable');
+  assert.equal(resolveControlCalendarDay({ ...input, date: '2026-11-19', qrAccepted: true, hasWorkDay: true }).fact.source, 'По QR');
+  assert.equal(resolveControlCalendarDay({ ...input, date: '2026-11-23' }).state, 'Выходной');
+  assert.equal(resolveControlCalendarDay({ ...input, employeeLogin: 'other.employee' }).state, 'Выходной');
+  assert.equal(resolveControlCalendarDay({ ...input, plan: 'off', source: 'Приложение' }).fact.source, 'Приложение');
+  assert.equal(resolveControlCalendarDay({ ...input, googleArrival: 547 }).fact.source, 'Google · резерв');
+});
