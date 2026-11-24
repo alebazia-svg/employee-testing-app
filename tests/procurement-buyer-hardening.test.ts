@@ -90,8 +90,8 @@ function render(props:unknown, view:'current'|'history'='current', expanded:stri
 test('real calendar renders request stages, partial RUB remainder, paid history and buyer comment',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-24')!;
   const html=await render({...props,basisPreview:false});
-  assert.match(html,/ЧАСТИЧНО ОПЛАЧЕНО/);assert.match(html,/Оплачено 40\s000,00.*осталось по заявке 60\s000,00/);
-  assert.match(html,/Ждёт решения/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);assert.doesNotMatch(html,/Оплачено полностью/);
+  assert.match(html,/Частично оплачено/);assert.match(html,/Оплачено 40\s000,00.*осталось по заявке 60\s000,00/);
+  assert.match(html,/Ждёт решения/);assert.match(html,/Нужно исправить/);assert.doesNotMatch(html,/Оплачено полностью/);
   assert.match(await render({...props,basisPreview:false},'history'),/Оплачено полностью/);
   assert.doesNotMatch(html,/Подготовить к обеду/);
   const commented = props.initialPlans.find(plan => buyerPaymentComment(plan.condition).includes('Подготовить к обеду'))!;
@@ -103,9 +103,9 @@ test('buyer preparation labels do not replace payment review or partial-payment 
   const props=buyerReviewScenario('basis-edit-approved','2026-10-05')!;
   const base=props.initialPlans[0];
   for (const [state,label] of [
-    ['MISMATCH','ОПЛАТА НА ПРОВЕРКЕ'],
-    ['PARTIALLY_ISSUED','ЧАСТИЧНО ОПЛАЧЕНО'],
-    ['PARTIALLY_PAID_BY_ONE_C','ЧАСТИЧНО ОПЛАЧЕНО'],
+    ['MISMATCH','Оплата на проверке'],
+    ['PARTIALLY_ISSUED','Частично оплачено'],
+    ['PARTIALLY_PAID_BY_ONE_C','Частично оплачено'],
   ]) {
     const html=await render({...props,initialPlans:[{...base,status:'APPROVED',evidence:{...base.evidence,state}}]});
     const badge=html.match(/class="compact-payment-status[^]*?<\/span>/)?.[0] || '';
@@ -143,7 +143,7 @@ test('successive payments on one order leave both buyer requests in paid history
   const html=await render({...props,initialPlans:[first,second].map(plan=>({...plan,evidence:evidence.get(plan.id)})),basisPreview:false},'history');
   assert.equal((html.match(/Оплачено полностью/g)||[]).length,2);
   assert.match(html,/Расходник №1758/);assert.match(html,/Расходник №1761/);
-  assert.doesNotMatch(html,/>Деньги будут готовы<|ЧАСТИЧНО ОПЛАЧЕНО|>Изменить</);
+  assert.doesNotMatch(html,/>Деньги будут готовы<|Частично оплачено|>Изменить</);
 });
 test('delivery balance is a separate optional card and does not change payment calculations',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-27')!;
@@ -169,7 +169,7 @@ test('completed residual is absent from active buyer requests even while fresh e
   const props=buyerReviewScenario('lifecycle','2026-09-26')!;
   const plan={...props.initialPlans[0],status:'COMPLETED_WITHOUT_TOPUP',oneCCashEvidence:{completion:{at:'2026-09-26T09:00:00Z',actorId:1,reason:'Окончательная сумма',paidAmount:40000,paidForeignAmount:0,remainingAmount:60000,remainingForeignAmount:null,paymentRefs:['rko']}}};
   const html=await render({...props,initialPlans:[plan],basisPreview:false});
-  assert.doesNotMatch(html,/Завершена без доплаты|ЧАСТИЧНО ОПЛАЧЕНО|>Изменить<|Оплачено полностью/);
+  assert.doesNotMatch(html,/Завершена без доплаты|Частично оплачено|>Изменить<|Оплачено полностью/);
   assert.match(await render({...props,initialPlans:[plan],basisPreview:false},'history'),/Завершена без доплаты/);
   assert.match(html,/История оплат/);
 });
@@ -225,7 +225,7 @@ test('failed plan load never renders empty success, new actions or zero reserves
 test('incomplete payment source hides paid conclusions and blocks editing, preserving visible requests',async()=>{
   const html=await render({...buyerReviewScenario('payments-unavailable','2026-09-24'),basisPreview:false});
   assert.match(html,/Оплаты из 1С сейчас не проверены/);assert.match(html,/Учебный поставщик/);
-  assert.doesNotMatch(html,/Оплачено полностью|ЧАСТИЧНО ОПЛАЧЕНО|Добавить оплаты|>Изменить</);
+  assert.doesNotMatch(html,/Оплачено полностью|Частично оплачено|Добавить оплаты|>Изменить</);
 });
 test('missing settlements block new actions without showing a false zero supplier debt',async()=>{
   const html=await render({...buyerReviewScenario('lifecycle','2026-09-24'),supplierDebtError:true,basisPreview:false});
@@ -258,7 +258,7 @@ test('buyer calendar groups by date before status and shows an explicit date for
   assert.ok(html.indexOf('past-approved')<html.indexOf('today-pending'));
   assert.ok(html.indexOf('today-pending')<html.indexOf('today-approved'));
   assert.ok(html.indexOf('today-approved')<html.indexOf('future-correction'));
-  assert.match(html,/Ждёт решения/);assert.match(html,/Деньги будут готовы/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);
+  assert.match(html,/Ждёт решения/);assert.match(html,/Деньги будут готовы/);assert.match(html,/Нужно исправить/);
   assert.doesNotMatch(html,/НА СОГЛАСОВАНИИ|СОГЛАСОВАНО|В ПЛАНЕ|подготовка денег к указанной дате подтверждена/);
 });
 test('edit never replaces amount with order nominal value; save remains disabled in preview and incomplete data',async()=>{

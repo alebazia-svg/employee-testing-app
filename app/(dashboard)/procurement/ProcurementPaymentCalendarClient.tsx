@@ -783,8 +783,8 @@ export default function ProcurementPaymentCalendarClient({
                           className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${receiptStageUnknown(plan) ? "bg-amber-100 text-amber-900" : paymentScheduleLabel(plan)==='Оплата отложена' ? "bg-stone-100 text-stone-700" : plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
                         >
                           {visibleStage(plan) || paymentScheduleLabel(plan) || (plan.status === "APPROVED"
-                            ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
-                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "Ждёт решения")}
+                            ? plan.evidence?.state === "MISMATCH" ? "Оплата на проверке" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "Частично оплачено" : "Деньги будут готовы"
+                            : plan.status === "NEEDS_CHANGES" ? "Нужно исправить" : "Ждёт решения")}
                         </span>
                         {plan.status==='SUBMITTED'&&activePaymentDeferral(plan)?<p className="text-xs text-amber-800">Ждёт решения</p>:null}
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
