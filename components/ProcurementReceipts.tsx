@@ -120,7 +120,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
     }catch(error){setTarget(plan.id);setError(error instanceof Error?error.message:(mobile?'Отправка чека не подтверждена. Повторите попытку.':'Чек не сохранён. Повторите попытку.'));return false;}
     finally{uploading.current=false;setBusy('');onBusyChange?.(false);}
   };
-  const change=async(plan:Plan,file:Receipt,action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT',purpose?:DocumentPurpose,paymentRefs?:string[])=>{
+  const change=async(plan:Plan,file:Receipt,action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT'|'REMOVE_RECEIPT'|'RESTORE_RECEIPT',purpose?:DocumentPurpose,paymentRefs?:string[])=>{
     if(preview){preview.blocked();return false;}
     if(uploading.current)return false;
     uploading.current=true;requestVersion.current++;setBusy(plan.id);onBusyChange?.(true);setError('');setNotice('');
@@ -128,7 +128,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
       const response=await documentFetch(`${root}${encodeURIComponent(plan.id)}/documents/${encodeURIComponent(file.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,purpose,paymentRefs,revision:file.revision??0,planVersion:plan.updatedAt})});
       const body=await workflowJson(response,'procurement_receipt',plan.id,'document_change');if(!response.ok)throw new Error(body.error||'Изменение не сохранено.');
       setReceipts(prev=>prev.map(row=>row.id===body.receipt.id?body.receipt:row));
-      setNotice(action==='CONFIRM_QR'?'Подтверждение QR сохранено на сегодня.':action==='LINK_PAYMENT'?'Чек связан с выбранной оплатой.':'Назначение файла изменено.');
+      setNotice(action==='REMOVE_RECEIPT'?'Чек удалён из оплаты.':action==='RESTORE_RECEIPT'?'Чек восстановлен.':action==='CONFIRM_QR'?'Подтверждение QR сохранено на сегодня.':action==='LINK_PAYMENT'?'Чек связан с выбранной оплатой.':'Назначение файла изменено.');
       window.dispatchEvent(new Event('procurement-receipts-changed'));
       return true;
     }catch(error){setError(error instanceof Error?error.message:'Изменение не сохранено.');return false;}
