@@ -30,6 +30,16 @@ project from scratch.
 
 ## Read First By Task
 
+- ADMIN calendar / Day Control source clarity: `../ops/calendar-control-release-20261124.md`
+  — released/verified1.25.22 /fc075d0 from exact1.25.21. Saved off retains source;
+  matching plan/attendance captions are quiet, QR-created plans stay labelled.
+  App attendance primary; Google optional positive reserve, never a prerequisite
+  for automatic off. Control/Home preserve actual source/time/filter meaning.
+  Original plans/manual history, employee/preview flows and all financial,
+  schema/config/notification behavior preserved. Exact runtime excludes pending
+  maintained-branch migration/modules; see release evidence and device limits.
+
+
 - ADMIN Day Control composition: `../ops/day-control-layout-release-20261114.md` —
   released/verified1.24.16 /de24fd7. Approved desktop/mobile spacing, aligned
   controls, historical-neutral heading and mobile date-toolbar wrapping.
