@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { passwordRequestAllowed } from '@/lib/password-access';
 import { accessSessionIdentity, recordPortalAccess } from '@/lib/portal-access-journal';
-import { sessionCookieName } from '@/lib/session';
+import { sessionTokenFromCookies } from '@/lib/session';
 import { supportsScheduleNearReminders } from '@/lib/schedule-near-reminder';
 import { loadScheduleNearReminders } from '@/lib/work-schedule-notifications';
 import { getMoscowDateKey } from '@/lib/workday';
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   let input: unknown; try { input = JSON.parse(body); } catch { return Response.json({ error: 'Invalid request' }, { status: 400, headers }); }
   if (!validWorkHelpAcknowledgement(input)) return Response.json({ error: 'Обновите справку.' }, { status: 400, headers });
   const now = new Date(), today = getMoscowDateKey(now);
-  const token = (await cookies()).get(sessionCookieName)?.value;
+  const token = sessionTokenFromCookies(await cookies());
   const identity = accessSessionIdentity(token, user.id, now);
   if (!identity) return Response.json({ error: 'Войдите в приложение заново.' }, { status: 401, headers });
   try {

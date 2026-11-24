@@ -1,7 +1,6 @@
 import 'server-only';
-import { createHash } from 'node:crypto';
 import { prisma } from './prisma';
-import { readSessionToken } from './session';
+import { readSessionToken, sessionAccessId } from './session';
 import { isCurrentAccessBrowser } from './portal-access-identity';
 import { accessDevice, type AccessPushState } from './portal-access-device';
 import type { PortalDisplayMode } from './portal-display-mode';
@@ -10,8 +9,8 @@ import { parseDeviceObservation, deviceObservationFromUa, portalObservationOrigi
 
 export function accessSessionIdentity(token: string | undefined, userId: number, now = new Date()) {
   const session = readSessionToken(token, now.getTime());
-  if (!session || session.userId !== userId) return null;
-  return { sessionHash: createHash('sha256').update(`portal-access-v1:${token}`).digest('hex'), expiresAt: new Date(session.expiresAt) };
+  if (!token || !session || session.userId !== userId) return null;
+  return { sessionHash: sessionAccessId(token, session), expiresAt: new Date(session.expiresAt) };
 }
 type PushObservation = { permission: 'granted' | 'denied' | 'default' | 'unsupported' | 'unknown'; endpoint?: string; displayMode?: PortalDisplayMode; app?: AppObservation; device?: DeviceObservation; interactionAt?: number };
 export function parsePushObservation(value: unknown): PushObservation | null {
@@ -89,8 +88,12 @@ export async function recordPortalAccess(input: { userId: number; token: string 
     ...(input.push && !mismatched ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   } });
 }
-export async function recordPortalLogout(token: string | undefined, userId: number) {
+export async function recordPortalLogout(token: string | undefined, userId: number, ensureRecord = false) {
   const now = new Date(); const identity = accessSessionIdentity(token, userId, now);
   if (!identity) return;
+  if (ensureRecord) await prisma.portalAccessSession.createMany({
+    skipDuplicates: true,
+    data: [{ ...identity, userId, device: 'Не определено', browser: 'Не определён', loggedOutAt: now }],
+  });
   await prisma.portalAccessSession.updateMany({ where: { sessionHash: identity.sessionHash, userId, loggedOutAt: null }, data: { loggedOutAt: now, lastSeenAt: now } });
 }

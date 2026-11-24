@@ -16,6 +16,7 @@ export function PortalAccessTracker() {
     if (!/^\/(admin|employee|procurement)(\/|$)/.test(path)) return;
     let stopped = false, busy = false, lastAttempt = 0, dirty = true;
     let interactionAt = 0, legacyUi = false;
+    let foregroundAt = document.visibilityState === 'visible' ? Date.now() : 0;
     // Cached reads with bounded retries; no permission requests or employee actions.
     const deviceObservation = createDeviceObservationCollector(navigator);
     const interacted = (event: Event) => { if (event.isTrusted && document.visibilityState === 'visible') interactionAt = Date.now(); };
@@ -47,7 +48,7 @@ export function PortalAccessTracker() {
       try { if (!stopped) {
         const app = appClientObservation();
         const device = await deviceObservation();
-        const sent = await postPortalObservation({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }, request.signal, legacyUi);
+        const sent = await postPortalObservation({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }, request.signal, legacyUi, fetch, Math.max(foregroundAt, interactionAt));
         const response=sent.response; legacyUi=sent.legacyUi;
         if (response.ok && !stopped) acceptAppCommand((await response.json()).updateCommand);
         else dirty = true;
@@ -60,8 +61,13 @@ export function PortalAccessTracker() {
     window.addEventListener(appStateEvent, changed);
     window.addEventListener(employeeUiEvent, changed);
     const timer = window.setInterval(report, 5000);
-    window.addEventListener('focus', report); document.addEventListener('visibilitychange', report);
-    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener(employeeUiEvent, changed); window.removeEventListener('focus', report); document.removeEventListener('visibilitychange', report); document.removeEventListener('pointerdown', interacted); document.removeEventListener('keydown', interacted); };
+    const foreground = () => {
+      if (document.visibilityState !== 'visible') return;
+      foregroundAt = Date.now();
+      changed();
+    };
+    window.addEventListener('focus', foreground); document.addEventListener('visibilitychange', foreground);
+    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener(employeeUiEvent, changed); window.removeEventListener('focus', foreground); document.removeEventListener('visibilitychange', foreground); document.removeEventListener('pointerdown', interacted); document.removeEventListener('keydown', interacted); };
   }, [path]);
   return null;
 }

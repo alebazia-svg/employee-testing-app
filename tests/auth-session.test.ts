@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
-import { createSessionToken, readSessionToken, sessionMatchesUser } from '../lib/session';
+import { createSessionToken, journalSessionToken, readSessionToken, sessionAccessId, sessionMatchesUser } from '../lib/session';
 import { clearLoginFailures, loginAllowed, recordLoginFailure } from '../lib/login-rate-limit';
 
 process.env.PORTAL_SESSION_SECRET = 'test-only-session-secret-with-at-least-32-characters';
@@ -55,4 +55,34 @@ test('versioned sessions reject reset versions, disabled accounts, expiry and ta
   assert.equal(sessionMatchesUser(session, { id: 7, isActive: true, sessionVersion: 4 }, session.expiresAt), false);
   assert.equal(readSessionToken(token.replace('.4.', '.5.'), now), null);
   assert.equal(readSessionToken(token + '.extra', now), null);
+});
+
+test('renewal preserves the journal identity of v1 and v2 sessions', () => {
+  const now = Date.UTC(2026, 10, 25);
+  const legacyPayload = `v1.7.${now + 60_000}`;
+  const legacySignature = createHmac('sha256', process.env.PORTAL_SESSION_SECRET!).update(legacyPayload).digest('base64url');
+  const versioned = createSessionToken(7, now, { sessionVersion: 4, maxAgeSeconds: 60 });
+  for (const token of [`${legacyPayload}.${legacySignature}`, versioned]) {
+    const previous = readSessionToken(token, now)!;
+    const accessId = sessionAccessId(token, previous);
+    const renewed = createSessionToken(7, now, { sessionVersion: previous.sessionVersion, accessId });
+    const after = now + 61_000;
+    assert.equal(readSessionToken(token, after), null);
+    const session = readSessionToken(renewed, after)!;
+    assert.equal(sessionAccessId(renewed, session), accessId);
+    assert.equal(session.sessionVersion, previous.sessionVersion);
+    assert.equal(session.expiresAt, now + 30 * 86_400_000);
+    assert.equal(readSessionToken(renewed.replace(accessId, 'a'.repeat(64)), after), null);
+  }
+});
+
+test('rollback can read the primary cookie and the journal companion requires the matching primary cookie', () => {
+  const now = Date.now();
+  const primary = createSessionToken(7, now, { sessionVersion: 4 });
+  const companion = createSessionToken(7, now, { sessionVersion: 4, accessId: 'b'.repeat(64) });
+  assert.match(primary, /^v2\./);
+  assert.equal(journalSessionToken(primary, companion), companion);
+  assert.equal(journalSessionToken(undefined, companion), undefined);
+  const other = createSessionToken(7, now + 1, { sessionVersion: 4 });
+  assert.equal(journalSessionToken(other, companion), other);
 });

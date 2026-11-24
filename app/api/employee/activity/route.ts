@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { accessSessionIdentity } from '@/lib/portal-access-journal';
-import { sessionCookieName } from '@/lib/session';
+import { sessionTokenFromCookies } from '@/lib/session';
 import { passwordRequestAllowed } from '@/lib/password-access';
 import { getCurrentUser } from '@/lib/auth';
 import { parseActivityInput } from '@/lib/employee-activity-policy';
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   if(expectedUserId!==undefined&&(!Number.isSafeInteger(expectedUserId)||expectedUserId!==user.id))return new Response(null,{status:403});
   const input = parseActivityInput(event);
   if (!input) return new Response(null, { status: 400 });
-  const identity = accessSessionIdentity((await cookies()).get(sessionCookieName)?.value, user.id);
+  const identity = accessSessionIdentity(sessionTokenFromCookies(await cookies()), user.id);
   const saved = identity ? await writeEmployeeActivity(user.id, identity.sessionHash, input) : false;
   return Response.json({ recorded: saved }, { headers: { 'Cache-Control': 'no-store' } });
 }

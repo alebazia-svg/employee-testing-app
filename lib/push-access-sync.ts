@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import type { Prisma } from '@prisma/client';
 import { accessBrowserCookie, validAccessBrowserId } from './portal-access-identity';
 import { accessSessionIdentity } from './portal-access-journal';
-import { sessionCookieName } from './session';
+import { sessionTokenFromCookies } from './session';
 
 /** Called inside the subscription transaction. Never infer a device from IP/UA
  * or move a session to a new browser. A missing journal row is not a push error. */
@@ -12,7 +12,7 @@ export async function syncSubscribedAccess(tx: Prisma.TransactionClient, userId:
   const jar = await cookies();
   const browserId = jar.get(accessBrowserCookie)?.value;
   const now = new Date();
-  const identity = accessSessionIdentity(jar.get(sessionCookieName)?.value, userId, now);
+  const identity = accessSessionIdentity(sessionTokenFromCookies(jar), userId, now);
   if (!identity || !validAccessBrowserId(browserId) || subscription.userId !== userId) return false;
   const result = await tx.portalAccessSession.updateMany({
     where: { sessionHash: identity.sessionHash, userId, browserInstanceId: browserId,

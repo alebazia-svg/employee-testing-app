@@ -1,13 +1,30 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
-import { readSessionToken, sessionCookieName, sessionMatchesUser } from './session';
+import { readSessionToken, sessionAccessId, sessionCookieName, sessionTokenFromCookies, sessionMatchesUser } from './session';
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(sessionCookieName)?.value);
-  if (!session) return null;
+  const token = sessionTokenFromCookies(cookieStore);
+  const session = readSessionToken(token);
+  if (!token || !session) return null;
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
-  return user && sessionMatchesUser(session, user) ? user : null;
+  if (!user || !sessionMatchesUser(session, user)) return null;
+  if (user.role === 'EMPLOYEE') {
+    const access = await prisma.portalAccessSession.findUnique({
+      where: { sessionHash: sessionAccessId(token, session) },
+      select: { loggedOutAt: true },
+    });
+    if (access?.loggedOutAt || (session.accessId && !access)) return null;
+    const primary = cookieStore.get(sessionCookieName)?.value;
+    if (primary && primary !== token) {
+      const rollbackAccess = await prisma.portalAccessSession.findUnique({
+        where: { sessionHash: sessionAccessId(primary, { ...session, accessId: undefined }) },
+        select: { loggedOutAt: true },
+      });
+      if (rollbackAccess?.loggedOutAt) return null;
+    }
+  }
+  return user;
 }
 
 export async function requireCurrentUser() {
