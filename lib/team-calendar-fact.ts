@@ -29,7 +29,7 @@ export function calendarQrAccepted(date: string, values: Array<Date | string | n
   });
 }
 export function resolveCalendarFact(input: {
-  date: string; department: string; plan: string; source: string; vacation: boolean;
+  date: string; department: string; employeeLogin?: string; plan: string; source: string; vacation: boolean;
   qrAccepted: boolean; appStarted?: boolean; googleArrival?: number | null; googleDeparture?: number | null; googleMarksAvailable: boolean;
   planFromQr?: boolean; correction?: CalendarWorkingCorrection | null; now: Date;
 }) {
@@ -37,7 +37,13 @@ export function resolveCalendarFact(input: {
   const eligible = isValidScheduleDateKey(date) && date >= APP_ATTENDANCE_FROM && date <= today;
   const correction = input.correction?.date === date && input.correction.status === 'working' ? input.correction : null;
   const endMinutes = CALENDAR_DAY_END[input.department];
-  const closed = eligible && (date < today || endMinutes !== undefined && getMoscowMinutes(now) >= endMinutes);
+  // Timur received app access on 19 November. Blank dates in November before
+  // his onboarding are not evidence of a missed start or a day off.
+  const beforeTimurOnboarding = input.employeeLogin === 't.nazranov'
+    && date >= '2026-11-01' && date < '2026-11-19'
+    && ['unset', 'unknown', 'unavailable'].includes(input.plan);
+  const closed = eligible && !beforeTimurOnboarding
+    && (date < today || endMinutes !== undefined && getMoscowMinutes(now) >= endMinutes);
   const appStarted = input.qrAccepted || Boolean(input.appStarted);
   const validGoogleTime = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < 1440;
   const googleMarked = !appStarted && input.googleMarksAvailable
