@@ -30,6 +30,10 @@ project from scratch.
 
 ## Read First By Task
 
+- Nazranov’s pre-onboarding November calendar: `../ops/nazranov-calendar-release-20261124.md`
+  — released/verified 1.25.24 / 3e8c43f. Blank 1–18 November dates remain unfilled
+  in ADMIN calendar and Day Control; 19 November QR and saved plans preserved.
+
 - ADMIN calendar / Day Control source clarity: `../ops/calendar-control-release-20261124.md`
   — released/verified1.25.22 /fc075d0 from exact1.25.21. Saved off retains source;
   matching plan/attendance captions are quiet, QR-created plans stay labelled.
