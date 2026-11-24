@@ -97,7 +97,7 @@ export async function saveProcurementReceipt(db:PrismaClient,user:ReceiptActor,p
     throw error;
   }
 }
-export type DocumentChange = {revision:number;action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT';purpose?:DocumentPurpose;planVersion?:string;paymentRefs?:string[]};
+export type DocumentChange = {revision:number;action:'CONFIRM_QR'|'CLASSIFY'|'LINK_PAYMENT'|'REMOVE_RECEIPT'|'RESTORE_RECEIPT';purpose?:DocumentPurpose;planVersion?:string;paymentRefs?:string[]};
 export async function changeProcurementDocument(db:PrismaClient,user:ReceiptActor,planId:string,id:string,command:DocumentChange,now=new Date()) {
   await receiptPlan(db,user,planId);
   if(!Number.isInteger(command.revision)||command.revision<0)throw new ReceiptError('Обновите список файлов.',400);
@@ -109,9 +109,22 @@ export async function changeProcurementDocument(db:PrismaClient,user:ReceiptActo
     const before=await tx.supplierPaymentReceipt.findFirst({where:{id,planId}});
     if(!before)throw new ReceiptError('Файл не найден.',404);
     if(before.textContent)throw new ReceiptError('Текстовые реквизиты можно только заменить.',409);
-    if(before.replacedById||before.revision!==command.revision)throw new ReceiptError('Файл изменился. Обновите список.',409);
+    if(before.revision!==command.revision)throw new ReceiptError('Файл изменился. Обновите список.',409);
     let data:Prisma.SupplierPaymentReceiptUpdateInput;
-    if(command.action==='CONFIRM_QR'){
+    if(command.action==='REMOVE_RECEIPT'||command.action==='RESTORE_RECEIPT'){
+      if(actor.role!=='ADMIN')throw new ReceiptError('Действие доступно администратору.',403);
+      const removing=command.action==='REMOVE_RECEIPT';
+      if(before.purpose!=='RECEIPT'||before.replacedById!==(removing?null:id))throw new ReceiptError('Состояние чека изменилось. Обновите список.',409);
+      // A receipt pointing to itself is inactive and can be restored by an admin.
+      // Current and rollback versions already exclude replaced files from coverage.
+      data={replacedBy:removing?{connect:{id}}:{disconnect:true}};
+      if(removing){
+        await tx.workdayNotification.updateMany({where:{fingerprint:`procurement-receipt:${planId}:${id}`,status:{in:['pending','sent']}},data:{status:'cancelled',pushStatus:'cancelled',nextPushAttemptAt:null}});
+        await tx.adminInboxDelivery.updateMany({where:{event:{eventKey:`procurement-receipt:${id}`},status:{in:['pending','failed']}},data:{status:'cancelled',lastErrorCode:'DOCUMENT_PURPOSE_CHANGED'}});
+      }
+    }else if(before.replacedById){
+      throw new ReceiptError('Файл изменился. Обновите список.',409);
+    }else if(command.action==='CONFIRM_QR'){
       const meta=plan.oneCCashEvidence as Record<string,unknown>|null;
       if(before.purpose!=='QR'||plan.status!=='APPROVED'||meta?.pendingRevision||meta?.fundingDeferral)throw new ReceiptError('Сначала проверьте состояние заявки и дату оплаты.',409);
       if(command.planVersion!==plan.updatedAt.toISOString())throw new ReceiptError('Заявка изменилась. Обновите её перед подтверждением QR.',409);
@@ -137,7 +150,7 @@ export async function changeProcurementDocument(db:PrismaClient,user:ReceiptActo
       data={paymentRefs:command.paymentRefs,paymentSnapshots:documentPaymentSnapshots({evidence:savedPaymentEvidence(plan)?.evidence},command.paymentRefs),receiptPlanContext:command.paymentRefs.includes('pending-qr')?receiptPlanContext({...plan,plannedDate:plan.plannedDate.toISOString(),createdAt:plan.createdAt.toISOString()}):null};
     }else throw new ReceiptError('Неизвестное действие.',400);
     const receipt=await tx.supplierPaymentReceipt.update({where:{id},data:{...data,revision:{increment:1}},select:receiptSelect});
-    await tx.supplierPaymentPlanEvent.create({data:{planId,actorUserId:actor.id,action:command.action==='CONFIRM_QR'?'PAYMENT_QR_CONFIRMED':command.action==='LINK_PAYMENT'?'RECEIPT_PAYMENT_LINKED':'PAYMENT_DOCUMENT_CLASSIFIED',snapshot:{receiptId:id,from:before.purpose,to:receipt.purpose,revision:receipt.revision,paymentRefs:command.paymentRefs||null,confirmedAt:receipt.qrConfirmedAt?.toISOString()||null}}});
+    await tx.supplierPaymentPlanEvent.create({data:{planId,actorUserId:actor.id,action:command.action==='REMOVE_RECEIPT'?'PAYMENT_RECEIPT_REMOVED':command.action==='RESTORE_RECEIPT'?'PAYMENT_RECEIPT_RESTORED':command.action==='CONFIRM_QR'?'PAYMENT_QR_CONFIRMED':command.action==='LINK_PAYMENT'?'RECEIPT_PAYMENT_LINKED':'PAYMENT_DOCUMENT_CLASSIFIED',snapshot:{receiptId:id,from:before.purpose,to:receipt.purpose,revision:receipt.revision,paymentRefs:command.paymentRefs||null,confirmedAt:receipt.qrConfirmedAt?.toISOString()||null}}});
     return {receipt};
   });
 }
