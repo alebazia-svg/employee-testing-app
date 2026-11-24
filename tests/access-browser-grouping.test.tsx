@@ -12,8 +12,8 @@ test('only confirmed groups consolidate; all cabinets, browser names, versions a
  const before=JSON.stringify(rows),html=render();
  assert.equal((html.match(/<h2>Mac Бэлы<\/h2>/g)||[]).length,1);
  assert.equal((html.match(/<article /g)||[]).length,rows.length);
- for(const s of ['Mac Аслана','Служебный браузер Codex','Служебный браузер Claude','<h3>Edge</h3>','<h3>Safari</h3>','<h3>Яндекс</h3>','Кабинет: Администратор','Кабинет: Астемир','1.21.43','1.21.33','Этот браузер'])assert.ok(html.includes(s),s);
- assert.equal((html.match(/Этот браузер/g)||[]).length,1);
+ for(const s of ['Mac Аслана','Служебный браузер Codex','Служебный браузер Claude','<h3>Edge</h3>','<h3>Safari</h3>','<h3>Яндекс</h3>','Кабинет: Администратор','Кабинет: Астемир','1.21.43','1.21.33','Текущий браузер'])assert.ok(html.includes(s),s);
+ assert.equal((html.match(/Текущий браузер/g)||[]).length,1);
  assert.equal(JSON.stringify(rows),before);
  const filtered=render('safari-code');assert.ok(filtered.includes('<h3>Яндекс</h3>'),'search retains the full matching confirmed device');assert.ok(!filtered.includes('<h2>Mac Аслана</h2>'));
 });
