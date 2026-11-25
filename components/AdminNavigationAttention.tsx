@@ -3,25 +3,27 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { PaymentAttention } from '@/lib/admin-payment-attention';
 
-const empty: PaymentAttention = { expenses: null, suppliers: null };
-const AttentionContext = createContext<PaymentAttention>(empty);
-const sections = ['expenses', 'suppliers'] as const;
+type NavigationAttention = PaymentAttention & { workday: number | null };
+const empty: NavigationAttention = { expenses: null, suppliers: null, workday: null };
+const AttentionContext = createContext<NavigationAttention>(empty);
+const sections = ['expenses', 'suppliers', 'workday'] as const;
 const refreshMs = 60_000;
 
-export function AdminPaymentAttentionProvider({ children }: { children: ReactNode }) {
+export function AdminNavigationAttentionProvider({ children }: { children: ReactNode }) {
   const [attention, setAttention] = useState(empty);
 
   useEffect(() => {
     const controller = new AbortController();
-    const inFlight = new Map<keyof PaymentAttention, AbortController>();
-    async function refreshSection<K extends keyof PaymentAttention>(section: K) {
+    const inFlight = new Map<keyof NavigationAttention, AbortController>();
+    async function refreshSection<K extends keyof NavigationAttention>(section: K) {
       if (inFlight.has(section)) return;
       const read = new AbortController();
       inFlight.set(section, read);
       const timeout = window.setTimeout(() => read.abort(), 55_000);
-      let value: PaymentAttention[K] = null;
+      let value: NavigationAttention[K] = null;
       try {
-        const response = await fetch(`/api/admin/payment-attention?section=${section}`, {
+        const endpoint = section === 'workday' ? '/api/admin/workday/attention-count' : `/api/admin/payment-attention?section=${section}`;
+        const response = await fetch(endpoint, {
           cache: 'no-store',
           signal: read.signal,
         });
@@ -51,12 +53,12 @@ export function AdminPaymentAttentionProvider({ children }: { children: ReactNod
   return <AttentionContext.Provider value={attention}>{children}</AttentionContext.Provider>;
 }
 
-export function useAdminPaymentAttention() {
+export function useAdminNavigationAttention() {
   return useContext(AttentionContext);
 }
 
 export function AdminExpenseAttentionLink() {
-  const { expenses } = useAdminPaymentAttention();
+  const { expenses } = useAdminNavigationAttention();
   if (!expenses) return null;
   return <a href='/admin/expense-requests?stage=decision' className='admin-payment-attention-action'>
     Ждут решения <strong>{expenses}</strong>

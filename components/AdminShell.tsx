@@ -13,14 +13,14 @@ import { LogoutButton } from '@/components/LogoutButton';
 import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { cn } from '@/lib/utils';
 import { ReleaseLabel } from '@/components/ReleaseLabel';
-import { useAdminPaymentAttention } from './AdminPaymentAttention';
+import { useAdminNavigationAttention } from './AdminNavigationAttention';
 import { useMobileNavigationViewport } from './useMobileNavigationViewport';
 
-type NavigationItem = { href: string; label: string; icon: LucideIcon; attention?: 'expenses' | 'suppliers' };
+type NavigationItem = { href: string; label: string; icon: LucideIcon; attention?: 'expenses' | 'suppliers' | 'workday' };
 
 const homeNavigation: NavigationItem = { href: '/admin', label: 'Главная', icon: Home };
 const teamNavigation: NavigationItem[] = [
-  { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
+  { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness, attention: 'workday' },
   { href: '/admin/attendance', label: 'График смен', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
 ];
@@ -54,7 +54,10 @@ function isActive(pathname: string, href: string) {
 }
 
 function useNavigationAttention(item: NavigationItem) {
-  const { expenses, suppliers } = useAdminPaymentAttention();
+  const { expenses, suppliers, workday } = useAdminNavigationAttention();
+  if (item.attention === 'workday' && workday) {
+    return { count: workday, detail: `Запросы на завершение смены: ${workday}` };
+  }
   if (item.attention === 'expenses' && expenses) {
     return { count: expenses, detail: `Ждут решения: ${expenses}` };
   }

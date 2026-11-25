@@ -1,4 +1,4 @@
-import { AdminExpenseAttentionLink } from '@/components/AdminPaymentAttention';
+import { AdminExpenseAttentionLink } from '@/components/AdminNavigationAttention';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
