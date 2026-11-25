@@ -62,14 +62,3 @@ export function AdminExpenseAttentionLink() {
     Ждут решения <strong>{expenses}</strong>
   </a>;
 }
-
-export function AdminSupplierPreparation({ onSelect }: { onSelect: () => void }) {
-  const { suppliers } = useAdminPaymentAttention();
-  if (!suppliers || suppliers.preparation === 0) return null;
-  return <div className='admin-payment-attention-actions' aria-label='Требуют внимания'>
-    {Boolean(suppliers.preparation) && <button type='button' className='admin-payment-attention-action' onClick={onSelect}>
-      Подготовить деньги <strong>{suppliers.preparation}</strong>
-    </button>}
-    {suppliers.preparation === null && <span className='text-sm text-slate-600'>Сроки подготовки уточняются</span>}
-  </div>;
-}

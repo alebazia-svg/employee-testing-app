@@ -208,13 +208,6 @@
   background: #9b572a;
 }
 
-.admin-payment-attention-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .5rem .75rem;
-}
-
 .admin-payment-attention-action {
   display: inline-flex;
   min-height: 2.75rem;
