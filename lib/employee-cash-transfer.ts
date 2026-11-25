@@ -11,16 +11,16 @@ export async function prepareEmployeeCashPhoto(file: File, baselineId: number | 
 }
 
 export class CashTransferError extends Error {
-  constructor(message: string, readonly payload?: unknown) { super(message); }
+  constructor(message: string, readonly payload?: unknown, readonly status?: number) { super(message); }
 }
 
-async function jsonRequest(url: string, init?: RequestInit, fetcher: typeof fetch = fetch) {
+async function jsonRequest(url: string, init?: RequestInit, fetcher: typeof fetch = fetch, timeoutMs = init?.method === 'POST' ? 120_000 : 30_000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), init?.method === 'POST' ? 120_000 : 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetcher(url, { ...init, cache: 'no-store', signal: controller.signal });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new CashTransferError(data?.error || 'Не удалось связаться с порталом. Повторим отправку исходного фото.', data);
+    if (!response.ok) throw new CashTransferError(data?.error || 'Не удалось связаться с порталом. Повторим отправку исходного фото.', data, response.status);
     return data;
   } finally { clearTimeout(timeout); }
 }
@@ -61,28 +61,58 @@ export async function transferEmployeeCash<T>(item: EmployeeCashOutboxItem, call
   onMetadata?: (operation: T) => void | Promise<void>; onOperation?: (operation: T) => void; onPhotoProgress?: (value: number) => void;
 }, fetcher: typeof fetch = fetch): Promise<{ operation: T; message?: string }> {
   if (!item.photoSha256) throw new Error('Некорректная сохранённая инкассация');
-  const receipt = await saveEmployeeCashIntent(item, callbacks, fetcher);
-  if (cashOutboxResponseAcknowledges(receipt, item)) return receipt;
+  // An acknowledged financial record must never be recreated because the
+  // photo worker cannot read it. It can only read and attach the original.
+  const receipt = item.metadataSaved ? null : await saveEmployeeCashIntent<T>(item, callbacks, fetcher);
+  if (receipt && cashOutboxResponseAcknowledges(receipt, item)) return receipt;
+
+  try {
+    return await uploadMissingCashPhotoChunks<T>(item, item.photoSha256, callbacks, fetcher, 30_000);
+  } catch (error) {
+    if (!isTransientCashPhotoError(error)) throw error;
+    // The interrupted request might have committed. Refresh the accepted
+    // chunk list and use a longer deadline for the slow connection.
+    return uploadMissingCashPhotoChunks<T>(item, item.photoSha256, callbacks, fetcher, 120_000);
+  }
+}
+
+function isTransientCashPhotoError(error: unknown) {
+  if (error instanceof CashTransferError && error.status !== undefined) {
+    return error.status === 408 || error.status >= 500;
+  }
+  return error instanceof TypeError || error instanceof Error && error.name === 'AbortError';
+}
+
+async function uploadMissingCashPhotoChunks<T>(
+  item: EmployeeCashOutboxItem,
+  photoSha256: string,
+  callbacks: { onPhotoProgress?: (value: number) => void },
+  fetcher: typeof fetch,
+  uploadTimeoutMs: number,
+): Promise<{ operation: T; message?: string }> {
   const endpoint = `${item.url}?idempotencyKey=${encodeURIComponent(item.id)}`;
   const progress = await jsonRequest(`${endpoint}&protocol=2`, undefined, fetcher);
   if (!cashMetadataAcknowledges(progress, item)) throw new Error('Не удалось подтвердить сохранение суммы.');
   if (cashOutboxResponseAcknowledges(progress, item)) return progress;
   const received = new Set<number>(progress.photo?.receivedChunks ?? []);
   const total = Math.ceil(item.photo.size / CASH_PHOTO_CHUNK_BYTES);
+  const sendChunk = async (index: number) => {
+    const start = index * CASH_PHOTO_CHUNK_BYTES;
+    const body = await item.photo.slice(start, start + CASH_PHOTO_CHUNK_BYTES).arrayBuffer();
+    return jsonRequest(`${endpoint}&chunk=${index}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Photo-Sha256': photoSha256 },
+      body,
+    }, fetcher, uploadTimeoutMs);
+  };
   let result = progress;
   for (let index = 0; index < total; index++) {
-    if (!received.has(index)) result = await jsonRequest(`${endpoint}&chunk=${index}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/octet-stream', 'X-Photo-Sha256': item.photoSha256 },
-      body: item.photo.slice(index * CASH_PHOTO_CHUNK_BYTES, (index + 1) * CASH_PHOTO_CHUNK_BYTES),
-    }, fetcher);
+    if (!received.has(index)) result = await sendChunk(index);
     callbacks.onPhotoProgress?.(Math.round((index + 1) / total * 100));
   }
   if (!cashOutboxResponseAcknowledges(result, item)) {
     // All chunks can be present after a server restart before finalization.
-    result = await jsonRequest(`${endpoint}&chunk=${total - 1}`, { method: 'PATCH',
-      headers: { 'Content-Type': 'application/octet-stream', 'X-Photo-Sha256': item.photoSha256 },
-      body: item.photo.slice((total - 1) * CASH_PHOTO_CHUNK_BYTES),
-    }, fetcher);
+    result = await sendChunk(total - 1);
   }
   if (!cashOutboxResponseAcknowledges(result, item)) throw new Error('Фото пока не подтверждено порталом. Повторим отправку исходного снимка.');
   return result;
