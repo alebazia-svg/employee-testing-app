@@ -17,16 +17,26 @@ import { useMobileNavigationViewport } from './useMobileNavigationViewport';
 
 type NavigationItem = { href: string; label: string; icon: LucideIcon };
 
-const dailyNavigation: NavigationItem[] = [
-  { href: '/admin', label: 'Главная', icon: Home },
+const homeNavigation: NavigationItem = { href: '/admin', label: 'Главная', icon: Home };
+const teamNavigation: NavigationItem[] = [
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
-  { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
-  { href: '/admin/procurement', label: 'Закупки', icon: Truck },
-  { href: '/admin/attendance', label: 'График', icon: CalendarDays },
+  { href: '/admin/attendance', label: 'График смен', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
+];
+const financeNavigation: NavigationItem[] = [
+  { href: '/admin/expense-requests', label: 'Заявки на расходы', icon: FileClock },
+  { href: '/admin/procurement', label: 'Оплаты поставщикам', icon: Truck },
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
   { href: '/admin/taxes', label: 'Налоги', icon: Landmark },
 ];
+const [dayControl, schedule, employees] = teamNavigation;
+const [expenses, suppliers, payroll, taxes] = financeNavigation;
+const desktopGroups = [
+  { label: 'Команда', items: teamNavigation },
+  { label: 'Финансы', items: financeNavigation },
+];
+const mobileNavigation = [homeNavigation, { ...dayControl, label: 'Контроль' }, { ...expenses, label: 'Расходы' }];
+const mobileMoreNavigation = [suppliers, schedule, employees, payroll, taxes];
 
 const serviceNavigation: NavigationItem[] = [
   { href: '/admin/company-details', label: 'Реквизиты', icon: Building2 },
@@ -51,6 +61,7 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       href={item.href}
       prefetch={item.href === '/admin/taxes' ? false : undefined}
       title={sidebarCollapsed ? item.label : undefined}
+      aria-label={sidebarCollapsed ? item.label : undefined}
       className={cn(
         'admin-nav-item relative flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300/25 md:justify-start md:gap-2.5 md:px-3',
         sidebarCollapsed && 'md:px-0 md:justify-center',
@@ -77,7 +88,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
   const accountName = useAdminIdentity();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMoreActive = [...dailyNavigation.slice(3), ...serviceNavigation].some((item) => isActive(pathname, item.href));
+  const mobileMoreActive = [...mobileMoreNavigation, ...serviceNavigation].some((item) => isActive(pathname, item.href));
 
   useEffect(() => {
     setSidebarCollapsed(window.localStorage.getItem('admin-sidebar-collapsed') === 'true');
@@ -131,8 +142,14 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
         </div>
 
         <nav className={cn('mt-5 min-h-0 overflow-x-hidden overflow-y-auto md:flex md:flex-1 md:flex-col md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
-          <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1'>
-            {dailyNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
+          <div className='grid gap-3'>
+            <NavigationLink item={homeNavigation} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />
+            {desktopGroups.map(group => (
+              <div key={group.label} className='grid gap-1' role='group' aria-label={group.label}>
+                {!sidebarCollapsed && <p className='px-3 py-1 text-xs font-semibold text-slate-400'>{group.label}</p>}
+                {group.items.map(item => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
+              </div>
+            ))}
           </div>
 
           <details className='group mt-4 border-t border-white/10 pt-3 md:mt-auto' open={serviceNavigation.some((item) => isActive(pathname, item.href)) || undefined}>
@@ -185,10 +202,10 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
       </section>
 
       <nav ref={navRef} className='admin-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 md:hidden' aria-label='Основная навигация админки'>
-        {dailyNavigation.slice(0, 3).map((item) => {
+        {mobileNavigation.map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
-          return <Link key={item.href} href={item.href} className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', active && 'is-active')}><Icon className='h-5 w-5' /><span>{item.label === 'Контроль дня' ? 'Контроль' : item.label}</span></Link>;
+          return <Link key={item.href} href={item.href} className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', active && 'is-active')}><Icon className='h-5 w-5' /><span>{item.label}</span></Link>;
         })}
         <button type='button' onClick={() => setMobileMenuOpen(true)} className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', (mobileMenuOpen || mobileMoreActive) && 'is-active')}><Menu className='h-5 w-5' /><span>Ещё</span></button>
       </nav>
@@ -201,7 +218,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
               <button type='button' onClick={() => setMobileMenuOpen(false)} className='admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Закрыть меню'><X className='h-5 w-5' /></button>
             </div>
             <div className='grid grid-cols-2 gap-2'>
-              {dailyNavigation.slice(3).map((item) => {
+              {mobileMoreNavigation.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
                 return <Link key={item.href} href={item.href} prefetch={item.href === '/admin/taxes' ? false : undefined} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;

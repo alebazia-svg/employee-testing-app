@@ -9,6 +9,7 @@ import { googleDay, resolveTeamSchedule, teamStartControl, clockMinutes } from '
 import { resolveTeamAttendance } from './team-attendance';
 import { getTeamGoogleSnapshot } from './team-control-source';
 import { readAdminPlans } from './procurement-admin-plans';
+import { readPaymentRevision } from './procurement-plan-revision';
 import { paymentListRemainder } from './procurement-list-amount';
 import { savedPaymentEvidence } from './procurement-evidence-continuity';
 import { isFinishedPaymentState } from './procurement-small-remainder';
@@ -32,6 +33,7 @@ import type { HomeSection, HomeData, HomeAction, HomeWorkday, HomePayments, Home
 
 const detailHref=(date:string,id:number)=>`/admin/workday?date=${date}&control=all&employee=${id}#employees-control`;
 const rub=(value:number)=>value.toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';
+const formatHomePaymentDay = (date: Date) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }).format(date);
 async function workday(now:Date):Promise<HomeWorkday>{
  const date=getMoscowDateKey(now);
  const startOfDay=new Date(`${date}T00:00:00+03:00`);
@@ -96,10 +98,35 @@ async function payments():Promise<HomePayments>{
  const receiptCount=new Map(receipts.map(row=>[row.planId,row._count._all]));
  const active=plans.filter(p=>['SUBMITTED','APPROVED'].includes(p.status)&&!isFinishedPaymentState(savedPaymentEvidence(p)?.evidence.state));
  const planHref=(id:string)=>`/admin/procurement?payment=${encodeURIComponent(id)}`;
+ const expenseEntries = queue.map(row => ({ stage: row.stage, action: {
+  id: `expense-${row.id}`,
+  title: row.stage === 'decision' ? 'Администратору: согласовать расход' : 'Заявка на выдачу денег',
+  detail: [row.person, row.amount === null ? 'Сумма не подтверждена' : rub(row.amount), row.purpose].filter(Boolean).join(' · '),
+  href: `/admin/expense-requests?request=${row.id}`,
+ } }));
+ const supplierApprovalActions = active.filter(plan => plan.status === 'SUBMITTED').map(plan => ({
+  id: `approve-${plan.id}`,
+  title: plan.supplierPartner,
+  detail: [plan.foreignAmount === null ? rub(Number(plan.plannedAmount)) :
+    `${Number(plan.foreignAmount).toLocaleString('ru-RU', { maximumFractionDigits: 4 })} ${plan.currency}`,
+    formatHomePaymentDay(plan.plannedDate)].join(' · '),
+  href: planHref(plan.id),
+ }));
+ for (const plan of plans) {
+  const revision = readPaymentRevision(plan.oneCCashEvidence);
+  if (revision) supplierApprovalActions.push({
+   id: `revision-${revision.id}`, title: plan.supplierPartner,
+   detail: 'Изменение условий оплаты', href: '/admin/procurement',
+  });
+ }
+
  return {plans:active.map(p=>({id:p.id,supplier:p.supplierPartner,date:p.plannedDate.toISOString().slice(0,10),amount:Number(p.plannedAmount),foreign:p.foreignAmount===null?null:Number(p.foreignAmount),currency:p.currency,status:p.status,statusLabel:p.status==='SUBMITTED'?'Администратору: согласовать':savedPaymentEvidence(p)?paymentListRemainder({plannedAmount:Number(p.plannedAmount),foreignAmount:p.foreignAmount===null?null:Number(p.foreignAmount),paymentMethod:p.paymentMethod,evidence:savedPaymentEvidence(p)!.evidence})||'Согласовано · последняя сверка':'Статус оплаты уточняется',href:planHref(p.id)})),
   receipts:plans.filter(p=>needsProcurementReceipt({...p,plannedDate:p.plannedDate.toISOString(),createdAt:p.createdAt.toISOString(),evidence:savedPaymentEvidence(p)?.evidence},receiptCount.get(p.id)||0,getMoscowDateKey())).map(p=>({id:`receipt-${p.id}`,title:'Исполнителю оплаты: приложить чек',detail:`${p.supplierPartner} · ${rub(Number(p.plannedAmount))}`,href:planHref(p.id)})),
   expenseCount:queue.length,expenseCheckedAt:sync?.completedAt?.toISOString()??null,
-  expenseActions:queue.map(row=>({id:`expense-${row.id}`,title:row.stage==='decision'?'Администратору: согласовать расход':'Заявка на выдачу денег',detail:[row.person,row.amount===null?'Сумма не подтверждена':rub(row.amount),row.purpose].filter(Boolean).join(' · '),href:`/admin/expense-requests?request=${row.id}`}))};
+  expenseActions: expenseEntries.map(({ action }) => action),
+  expenseApprovalActions: expenseEntries.filter(({ stage }) => stage === 'decision').map(({ action }) => action),
+  supplierApprovalActions,
+ };
 }
 async function taxes(now:Date):Promise<HomeTaxes>{
  const [documents,reports]=await Promise.all([prisma.taxControlDocument.findMany({orderBy:{createdAt:'desc'}}),loadPortalReports(undefined,{latestPerScope:true})]);
