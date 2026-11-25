@@ -12,6 +12,7 @@ export function FiscalAdminApproval({ reviewId, recipients, primary, confidence,
       const response = await fetch(`/api/admin/terminal-fiscal/reviews/${reviewId}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipientIds: recipients.map((u) => u.id) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Не удалось передать проверку. Повторите попытку.');
+      window.dispatchEvent(new Event('workday-fiscal-reviewed'));
       if(onDone)onDone();else router.refresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось передать проверку.'); }
     finally { setBusy(false); onBusyChange?.(false); }

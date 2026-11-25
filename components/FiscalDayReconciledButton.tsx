@@ -32,6 +32,7 @@ export function FiscalDayReconciledButton({
     setBusy(false);
     onBusyChange?.(false);
     setConfirming(false);
+    window.dispatchEvent(new Event('workday-fiscal-reviewed'));
     if (onDone) onDone();
     else {
       router.push('/admin');

@@ -16,7 +16,7 @@ import { ReleaseLabel } from '@/components/ReleaseLabel';
 import { useAdminNavigationAttention } from './AdminNavigationAttention';
 import { useMobileNavigationViewport } from './useMobileNavigationViewport';
 
-type NavigationItem = { href: string; label: string; icon: LucideIcon; attention?: 'expenses' | 'suppliers' | 'workday' };
+type NavigationItem = { href: string; label: string; icon: LucideIcon; attention?: 'expenses' | 'suppliers' | 'workday' | 'payroll' };
 
 const homeNavigation: NavigationItem = { href: '/admin', label: 'Главная', icon: Home };
 const teamNavigation: NavigationItem[] = [
@@ -27,7 +27,7 @@ const teamNavigation: NavigationItem[] = [
 const financeNavigation: NavigationItem[] = [
   { href: '/admin/expense-requests', label: 'Заявки на расходы', icon: FileClock, attention: 'expenses' },
   { href: '/admin/procurement', label: 'Оплаты поставщикам', icon: Truck, attention: 'suppliers' },
-  { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
+  { href: '/admin/payroll', label: 'Зарплата', icon: Banknote, attention: 'payroll' },
   { href: '/admin/taxes', label: 'Налоги', icon: Landmark },
 ];
 const [dayControl, schedule, employees] = teamNavigation;
@@ -54,9 +54,17 @@ function isActive(pathname: string, href: string) {
 }
 
 function useNavigationAttention(item: NavigationItem) {
-  const { expenses, suppliers, workday } = useAdminNavigationAttention();
+  const { expenses, suppliers, workday, payroll } = useAdminNavigationAttention();
   if (item.attention === 'workday' && workday) {
-    return { count: workday, detail: `Запросы на завершение смены: ${workday}` };
+    const count = workday.shifts + workday.receipts + workday.handovers;
+    if (count) return { count, detail: [
+      workday.shifts ? `Запросы на завершение смены: ${workday.shifts}` : '',
+      workday.receipts ? `Проверки чеков: ${workday.receipts}` : '',
+      workday.handovers ? `Проверки сдачи смены: ${workday.handovers}` : '',
+    ].filter(Boolean).join(' · ') };
+  }
+  if (item.attention === 'payroll' && payroll?.length) {
+    return { count: payroll.length, detail: `Ведомости на утверждение: ${payroll.length}` };
   }
   if (item.attention === 'expenses' && expenses) {
     return { count: expenses, detail: `Ждут решения: ${expenses}` };
@@ -134,6 +142,11 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
   const navRef = useMobileNavigationViewport();
   const accountName = useAdminIdentity();
   const supplierAttention = useNavigationAttention(suppliers);
+  const payrollAttention = useNavigationAttention(payroll);
+  const moreAttention = [
+    supplierAttention ? `Оплаты поставщикам: ${supplierAttention.detail}` : '',
+    payrollAttention ? `Зарплата: ${payrollAttention.detail}` : '',
+  ].filter(Boolean).join('. ');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMoreActive = [...mobileMoreNavigation, ...serviceNavigation].some((item) => isActive(pathname, item.href));
@@ -252,10 +265,10 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
       <nav ref={navRef} className='admin-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 md:hidden' aria-label='Основная навигация админки'>
         {mobileNavigation.map(item => <MobileNavigationLink key={item.href} item={item} active={isActive(pathname, item.href)} />)}
         <button type='button' onClick={() => setMobileMenuOpen(true)}
-          aria-label={supplierAttention ? `Ещё. Оплаты поставщикам: ${supplierAttention.detail}` : undefined}
+          aria-label={moreAttention ? `Ещё. ${moreAttention}` : undefined}
           className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', (mobileMenuOpen || mobileMoreActive) && 'is-active')}>
           <span className='relative inline-flex'><Menu className='h-5 w-5' />
-            {supplierAttention && <span className='admin-nav-attention-indicator' aria-hidden='true' />}
+            {moreAttention && <span className='admin-nav-attention-indicator' aria-hidden='true' />}
           </span>
           <span>Ещё</span>
         </button>

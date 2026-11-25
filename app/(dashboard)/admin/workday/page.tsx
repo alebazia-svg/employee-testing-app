@@ -1275,7 +1275,7 @@ export default async function AdminWorkdayPage(
     }),
   ]) : [[],[]];
   const ownerActions = pastOwnerActions(pastRequests,pastCash,selectedDate,today).map(action=>({...action,context:action.context.replace(action.originDate,formatDateLabel(action.originDate))}));
-  const openHandoverReviews = selectedDate === today ? await loadOpenHandoverReviews(prisma,{dateBefore:today}) : [];
+  const openHandoverReviews = selectedDate === today ? await loadOpenHandoverReviews(prisma,{dateThrough:today}) : [];
   ownerActions.push(...openHandoverReviews.map(task => ({
     key:`past-handover-${task.id}`, kind:'check' as const, department:task.run.department,
     name:task.run.user.name, employeeId:task.run.userId, originDate:task.run.date,

@@ -5,7 +5,7 @@ import { terminalFiscalSourceIncomplete, terminalFiscalReasonLabel } from './ter
 import { isFiscalChainReason } from './terminal-fiscal-chain-review';
 import 'server-only';
 import { createHash } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalMapping } from './terminal-fiscal-matching';
 import {
   TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED,
@@ -112,11 +112,16 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
   });
 }
 
+export const fiscalRecipientWorkdayScope = {
+  department: 'retail', status: { in: ['active', 'completed'] },
+  user: { role: 'EMPLOYEE', isActive: true, workdayControlMode: { not: 'CASH_HANDOVER' } },
+} satisfies Prisma.WorkDayEntryWhereInput;
+
 export async function fiscalProposedRecipients(db: Pick<PrismaClient,
   'workDayEntry' | 'terminalFiscalMapping' | 'workdayKkmAssignment' | 'userOneCCashboxMapping'
 >, at: Date, mappingId?: string | null): Promise<FiscalProposedRecipients> {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
-  const entries = await db.workDayEntry.findMany({ where: { date, department: 'retail', status: { in: ['active', 'completed'] }, user: { role: 'EMPLOYEE', isActive: true, workdayControlMode: { not: 'CASH_HANDOVER' } } },
+  const entries = await db.workDayEntry.findMany({ where: { date, ...fiscalRecipientWorkdayScope },
     select: { userId: true, startedAt: true, endedAt: true, user: { select: { name: true } } }, orderBy: { userId: 'asc' } });
   const active = entries.filter((e) => e.startedAt <= at && (!e.endedAt || e.endedAt > at));
   const selected = active.length ? active : entries;
