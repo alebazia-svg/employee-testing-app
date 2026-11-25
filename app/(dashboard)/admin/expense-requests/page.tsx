@@ -1,3 +1,4 @@
+import { AdminExpenseAttentionLink } from '@/components/AdminNavigationAttention';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
@@ -56,6 +57,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
         <Link href="/admin/expense-requests" aria-current={!history?'page':undefined} className="admin-section-tab">В работе</Link>
         <Link href="/admin/expense-requests?view=history" aria-current={history?'page':undefined} className="admin-section-tab">История</Link>
       </nav>
+      {filter !== 'decision' && !history && <AdminExpenseAttentionLink/>}
       <ProcurementDataRefresh checkedAt={checkedAt} label="Данные на" compact pauseWhileDialogOpen/>
       </div>
       <form className="my-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]" action="/admin/expense-requests" method="get">

@@ -6,7 +6,8 @@ import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continu
 import {readQrFunding,attachQrFunding} from '@/lib/procurement-qr-funding-source';
 
 import { prisma } from "@/lib/prisma";
-import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
+import { expenseRequestMoscowDayEnd } from "@/lib/expense-request-source";
+import { readProcurementExpenseDisplay } from "@/lib/procurement-expense-display";
 import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
 import { fetchSupplierCurrencyPaymentDisplaySnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
@@ -57,7 +58,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
       }),
       fetchSupplierOrderFinance(),
       fetchSupplierSettlements(),
-      plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, from), to, includeHistory: true, historyConcurrency: 2 })),
+      plansQuery.then(rows => readProcurementExpenseDisplay(paymentEvidenceFrom(rows, from), to)),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
       plansQuery.then((rows) => fetchSupplierCurrencyPaymentDisplaySnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000, plans: rows })),

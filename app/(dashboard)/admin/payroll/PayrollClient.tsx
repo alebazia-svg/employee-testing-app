@@ -1,4 +1,6 @@
 'use client';
+
+import { useAdminNavigationAttention } from '@/components/AdminNavigationAttention';
 import { payrollIndividualNote, withPayrollIndividualNote } from '@/lib/payroll-individual-note';
 import { purchasePayrollAttendance } from '@/lib/payroll-purchase-attendance';
 import { refreshPayrollAttendanceClient } from '@/lib/payroll-attendance-refresh-client';
@@ -3203,6 +3205,14 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const [detailSearch, setDetailSearch] = useState('');
   const [articleSearch, setArticleSearch] = useState('');
   const [savedPeriods, setSavedPeriods] = useState<SavedPayrollPeriod[]>([]);
+  const { payroll: approvalTargets } = useAdminNavigationAttention();
+  const approvalEntries = (approvalTargets ?? []).flatMap(target => {
+    const period = savedPeriods.find(item => item.periodKey === target.periodKey);
+    const run = period?.runs.find(item => item.id === target.runId && item.status === 'CHECKED');
+    return period && period.status !== 'CLOSED' && !period.runs.some(item => item.status === 'FINAL') && run
+      ? [{ period, run }] : [];
+  });
+  const openApprovalFromAttention = useRef(false);
   const [isSavedPeriodsLoading, setIsSavedPeriodsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -3216,6 +3226,11 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
   const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
   const [payrollFinalReplacement, setPayrollFinalReplacement] = useState<PayrollFinalReplacement | null>(null);
   const [payrollFinalApproval, setPayrollFinalApproval] = useState<{ periodKey: string; run: SavedPayrollRunSummary } | null>(null);
+  useEffect(() => {
+    if (!payrollFinalApproval || !openApprovalFromAttention.current) return;
+    openApprovalFromAttention.current = false;
+    document.getElementById('payroll-final-confirmation')?.scrollIntoView({ block: 'start' });
+  }, [payrollFinalApproval]);
   const [approvalReviewable, setApprovalReviewable] = useState<string[]>([]);
   const [approvalAccepted, setApprovalAccepted] = useState<string[]>([]);
   const [approvalComment, setApprovalComment] = useState('');
@@ -5402,6 +5417,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       const response = await fetch('/api/admin/payroll/periods', { cache: 'no-store' });
       if (!response.ok) throw new Error('Не удалось загрузить сохранённые расчёты.');
       setSavedPeriods(await response.json() as SavedPayrollPeriod[]);
+      window.dispatchEvent(new Event('payroll-approval-changed'));
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить сохранённые расчёты.');
     } finally {
@@ -6219,6 +6235,18 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
       {testEnvironment && <p className='mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900'>Локальная проверка подключения · изолированная тестовая база. Эти суммы не предназначены для выдачи зарплаты.</p>}
       {!draftSync.ready && <PayrollDraftStatus sync={draftSync} />}
       <PayrollDraftGuard sync={draftSync}>
+      {approvalEntries.length > 0 && !payrollFinalApproval && !automaticDraft && !correctingPayroll &&
+        <section aria-label='Ведомости на утверждение' className='mb-4 flex flex-wrap items-center gap-2 text-sm'>
+          <span className='font-semibold text-slate-800'>На утверждение</span>
+          {approvalEntries.map(({ period, run }) =>
+            <button key={run.id} type='button' className='admin-payment-attention-action' onClick={() => {
+              openApprovalFromAttention.current = true;
+              requestPayrollRunFinal(period, run);
+            }}>
+              {months[period.month]} {period.year} · № {run.runNumber}
+            </button>)}
+        </section>}
+
       <PayrollSettlementPreview rows={settlementRows} periodKey={selectedPayrollPeriodKey} periodPicker={periodPicker} onOpenEmployee={name => {
         // The approval snapshot must not open a synthetic local calculation
         // under a real saved September salary and real payment history.

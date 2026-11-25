@@ -8,11 +8,11 @@ export const handoverReviewInclude = {
   manualReviews: {where: {decision: HANDOVER_REVIEW_DECISION}, orderBy: [{reviewedAt:'desc'},{id:'desc'}], include: {reviewedBy: {select:{id:true,name:true}}}},
 } satisfies Prisma.ShiftControlTaskInclude;
 
-export async function loadOpenHandoverReviews(db: Db, input: {dateBefore?: string; workDayEntryId?: number} = {}) {
+export async function loadOpenHandoverReviews(db: Db, input: {dateBefore?: string; dateThrough?: string; workDayEntryId?: number} = {}) {
   const tasks = await db.shiftControlTask.findMany({
     where: {category:'handover',required:true,status:{not:'done'},
       run:{department:{in:['retail','wholesale']},workDayEntry:{endedAt:{not:null}},
-        date:{gte:HANDOVER_REVIEW_FROM_DATE,...(input.dateBefore?{lt:input.dateBefore}:{})},
+        date:{gte:HANDOVER_REVIEW_FROM_DATE,...(input.dateBefore?{lt:input.dateBefore}:{}), ...(input.dateThrough?{lte:input.dateThrough}:{})},
         ...(input.workDayEntryId ? {workDayEntryId:input.workDayEntryId} : {})},
     }, include:handoverReviewInclude, orderBy:[{run:{date:'asc'}},{id:'asc'}],
   });

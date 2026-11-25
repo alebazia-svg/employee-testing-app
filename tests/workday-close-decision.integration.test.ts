@@ -3,6 +3,7 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { decideWorkdayCloseException, updateActiveHandoverTask } from '../lib/workday-close-decision';
+import { readWorkdayDecisionCount } from '../lib/workday-admin-attention';
 import { completedWithoutEncashment } from '../lib/workday-close-view';
 
 // This suite writes fixtures: require a dedicated, explicitly named local DB.
@@ -176,4 +177,20 @@ test('a stale handover snapshot cannot overwrite a newer employee response', asy
   });
   assert.equal(result, null);
   assert.deepEqual((await db.shiftControlTask.findUniqueOrThrow({ where: { id: task.id } })).handoverData, newerData);
+});
+
+test('navigation counts requests for active shifts until a saved decision closes them', async () => {
+  const today = '2026-10-18';
+  const baseline = await readWorkdayDecisionCount(db, today);
+  const approved = await fixture('kkm', false);
+  const rejected = await fixture('cash_encashment_safe_access', false);
+  const completed = await fixture('kkm', false);
+  await db.workDayEntry.update({ where: { id: completed.workDay.id },
+    data: { status: 'completed', endedAt: new Date('2026-10-16T14:00:00Z') } });
+  assert.equal(await readWorkdayDecisionCount(db, today), baseline + 2);
+  await approved.decide();
+  assert.equal(await readWorkdayDecisionCount(db, today), baseline + 1);
+  await rejected.decide('rejected');
+  assert.equal(await readWorkdayDecisionCount(db, today), baseline);
+  assert.equal(await readWorkdayDecisionCount(db, '2026-10-15'), 0);
 });

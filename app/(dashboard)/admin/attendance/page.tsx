@@ -932,7 +932,7 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
   const isDemo = data.mode === 'demo';
 
   return (
-    <AdminShell pageTitle="График" pageDescription="План команды, источники учёта и сверка с фактическими отметками.">
+    <AdminShell pageTitle="График смен" pageDescription="План команды, источники учёта и сверка с фактическими отметками.">
       <TeamScheduleServer date={/^\d{4}-\d{2}-\d{2}$/.test(searchParams.date ?? '') && !Number.isNaN(Date.parse(searchParams.date+'T00:00:00Z')) ? searchParams.date! : getMoscowDateKey()} view={searchParams.view} />
       <details className="team-panel team-prose"><summary className="cursor-pointer font-semibold">Подробный отчёт Google · прежние фильтры и история</summary>
       <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
