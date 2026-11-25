@@ -1,4 +1,4 @@
-import { requestedDates, scheduleSnapshot } from '@/lib/employee-schedule-snapshot';
+import { requestedDates, employeeScheduleView, scheduleSnapshot } from '@/lib/employee-schedule-snapshot';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const range = requestedDates(params.get('month'), params.get('week'));
   if (!range) return Response.json({ error: 'Некорректный период графика' }, { status: 400, headers: noStoreHeaders });
-  return Response.json(await scheduleSnapshot(user, range.dates, range.monthKey), { headers: noStoreHeaders });
+  return Response.json(await employeeScheduleView(user, range.dates, range.monthKey), { headers: noStoreHeaders });
 }
 
 export async function POST(req: Request) {

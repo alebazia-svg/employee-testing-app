@@ -1335,6 +1335,7 @@ export function EmployeeTodayClient({
   const workdayVisible = !mobileNavigation || mobileNavigation.active !== 'procurement';
   useEmployeeActivityVisit(!workdayVisible ? null : activeTab === 'payroll' || activeTab === 'schedule' ? null : activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
+  const [dayOutcomes, setDayOutcomes] = useState<Array<{ date: string; status: 'working' | 'off' | 'vacation' }>>([]);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
   const [ownVacationsState, setOwnVacationsState] = useState(ownVacations);
@@ -1972,6 +1973,11 @@ export function EmployeeTodayClient({
       if (!isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') { finishAudit('failed','incomplete'); return; }
       if (typeof payload.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.today)) setToday(payload.today);
       setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], range.from as string, range.to as string));
+      if (Array.isArray(payload.dayOutcomes)) {
+        const { from, to } = range;
+        const incoming = payload.dayOutcomes as typeof dayOutcomes;
+        setDayOutcomes(current => [...current.filter(day => day.date < from || day.date > to), ...incoming]);
+      }
       setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], range.from as string, range.to as string));
       if (Array.isArray(payload.ownVacations)) setOwnVacationsState((current) => replaceVacationRange(current, payload.ownVacations as EmployeeVacation[], range.from as string, range.to as string));
       if (Array.isArray(payload.departmentVacations)) setDepartmentVacationsState((current) => replaceVacationRange(current, payload.departmentVacations as EmployeeVacation[], range.from as string, range.to as string));
@@ -2324,10 +2330,16 @@ export function EmployeeTodayClient({
     return `${names.slice(0, -1).join(', ')} и ${names.at(-1)}`;
   }
 
+  function ownCalendarStatus(date: string, planned?: string) {
+    if (workDay?.date === date) return 'working';
+    return dayOutcomes.find(day => day.date === date)?.status
+      ?? (ownVacationForDate(date) ? 'vacation' : planned);
+  }
+
   function getWorkingInitials(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
-    const working = [...departmentUsers].sort(byName).filter((person) => entryByUser.get(person.id)?.status === 'working' && !departmentVacationForDate(date, person.id));
+    const working = [...departmentUsers].sort(byName).filter((person) => (person.id === user.id && !bulkScheduleMode ? ownCalendarStatus(date, entryByUser.get(person.id)?.status) === 'working' : entryByUser.get(person.id)?.status === 'working' && !departmentVacationForDate(date, person.id)));
     const filledCount = departmentUsers.filter((person) => entryByUser.has(person.id) || departmentVacationForDate(date, person.id)).length;
     return {
       initials: working.slice(0, 3).map((person) => initials(person.name)),
@@ -2378,16 +2390,17 @@ export function EmployeeTodayClient({
     const unfilledNames = scheduleNames(colleagueRows.filter(({ person, entry }) => !entry && !departmentVacationForDate(date, person.id)));
     const colleaguesUnfilled = Boolean(unfilledNames);
     const vacationNames = scheduleNames(colleagueRows.filter(({ person }) => Boolean(departmentVacationForDate(date, person.id))));
-    const statusCopy = ownVacation
+    const displayStatus = ownCalendarStatus(date, ownEntry?.status);
+    const statusCopy = displayStatus === 'vacation'
       ? 'В отпуске'
-      : ownEntry?.status === 'working'
+      : displayStatus === 'working'
       ? 'Вы работаете'
-      : ownEntry?.status === 'off'
+      : displayStatus === 'off'
         ? 'У вас выходной'
         : 'День не выбран';
-    const peopleCopy = ownVacation
+    const peopleCopy = displayStatus === 'vacation' && ownVacation
       ? `${compact ? '' : 'Отпуск: '}${formatSchedulePeriod(ownVacation.dateFrom, ownVacation.dateTo)}`
-      : ownEntry?.status === 'working'
+      : displayStatus === 'working'
       ? workingNames ? `С вами: ${workingNames}` : colleaguesUnfilled ? '' : 'Работаете без коллег'
       : workingNames ? `Работают: ${workingNames}` : colleaguesUnfilled ? '' : 'Коллеги не работают';
 
@@ -2402,7 +2415,7 @@ export function EmployeeTodayClient({
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{date === today ? 'Сегодня' : formatDateLabel(date)}</p>
           </div>
-          {!compact && <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#e8f1fb] text-[#24476b] ring-1 ring-[#b8cee5]' : scheduleTone(ownEntry?.status))}>
+          {!compact && <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', displayStatus === 'vacation' ? 'bg-[#e8f1fb] text-[#24476b] ring-1 ring-[#b8cee5]' : scheduleTone(displayStatus))}>
             {statusCopy}
           </Badge>}
         </div>
@@ -2410,8 +2423,8 @@ export function EmployeeTodayClient({
           <dl className='pwa-schedule-roster col-span-2' aria-label={`График сотрудников: ${formatDateLabel(date)}`}>
             <div className='pwa-schedule-roster-row is-own'>
               <dt>Вы</dt>
-              <dd className='pwa-schedule-own-status' data-status={ownVacation ? 'vacation' : ownEntry?.status ?? 'missing'}>
-                <span>{ownVacation ? 'Отпуск' : ownEntry?.status === 'working' ? 'Работаете' : ownEntry?.status === 'off' ? 'Выходной' : 'График не отмечен'}</span>
+              <dd className='pwa-schedule-own-status' data-status={displayStatus ?? 'missing'}>
+                <span>{displayStatus === 'vacation' ? 'Отпуск' : displayStatus === 'working' ? 'Работаете' : displayStatus === 'off' ? 'Выходной' : 'График не отмечен'}</span>
                 {canEdit && <button
                   type='button'
                   className='pwa-schedule-edit-link'
@@ -5978,14 +5991,17 @@ export function EmployeeTodayClient({
                   <div className='pwa-calendar-grid grid grid-cols-7 gap-1'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
-                      const ownVacation = ownVacationForDate(cell.date);
+                      const displayStatus = bulkScheduleMode
+                        ? ownVacationForDate(cell.date) ? 'vacation' : ownEntry?.status
+                        : ownCalendarStatus(cell.date, ownEntry?.status);
+                      const ownVacation = displayStatus === 'vacation';
                       const workingInitials = getWorkingInitials(cell.date);
                       const vacationInitials = getVacationInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
                       const isToday = cell.date === today;
                       const isPast = cell.date < today;
                       const isOutsideMonth = !cell.inMonth;
-                      const isLockedMissing = !ownEntry && isPast && !canEditDianaPastSchedule(user, cell.date, today);
+                      const isLockedMissing = !displayStatus && isPast && !canEditDianaPastSchedule(user, cell.date, today);
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkStatus = bulkEligible ? bulkScheduleDraft[cell.date] ?? bulkOriginalStatuses[cell.date] : null;
                       const bulkChanged = bulkEligible && Object.prototype.hasOwnProperty.call(bulkScheduleDraft, cell.date);
@@ -6003,9 +6019,9 @@ export function EmployeeTodayClient({
                             ? 'employee-material-calendar-missing bg-[#fbfcfe] text-slate-600 ring-[#dfe4ea]'
                           : ownVacation
                             ? 'bg-[#e8f1fb] text-[#24476b] ring-[#b8cee5]'
-                          : ownEntry?.status === 'working'
+                          : displayStatus === 'working'
                           ? 'bg-[#9ed3ae] text-[#123d21] ring-[#9ed1a7]'
-                          : ownEntry?.status === 'off'
+                          : displayStatus === 'off'
                             ? 'bg-[#dce2df] text-[#26332d] ring-[#aebbb5]'
                             : isLockedMissing
                               ? 'bg-[#eef0ed] text-slate-500 ring-[#d9ddda]'
@@ -6023,10 +6039,10 @@ export function EmployeeTodayClient({
                               if (canEditOwnScheduleDate(cell.date) && !ownVacation) setEditingScheduleDate(cell.date);
                             }
                           }}
-                          aria-label={`${formatDateLabel(cell.date)}${isToday ? ', сегодня' : ''}, ${!scheduleMonthLoaded ? 'загрузка графика' : bulkScheduleMode && !bulkEligible ? 'недоступно для изменения' : bulkEligible ? bulkStatus === 'working' ? 'рабочий день' : bulkStatus === 'off' ? 'выходной' : 'график не отмечен' : ownVacation ? 'отпуск' : ownEntry?.status === 'working' ? 'рабочий день' : ownEntry?.status === 'off' ? 'выходной' : 'график не отмечен'}${bulkChanged ? ', изменено' : ''}`}
+                          aria-label={`${formatDateLabel(cell.date)}${isToday ? ', сегодня' : ''}, ${!scheduleMonthLoaded ? 'загрузка графика' : bulkScheduleMode && !bulkEligible ? 'недоступно для изменения' : bulkEligible ? bulkStatus === 'working' ? 'рабочий день' : bulkStatus === 'off' ? 'выходной' : 'график не отмечен' : ownVacation ? 'отпуск' : displayStatus === 'working' ? 'рабочий день' : displayStatus === 'off' ? 'выходной' : 'график не отмечен'}${bulkChanged ? ', изменено' : ''}`}
                           aria-pressed={bulkScheduleMode ? bulkEligible ? bulkChanged : undefined : selected}
                           aria-current={isToday ? 'date' : undefined}
-                          data-schedule-status={bulkEligible ? bulkStatus ?? 'missing' : ownVacation ? 'vacation' : ownEntry?.status ?? (isLockedMissing ? 'past-missing' : 'missing')}
+                          data-schedule-status={bulkEligible ? bulkStatus ?? 'missing' : ownVacation ? 'vacation' : displayStatus ?? (isLockedMissing ? 'past-missing' : 'missing')}
                           data-schedule-changed={bulkChanged || undefined}
                           disabled={isOutsideMonth || (bulkScheduleMode && (!bulkEligible || isSaving))}
                           className={cn(
@@ -6052,7 +6068,7 @@ export function EmployeeTodayClient({
                                       ? 'Отп.'
                                     : isLockedMissing
                                       ? '—'
-                                      : scheduleCellLabel(ownEntry?.status)
+                                      : scheduleCellLabel(displayStatus)
                                 : '…'}
                             </span>
                           </span>

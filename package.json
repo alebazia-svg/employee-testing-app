@@ -1,6 +1,6 @@
 {
   "name": "employee-testing-app",
-  "version": "1.25.26",
+  "version": "1.25.27",
   "private": true,
   "scripts": {
     "dev": "next dev",

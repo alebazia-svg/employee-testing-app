@@ -1,4 +1,9 @@
 import 'server-only';
+import { usesAppAttendance } from './team-attendance';
+import { loadTeamCalendarEvidence } from './team-calendar-evidence';
+import { CALENDAR_DAY_END, calendarCorrectionSourceId, resolveCalendarFact } from './team-calendar-fact';
+import { googleDay, resolveTeamSchedule } from './team-control';
+import { getTeamGoogleSnapshot } from './team-control-source';
 import { prisma } from '@/lib/prisma';
 import { buildDateRange, getMoscowDateKey } from '@/lib/workday';
 import { buildScheduleMonthRange } from '@/lib/workday-schedule';
@@ -66,4 +71,44 @@ export async function scheduleSnapshot(user: { id: number; department: string },
     replacementRequestDates,
     range: { monthKey, from: dates[0], to: dates[dates.length - 1] },
   };
+}
+
+export async function employeeScheduleView(
+  user: { id: number; department: string; name: string; login: string },
+  dates: string[],
+  monthKey: string | null,
+) {
+  const now = new Date();
+  const today = getMoscowDateKey(now);
+  const eligible = Object.prototype.hasOwnProperty.call(CALENDAR_DAY_END, user.department)
+    ? dates.filter(date => date <= today && usesAppAttendance(date))
+    : [];
+  const snapshot = await scheduleSnapshot(user, dates, monthKey);
+  const dayOutcomes: Array<{ date: string; status: 'working' | 'off' | 'vacation' }> = [];
+  if (eligible.length) {
+    const [evidence, google] = await Promise.all([
+      loadTeamCalendarEvidence(prisma, { userIds: [user.id], dates: eligible, now }),
+      getTeamGoogleSnapshot(),
+    ]);
+    const schedules = new Map(snapshot.ownSchedule.map(entry => [entry.date, entry.status]));
+    for (const date of eligible) {
+      const day = evidence.get(calendarCorrectionSourceId(user.id, date));
+      const marks = googleDay(user.name, date, google.plans, google.marks);
+      const vacation = snapshot.ownVacations.some(period => period.dateFrom <= date && period.dateTo >= date);
+      const plan = resolveTeamSchedule({
+        name: user.name, appStatus: schedules.get(date), googlePlan: marks.plan,
+        googleAvailable: google.planAvailable, vacation,
+      });
+      const fact = resolveCalendarFact({
+        date, department: user.department, employeeLogin: user.login, plan: plan.state, source: plan.source,
+        vacation, qrAccepted: day?.qrAccepted ?? false, appStarted: day?.appStarted,
+        googleArrival: marks.arrival, googleDeparture: marks.departure, googleMarksAvailable: google.marksAvailable,
+        correction: day?.history[0], now,
+      });
+      if (fact.factual && (fact.state === 'working' || fact.state === 'off' || fact.state === 'vacation')) {
+        dayOutcomes.push({ date, status: fact.state });
+      }
+    }
+  }
+  return { ...snapshot, dayOutcomes };
 }

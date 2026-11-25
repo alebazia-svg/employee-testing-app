@@ -12,7 +12,7 @@ import { employeePreviewHeaders as headers, readEmployeePreview } from '@/lib/em
 import { getEmployeeWorkdaySnapshot } from '@/lib/employee-workday-snapshot';
 import { loadEmployeeNotifications } from '@/lib/employee-notification-snapshot';
 import { loadEmployeeAttention } from '@/lib/employee-attention-snapshot';
-import { requestedDates, scheduleSnapshot } from '@/lib/employee-schedule-snapshot';
+import { requestedDates, employeeScheduleView } from '@/lib/employee-schedule-snapshot';
 import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 import { cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
@@ -111,7 +111,7 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
     case 'schedule': {
       const range = requestedDates(url.searchParams.get('month'), url.searchParams.get('week'));
       if (!range) return Response.json({ error: 'Некорректный период графика' }, { status: 400, headers });
-      return Response.json(await scheduleSnapshot(user, range.dates, range.monthKey), { headers });
+      return Response.json(await employeeScheduleView(user, range.dates, range.monthKey), { headers });
     }
     case 'cash-issue': {
       const current = await currentCashIssue();
