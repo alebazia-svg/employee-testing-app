@@ -1,4 +1,5 @@
 "use client";
+import { AdminSupplierPreparation } from '@/components/AdminPaymentAttention';
 import {ProcurementPartialCashDetails} from '@/components/ProcurementPartialCashDetails';
 import {ProcurementQrTransferDetails} from '@/components/ProcurementQrTransferDetails';
 import { ProcurementMissingOrderWarning } from '@/components/ProcurementMissingOrderWarning';
@@ -544,6 +545,11 @@ export default function AdminProcurementClient({
       </nav>
       {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
       {<div className="procurement-calendar-tools">{visualPreview?.rateSummary??<ProcurementCalendarRates admin today={todayKey} plans={plans} references={{USDT:usdtRateReference}}/>}<div className="procurement-calendar-refresh-target" ref={setRefreshTarget}/><div className="procurement-calendar-receipt-target" ref={setRateReceiptTarget}/></div>}
+      <AdminSupplierPreparation onSelect={() => {
+        setTab("approved");
+        setReturningId("");
+        setReturnReason("");
+      }}/>
       <div className="pam-toolbar">{tab==='approved'&&!visualPreview?<ProcurementRequisitesBatch plans={plans} today={todayKey}/>:null}{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}{!visualPreview?<ProcurementAdminCreate onCreated={()=>{setTab("pending");router.refresh();}}/>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen desktopTarget={refreshTarget}/>{visualPreview?.receiptControl ?? (!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts} onLoadState={setReceiptLoadState} renderEntry={state=><ProcurementCalendarReceiptEntry {...state} target={rateReceiptTarget}/>}/> : null)}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       <ProcurementMissingOrderWarning refs={missingOrderRefs} plans={plans} />
