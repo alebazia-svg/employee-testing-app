@@ -27,10 +27,10 @@ test('closed/FINAL month: approval removes attendance obligation without changin
     const last=await db.payrollRun.aggregate({where:{periodId:period.id},_max:{runNumber:true}});
     const final=await db.payrollRun.create({data:{periodId:period.id,runNumber:(last._max.runNumber??0)+1,status:'FINAL',grossPay:12345,netPay:12000}});finalId=final.id;
    }
-   const before=await moneyState();assert.equal((await readPayrollAccess(userId,now,db))?.kind,'days_review');
-   const view=await readDayReview(userId,periodKey,db,now);assert.equal(view.accessOnly,true);assert.equal(view.reviewRequired,true);assert.ok(!view.knownDates.includes(date));
+   const before=await moneyState();assert.equal(await readPayrollAccess(userId,now,db),null);
+   const view=await readDayReview(userId,periodKey,db,now);assert.equal(view.accessOnly,true);assert.equal(view.reviewRequired,false);assert.ok(!view.knownDates.includes(date));
    const r=await submitDayReview(userId,periodKey,[date],db,now);ids.push(r.id);assert.equal(r.accessOnly,true);
-   assert.equal((await readPayrollAccess(userId,now,db))?.title,'Выходы на подтверждении');
+   assert.equal(await readPayrollAccess(userId,now,db),null,'optional pending corrections do not gate salary');
    await assert.rejects(()=>cancelDayReview(r.id,3,db));
    const review=await readAdminDayReview(r.id,db,now);assert.equal(review.accessOnly,true);assert.equal(review.amount,0);
    await assert.rejects(()=>decideDayReview(r.id,userId,'approved','',review.fingerprint!,db,now));

@@ -27,12 +27,6 @@ export async function readPayrollAccessInTransaction(tx:Prisma.TransactionClient
   const vacationDates=[...new Set(vacations.flatMap(v=>{const from=v.dateFrom>PAYROLL_ACCESS_FROM?v.dateFrom:PAYROLL_ACCESS_FROM;const to=v.dateTo<tomorrow?v.dateTo:tomorrow;const n=Math.round((Date.parse(to)-Date.parse(from))/86400000)+1;return n>0&&n<=4000?buildDateRange(from,n):[];}))];
   const action=payrollRequiredAction({today,tomorrow,planned,workDays,vacationDates,approvedDates:approved.flatMap(r=>reviewDates(r.dates,r.periodKey,'9999-12-31',r.periodKey+'-01')),requireStart:true});
   if(action)return pendingPayrollDayAction(action,pendingPeriods);
-  if(name==='Кумахова Диана'&&today.startsWith('2026-10-')&&!approved.some(r=>r.periodKey==='2026-10')){
-    const [snapshot,draft]=await Promise.all([tx.payrollAttendanceSnapshot.findUnique({where:{periodKey:'2026-10'}}),tx.payrollDraftRevision.findFirst({where:{periodKey:'2026-10'},orderBy:{revision:'desc'}})]);
-    const payload=snapshot?.payload as {scheduleSummaries?:{employee:string;scheduleDays:number}[]}|undefined;
-    const manual=(draft?.payload as {manual?:Record<string,{source?:string}>}|undefined)?.manual?.[name];
-    if(manual?.source!=='manualCorrection'&&!payload?.scheduleSummaries?.some(r=>['Диана',name].includes(r.employee)&&r.scheduleDays>0))return pendingPayrollDayAction({kind:'days_review' as const,title:'Подтвердите выходы за октябрь',message:'Отправьте отработанные дни администратору на подтверждение.',label:'Выбрать дни',href:'/employee/payroll/day-reviews?month=2026-10'},pendingPeriods);
-  }
   return null;
 }
 
