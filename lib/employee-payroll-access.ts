@@ -14,8 +14,7 @@ export function payrollRequiredAction(input:{today:string;tomorrow:string;planne
    :`Отметьте в графике ${missingPlans[0]===input.today?'сегодняшний':'завтрашний'} день: рабочий или выходной, чтобы посмотреть расчёт.`;
   return {kind:'schedule',title:'Заполните график',message,label:'Открыть график',href:`/employee?tab=schedule&date=${missingPlans[0]}`};
  }
- const missingPast=input.planned.filter(row=>row.date>=PAYROLL_ACCESS_FROM&&row.date<input.today&&row.status==='working'&&!vacation.has(row.date)&&!approved.has(row.date)).find(row=>!facts.has(row.date));
- if(missingPast)return {kind:'days_review',title:'Подтвердите прошлые выходы',message:'Есть рабочие дни без отметок. Отправьте отработанные дни администратору на подтверждение.',label:'Выбрать дни',href:`/employee/payroll/day-reviews?month=${missingPast.date.slice(0,7)}`};
+ // A saved plan without a past QR mark does not require employee reconfirmation to view salary.
  const unfinished=[...facts.values()].find(row=>row.date>=PAYROLL_ACCESS_FROM&&row.date<input.today&&!row.endedAt&&!approved.has(row.date));
  if(unfinished)return {kind:'finish',title:'Завершите прошлую смену',message:'Откройте рабочий день и завершите незакрытую смену.',label:'Открыть рабочий день',href:'/employee'};
  if(input.requireStart&&plans.get(input.today)==='working'&&!vacation.has(input.today)&&!facts.has(input.today)&&!approved.has(input.today))return {kind:'start',title:'Отметьте начало смены',message:'Сегодня у вас рабочий день. Отсканируйте QR-код в магазине, чтобы посмотреть расчёт.',label:'Начать смену',href:'/employee'};

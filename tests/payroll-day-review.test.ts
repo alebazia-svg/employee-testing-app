@@ -24,7 +24,7 @@ test('day off only grants access after obligations; older-than-cutover marks nev
  assert.equal(payrollRequiredAction(input),null);
  assert.equal(payrollRequiredAction({...input,planned:[...input.planned,{date:'2026-10-30',status:'working'}]}),null);
  const withMissing={...input,planned:[...input.planned,{date:'2026-10-31',status:'working'}]};
- assert.equal(payrollRequiredAction(withMissing)?.kind,'days_review');
+ assert.equal(payrollRequiredAction(withMissing),null,'a past plan without QR must not require reconfirmation');
  assert.equal(payrollRequiredAction({...withMissing,approvedDates:['2026-10-31']}),null);
  assert.equal(payrollRequiredAction({...input,planned:[]})?.kind,'schedule');
  assert.equal(payrollRequiredAction({...input,planned:[],vacationDates:[input.today,input.tomorrow]}),null);
@@ -75,7 +75,7 @@ test('a refreshed explicit empty form source supports the first approved day wit
 
 
 test('pending review replaces a repeated request prompt without unlocking salary',()=>{
- const action=payrollRequiredAction({...input,planned:[...input.planned,{date:'2026-10-31',status:'working'}]})!;
+ const action={kind:'days_review' as const,title:'Подтвердите прошлые выходы',message:'Запрос дней',label:'Выбрать дни',href:'/employee/payroll/day-reviews?month=2026-10'};
  const pending=pendingPayrollDayAction(action,['2026-10']);
  assert.equal(pending.kind,'days_review');assert.equal(pending.title,'Выходы на подтверждении');assert.equal(pending.label,'Посмотреть запрос');assert.equal(pending.href,action.href);
  assert.deepEqual(pendingPayrollDayAction(action,['2026-11']),action);
@@ -134,4 +134,16 @@ test('schedule copy follows live obligations as days are filled and cleared',()=
  assert.equal(action()!.message,'Отметьте в графике сегодняшний день: рабочий или выходной, чтобы посмотреть расчёт.');
  base.planned=[];
  assert.match(action()!.message,/сегодня и завтра/);
+});
+
+
+test('missing past dates never override today planning, start, or valid QR attendance',()=>{
+ const base={...input,planned:[...input.planned,{date:'2026-10-31',status:'working'}]};
+ assert.equal(payrollRequiredAction(base),null);
+ const working={...base,planned:base.planned.map(p=>p.date===input.today?{...p,status:'working'}:p)};
+ assert.equal(payrollRequiredAction(working)?.kind,'start');
+ const started={...working,workDays:[{date:input.today,startedAt:new Date(input.today+'T09:00:00+03:00'),endedAt:null,status:'active'}]};
+ assert.equal(payrollRequiredAction(started),null);
+ assert.equal(payrollRequiredAction({...started,planned:started.planned.filter(p=>p.date!==input.tomorrow)})?.kind,'schedule');
+ assert.equal(payrollRequiredAction({...base,workDays:[{date:'2026-10-31',startedAt:new Date('2026-10-31T09:00:00+03:00'),endedAt:new Date('2026-10-31T18:00:00+03:00'),status:'completed'}]}),null);
 });
