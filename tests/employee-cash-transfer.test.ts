@@ -4,8 +4,8 @@ import { transferEmployeeCash, saveEmployeeCashIntent, prepareEmployeeCashPhoto 
 import { cashMetadataAcknowledges, cashOutboxResponseAcknowledges, type EmployeeCashOutboxItem } from '../lib/employee-cash-outbox';
 import { CASH_PHOTO_CHUNK_BYTES } from '../lib/cash-photo-protocol';
 
-async function fixture() {
-  const bytes = new Uint8Array(CASH_PHOTO_CHUNK_BYTES + 100); bytes.set([0xff, 0xd8, 0xff]);
+async function fixture(fullChunks = 1) {
+  const bytes = new Uint8Array(CASH_PHOTO_CHUNK_BYTES * fullChunks + 100); bytes.set([0xff, 0xd8, 0xff]);
   const photo = new File([bytes], 'original.jpg', { type: 'image/jpeg' });
   const item: EmployeeCashOutboxItem = { id: '12345678-1234-4234-9234-123456789abc', userId: 8, workDayEntryId: 12, workDayDate: '2026-11-04', createdAt: new Date().toISOString(), url: '/api/employee/cash-operations', direction: 'deposit_safe', amount: '40000', comment: '', photo, lastError: '', ...await prepareEmployeeCashPhoto(photo, null) };
   const operation = { id: 44, idempotencyKey: item.id, userId: item.userId, workDayEntryId: item.workDayEntryId, date: item.workDayDate, direction: item.direction, amount: 40000,
@@ -24,7 +24,7 @@ test('the portal receipt releases work before slow 1C completes; photo is acknow
     if (init?.method === 'PATCH') {
       assert.ok(metadataShown, 'work must be released before attachment upload');
       const i = Number(new URL(String(_url), 'http://localhost').searchParams.get('chunk')); received.add(i);
-      assert.ok((init.body as Blob).size <= CASH_PHOTO_CHUNK_BYTES);
+      assert.ok((init.body as ArrayBuffer).byteLength <= CASH_PHOTO_CHUNK_BYTES);
       if (received.size === 2) { operation.photoPath = 'uploads/cash-operations/test.jpg'; operation.photoReceivedAt = new Date().toISOString(); }
       return Response.json({ operation });
     }
@@ -36,23 +36,52 @@ test('the portal receipt releases work before slow 1C completes; photo is acknow
   finish(Response.json({ operation })); await pending;
 });
 
-test('a lost chunk response resumes the accepted photo without another financial POST', async () => {
-  const { item, operation } = await fixture();
-  const received = new Set([0]); let failed = false, posts = 0; const sent: number[] = [];
+test('an interrupted photo automatically resumes from the server receipt without a financial POST', async () => {
+  const { item, operation } = await fixture(6);
+  item.metadataSaved = true;
+  operation.status = 'posted_1c_pair';
+  const received = new Set([0, 1, 2]);
+  const sent: number[] = [];
+  let progressReads = 0;
   const fetcher: typeof fetch = async (url, init) => {
-    if (init?.method === 'POST') { posts++; throw new Error('financial retry must not occur'); }
     if (init?.method === 'PATCH') {
-      const i = Number(new URL(String(url), 'http://localhost').searchParams.get('chunk')); sent.push(i); received.add(i);
-      if (!failed) { failed = true; throw new Error('response lost'); }
-      operation.photoPath = 'uploads/photo.jpg'; operation.photoReceivedAt = new Date().toISOString();
+      const index = Number(new URL(String(url), 'http://localhost').searchParams.get('chunk'));
+      sent.push(index);
+      const offset = index * CASH_PHOTO_CHUNK_BYTES;
+      assert.deepEqual(
+        new Uint8Array(init.body as ArrayBuffer),
+        new Uint8Array(await item.photo.slice(offset, offset + CASH_PHOTO_CHUNK_BYTES).arrayBuffer()),
+      );
+      received.add(index);
+      if (index === 3) throw new DOMException('response lost after commit', 'AbortError');
+      if (received.size === 7) {
+        operation.photoPath = 'uploads/photo.jpg';
+        operation.photoReceivedAt = new Date().toISOString();
+      }
+      return Response.json({ operation });
     }
+    assert.equal(init?.method, undefined, 'cash was already accepted and must never be submitted again');
+    progressReads++;
     return Response.json({ operation, photo: { receivedChunks: [...received] } });
   };
-  await assert.rejects(transferEmployeeCash(item, {}, fetcher));
-  assert.equal(cashMetadataAcknowledges({ operation }, item), true);
-  assert.equal(cashOutboxResponseAcknowledges({ operation }, item), false, 'metadata alone must never discard the retained photo');
+
   assert.ok(cashOutboxResponseAcknowledges(await transferEmployeeCash(item, {}, fetcher), item));
-  assert.deepEqual(sent, [1, 1]); assert.equal(posts, 0);
+  assert.deepEqual(sent, [3, 4, 5, 6]);
+  assert.equal(progressReads, 2);
+  assert.equal(operation.status, 'posted_1c_pair');
+});
+
+test('an unavailable receipt for an accepted operation keeps the photo queued and never submits money', async () => {
+  const { item } = await fixture();
+  item.metadataSaved = true;
+  const methods: (string | undefined)[] = [];
+  const fetcher: typeof fetch = async (_url, init) => {
+    methods.push(init?.method);
+    return new Response(null, { status: 404 });
+  };
+
+  await assert.rejects(transferEmployeeCash(item, {}, fetcher));
+  assert.deepEqual(methods, [undefined]);
 });
 
 test('a mismatched original photo or a legacy metadata-only receipt cannot clear v2 evidence', async () => {
