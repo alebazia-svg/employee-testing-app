@@ -1,9 +1,12 @@
+import { handoverCashBoundary } from '@/lib/handover-external-cash';
 export const shiftControlOneCAuditKey = 'oneCAudit';
 export const shiftControlEmployeeRevisionHistoryKey = '_employeeRevisionHistory';
 
 export function stripShiftControlOneCAudit(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const result = { ...(value as Record<string, unknown>) };
+  const boundary = handoverCashBoundary(value);
+  if (boundary !== null) result.cashCountStartedAt = new Date(boundary).toISOString();
   delete result[shiftControlOneCAuditKey];
   delete result[shiftControlEmployeeRevisionHistoryKey];
   delete result.cashComparison;

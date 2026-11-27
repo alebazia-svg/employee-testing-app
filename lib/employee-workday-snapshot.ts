@@ -1,3 +1,4 @@
+import { isSeparateCashOperation } from '@/lib/handover-external-cash';
 import { prisma } from '@/lib/prisma';
 import { stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
@@ -71,6 +72,8 @@ export function serializeCashOperationForEmployee(operation: Awaited<ReturnType<
     direction: operation.direction as 'phone_reserve' | 'deposit_safe',
     amount: operation.amount,
     photoPath: operation.photoPath,
+    separate: isSeparateCashOperation(operation.idempotencyKey),
+    oneCPostedAt: operation.oneCPostedAt?.toISOString() ?? null,
     photoExpectedSha256: operation.photoExpectedSha256,
     photoReceivedAt: operation.photoReceivedAt?.toISOString() ?? null,
     updatedAt: operation.updatedAt.toISOString(),
