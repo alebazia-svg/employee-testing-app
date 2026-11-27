@@ -1,4 +1,5 @@
 'use client';
+import { externalCashSinceCount, handoverCashBoundary } from '@/lib/handover-external-cash';
 import { CashChecklistSheet, CashChecklistAmount } from '@/components/CashChecklistSheet';
 import { CashOperationStatusRow } from '@/components/CashOperationStatusRow';
 import { EmployeeFinishDayCard } from '@/components/workday/EmployeeFinishDayCard';
@@ -376,6 +377,8 @@ type ShiftControlState = {
 };
 
 type CashOperation = {
+  separate?: boolean;
+  oneCPostedAt?: string | null;
   id: number;
   userId: number;
   workDayEntryId: number;
@@ -1487,6 +1490,7 @@ export function EmployeeTodayClient({
   const [handoverSaveError, setHandoverSaveError] = useState('');
   const handoverAuditAttempt = useRef<string | undefined>(undefined);
   const [isHandoverKkmCheckPending, setIsHandoverKkmCheckPending] = useState(false);
+  const [handoverExternalCashIds, setHandoverExternalCashIds] = useState('');
   const [handoverDraft, setHandoverDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
   const [handoverSavedDraft, setHandoverSavedDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
   const [handoverExitPromptOpen, setHandoverExitPromptOpen] = useState(false);
@@ -3206,6 +3210,25 @@ export function EmployeeTodayClient({
     workflowEvent('handover_form','opened',task.id);
     try { handoverAuditAttempt.current = crypto.randomUUID(); } catch { handoverAuditAttempt.current = undefined; }
     const restoredDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : emptyHandoverDraft();
+    const external = externalCashSinceCount(
+      cashOperationsState.map(operation => ({ ...operation, separate: operation.separate === true })),
+      shiftControlState.run?.workDayEntryId ?? activeWorkDay?.id ?? 0,
+      handoverCashBoundary(task.handoverData),
+    );
+    if (external.some(operation => operation.status !== 'posted_1c_pair')) {
+      setError('Отдельная инкассация ещё не подтверждена. Проверьте её статус и откройте сдачу снова.');
+      void syncCurrentWorkdayState(true);
+      return;
+    }
+    setHandoverExternalCashIds(external.map(operation => operation.id).join(','));
+    if (external.length) {
+      restoredDraft.personalCashBalance = '';
+      restoredDraft.encashmentAmount = '';
+      restoredDraft.encashmentDirection = '';
+      restoredDraft.encashmentDocumentPhoto = null;
+      if (external.some(operation => operation.direction === 'phone_reserve')) restoredDraft.reserveCashBalance = '';
+    }
+
     setActiveHandoverTaskId(task.id);
     setHandoverDraft(restoredDraft);
     setHandoverSavedDraft(restoredDraft);
@@ -3463,6 +3486,7 @@ export function EmployeeTodayClient({
       const file = draft[key];
       if (isHandoverFile(file)) formData.append(key, file);
     });
+    formData.append('externalCashIds', handoverExternalCashIds);
     formData.append('personalCashBalance', draft.personalCashBalance);
     formData.append('reserveCashBalance', draft.reserveCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
@@ -4093,6 +4117,7 @@ export function EmployeeTodayClient({
       const file = draft[key];
       if (isHandoverFile(file)) formData.append(key, file);
     });
+    formData.append('externalCashIds', handoverExternalCashIds);
     formData.append('personalCashBalance', draft.personalCashBalance);
     formData.append('reserveCashBalance', draft.reserveCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
@@ -4419,6 +4444,9 @@ export function EmployeeTodayClient({
         })()}
         {step === 'zReportPhoto' && renderPhotoInput('Чек закрытия смены', 'zReportPhoto', task, 'Закройте смену на кассе и сфотографируйте распечатанный чек.', stepError)}
 
+        {step === 'personalCashBalance' && handoverExternalCashIds && (
+          <p className='mb-3 text-sm font-semibold'>Инкассация учтена. Сколько осталось в кассе?</p>
+        )}
         {step === 'personalCashBalance' && (
           <CashChecklistAmount value={handoverDraft.personalCashBalance} onChange={personalCashBalance=>updateHandoverDraft({personalCashBalance})} error={stepError} />
         )}
@@ -4475,10 +4503,16 @@ export function EmployeeTodayClient({
             ) : !encashmentDetailsOpen ? (
               <div className='grid gap-3'>
                 {cashEncashmentExceptionRequestState?.status === 'rejected' && <p role='status' className='text-sm font-semibold text-red-800'>Запрос не согласован{cashEncashmentExceptionRequestState.decisionComment ? `: ${cashEncashmentExceptionRequestState.decisionComment}` : '. Выполните инкассацию.'}</p>}
-                <p className='text-sm font-semibold text-slate-700'>В кассе больше 50 000 ₽. Куда переложите деньги?</p>
+                <div className='grid gap-2 text-sm text-slate-700'>
+                  <p><strong>В кассе {formatShiftMoney(parseMoneyInput(handoverDraft.personalCashBalance) ?? 0)} ₽</strong></p>
+                  <p>Если в кассе больше 50 000 ₽, для сдачи смены нужна инкассация. Сделайте её здесь.</p>
+                </div>
                 <div className={cn('grid gap-2', user.department === 'retail' && 'grid-cols-2')}>
                   {user.department === 'retail' && <Button type='button' className='employee-material-secondary-action min-h-12 text-sm font-extrabold' onClick={() => { updateHandoverDraft({ encashmentDirection: 'phone_reserve' }); setEncashmentDetailsOpen(true); }}>В резерв</Button>}
-                  <Button type='button' className='employee-material-secondary-action min-h-12 text-sm font-extrabold' onClick={() => { updateHandoverDraft({ encashmentDirection: 'deposit_safe' }); setEncashmentDetailsOpen(true); }}>В сейф</Button>
+                  <Button type='button' className={cn(
+                    user.department === 'retail' ? 'employee-material-secondary-action' : 'employee-material-primary-action',
+                    'min-h-12 text-sm font-extrabold',
+                  )} onClick={() => { updateHandoverDraft({ encashmentDirection: 'deposit_safe' }); setEncashmentDetailsOpen(true); }}>{user.department === 'retail' ? 'В сейф' : 'Инкассировать в сейф'}</Button>
                 </div>
                 <div className='flex items-center justify-between gap-3'>
                   <button type='button' className='min-h-11 text-sm font-bold text-slate-600 underline-offset-4 hover:underline' onClick={() => cashEncashmentExceptionRequestState?.status === 'pending' ? setEncashmentResumePending(false) : setHandoverStep((current) => Math.max(0, current - 1))}>Назад</button>
@@ -4698,6 +4732,7 @@ export function EmployeeTodayClient({
                 }
                 setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
               } catch (reason) {
+                void syncCurrentWorkdayState(true);
                 setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сохранить шаг');
               } finally {
                 setIsSaving(false);

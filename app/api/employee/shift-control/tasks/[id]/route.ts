@@ -1,3 +1,4 @@
+import { externalCashSinceCount, handoverCashBoundary, isSeparateCashOperation } from '@/lib/handover-external-cash';
 import { usesRetailCashHandover } from '@/lib/workday';
 import { captureCashRecountWithRetry } from '@/lib/cash-recount-capture';
 import { after } from 'next/server';
@@ -298,6 +299,30 @@ async function saveHandoverDraft(
 
   const personalCashBalance = readFormNumber(formData, 'personalCashBalance');
   const reserveCashBalance = readFormNumber(formData, 'reserveCashBalance');
+  const countStartedAt = new Date();
+  const boundary = handoverCashBoundary(existing);
+  const operations = boundary === null ? [] : await prisma.cashOperation.findMany({
+    where: { userId, workDayEntryId: task.run.workDayEntryId, OR: [
+      { createdAt: { gte: new Date(boundary) } }, { oneCPostedAt: { gte: new Date(boundary) } },
+    ] },
+  });
+  const external = externalCashSinceCount(operations.map(operation => ({
+    ...operation, separate: isSeparateCashOperation(operation.idempotencyKey),
+  })), task.run.workDayEntryId, boundary);
+  if (external.some(operation => operation.status !== 'posted_1c_pair' || !operation.oneCDocumentRef || !operation.oneCReceiptDocumentRef)) {
+    return Response.json({ error: 'Отдельная инкассация ещё не подтверждена. Проверьте её статус и откройте сдачу снова.' }, { status: 409 });
+  }
+  const externalIds = external.map(operation => operation.id).join(',');
+  const recounting = external.length > 0;
+  const reserveRecount = includeReserve && external.some(operation => operation.direction === 'phone_reserve');
+  if (recounting && (readFormString(formData, 'externalCashIds') !== externalIds || personalCashBalance === null
+    || ['photo', 'not_printed'].includes(readFormString(formData, 'kkmCloseConfirmation')))) {
+    return Response.json({ error: 'После отдельной инкассации пересчитайте кассу. Откройте сдачу снова.' }, { status: 409 });
+  }
+  if (reserveRecount && reserveCashBalance === null && readFormString(formData, 'intent') !== 'draft') {
+    return Response.json({ error: 'После пополнения пересчитайте общий резерв.' }, { status: 409 });
+  }
+
   const terminalHadOperations = readFormBoolean(formData, 'terminalHadOperations');
   const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
   const terminalComment = readFormString(formData, 'terminalComment');
@@ -308,6 +333,7 @@ async function saveHandoverDraft(
     : requestedEncashmentDirection;
   const comment = readFormString(formData, 'comment');
   const photos = { ...existingPhotos };
+  if (recounting) delete photos.encashmentDocument;
   const photoFields = [
     ['personalStatementPhoto', 'personalStatement', 'personal-statement'],
     ['terminalReceiptsPhoto', 'terminalReceipts', 'terminal-receipts'],
@@ -338,7 +364,7 @@ async function saveHandoverDraft(
     ? existing[shiftControlOneCAuditKey] as Record<string, unknown>
     : null;
   const auditFactBalance = existingAudit ? readNumber(existingAudit.factCashBalance) : null;
-  const oneCAudit = personalCashBalance !== null && (!existingAudit || auditFactBalance !== personalCashBalance)
+  const oneCAudit = personalCashBalance !== null && (!existingAudit || auditFactBalance !== personalCashBalance || recounting)
     ? {
         ...(await captureOneCCashAudit({ userId, date, includeReserve, capturedAt: new Date() })),
         factCashBalance: personalCashBalance,
@@ -362,6 +388,10 @@ async function saveHandoverDraft(
     handoverExpenses: handoverExpenses ?? null,
     cashExpenseNotice: handoverExpenses ? { ...handoverExpenses, requestRefs: [], documentRefs: [] } : null,
     draft: true,
+    cashCountStartedAt: (recounting && reserveRecount && reserveCashBalance === null
+      ? new Date(boundary!)
+      : recounting || boundary === null || auditFactBalance !== personalCashBalance
+        ? countStartedAt : new Date(boundary)).toISOString(),
     shiftCode: task.run.workDayEntry.shiftCode,
     updatedAt: new Date().toISOString(),
     [shiftControlOneCAuditKey]: oneCAudit,
@@ -617,23 +647,39 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         const compactIdempotencyKey = `h${task.id}`;
         const encashmentPhoto = savedPhoto(handoverData, 'encashmentDocument');
         const photoPath = isRecord(encashmentPhoto) && typeof encashmentPhoto.storagePath === 'string' ? encashmentPhoto.storagePath : '';
-        let cashOperation = await prisma.cashOperation.findUnique({ where: { idempotencyKey: legacyIdempotencyKey } });
-        cashOperation ??= await prisma.cashOperation.findUnique({ where: { idempotencyKey: compactIdempotencyKey } });
-        const idempotencyKey = cashOperation?.idempotencyKey ?? compactIdempotencyKey;
-        cashOperation ??= await prisma.cashOperation.create({
-          data: {
-            userId: user.id,
-            workDayEntryId: task.run.workDayEntryId,
-            date: task.run.date,
-            department: user.department,
-            direction: encashmentDirection,
-            amount: encashmentAmount,
-            photoPath,
-            comment,
-            status: 'pending_1c',
-            idempotencyKey,
-          },
+        let cashOperation = await prisma.$transaction(async tx => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106261, ${user.id}::integer)`;
+          const boundary = handoverCashBoundary(handoverData);
+          const rows = boundary === null ? [] : await tx.cashOperation.findMany({
+            where: { userId: user.id, workDayEntryId: task.run.workDayEntryId, OR: [
+              { createdAt: { gte: new Date(boundary) } },
+              { oneCPostedAt: { gte: new Date(boundary) } },
+            ] },
+          });
+          if (externalCashSinceCount(rows.map(operation => ({
+            ...operation, separate: isSeparateCashOperation(operation.idempotencyKey),
+          })), task.run.workDayEntryId, boundary).length) return null;
+          const existing = await tx.cashOperation.findUnique({ where: { idempotencyKey: legacyIdempotencyKey } })
+            ?? await tx.cashOperation.findUnique({ where: { idempotencyKey: compactIdempotencyKey } });
+          return existing ?? tx.cashOperation.create({
+            data: {
+              userId: user.id,
+              workDayEntryId: task.run.workDayEntryId,
+              date: task.run.date,
+              department: user.department,
+              direction: encashmentDirection,
+              amount: encashmentAmount,
+              photoPath,
+              comment,
+              status: 'pending_1c',
+              idempotencyKey: compactIdempotencyKey,
+            },
+          });
         });
+        if (!cashOperation) {
+          return Response.json({ error: 'После пересчёта появилась отдельная инкассация. Откройте сдачу снова.' }, { status: 409 });
+        }
+        const idempotencyKey = cashOperation.idempotencyKey;
         if (cashOperation.amount !== encashmentAmount || cashOperation.direction !== encashmentDirection) {
           throw new Error('Параметры повторной инкассации не совпадают. Смена не завершена.');
         }
